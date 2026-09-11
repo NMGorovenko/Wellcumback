@@ -1,0 +1,389 @@
+.hub {
+  padding: 0 32px;
+  max-width: 1600px;
+}
+.hub .topbar {
+  height: 76px;
+  border: 0;
+}
+.hub-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: none;
+  border: 0;
+  color: #e3e7dc;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  font-weight: 700;
+  padding: 0;
+}
+.hub-brand > span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: #c8d99d;
+  color: #263225;
+  border-radius: 50%;
+  font-size: 24px;
+  font-weight: 400;
+}
+.evening-score {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: none;
+  border: 0;
+  color: #d1d9bb;
+  font-size: 12px;
+}
+.hub-stage {
+  position: relative;
+  height: calc(100dvh - 170px);
+  min-height: 520px;
+  max-height: 820px;
+  overflow: hidden;
+  border: 1px solid #68736344;
+  border-radius: 10px;
+  background: #1d2528;
+}
+.hub-preview,
+.hub-shade {
+  position: absolute;
+  inset: 0;
+}
+.hub-preview {
+  animation: episode-reveal 0.65s ease-out;
+}
+.hub-preview .world-canvas {
+  min-height: 0 !important;
+}
+.hub-shade {
+  background:
+    linear-gradient(90deg, #182321dd 0%, #18232166 28%, transparent 60%),
+    linear-gradient(0deg, #192521c9, transparent 35%);
+  pointer-events: none;
+}
+.hub-welcome {
+  position: absolute;
+  left: 38px;
+  top: 32px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #b9c7af;
+}
+.hub-welcome > span {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0;
+  color: #e3e6d8;
+  margin-top: 8px;
+}
+.hub-story {
+  position: absolute;
+  left: 38px;
+  top: 37%;
+  max-width: 430px;
+  animation: episode-reveal 0.5s ease-out;
+}
+.hub-kicker {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: #c4d0ad;
+}
+.hub-story h1 {
+  font-size: clamp(34px, 3.5vw, 54px);
+  line-height: 1.05;
+  letter-spacing: -1.9px;
+  margin: 15px 0 16px;
+  max-width: 370px;
+  color: #f0f0e4;
+}
+.hub-story p {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #c5cebd;
+  max-width: 245px;
+  margin: 0 0 25px;
+}
+.hub-story .play-button {
+  min-width: 0;
+  width: 230px;
+  padding: 14px 18px;
+  gap: 12px;
+  font-size: 13px;
+  background: #d2e3a7;
+  box-shadow: 0 3px 18px #0002;
+}
+.hub-story .play-button svg:last-child {
+  margin-left: auto;
+}
+.hub-team {
+  position: absolute;
+  left: 38px;
+  bottom: 28px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.hub-team > span {
+  font-size: 8px;
+  color: #b6c4a6;
+  letter-spacing: 1.5px;
+  margin-right: 12px;
+}
+.hub-team button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 8px 11px;
+  background: #253329aa;
+  color: #b8c6a6;
+  font-size: 11px;
+}
+.hub-team button[aria-pressed='true'] {
+  background: #bbcaa0;
+  color: #25311f;
+}
+.hub-scene-caption {
+  position: absolute;
+  right: 26px;
+  bottom: 31px;
+  font-size: 10px;
+  color: #c8cdbf;
+  text-shadow: 0 1px 5px #000;
+}
+.episode-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 84px;
+}
+.episode-tabs {
+  display: flex;
+  gap: 10px;
+}
+.episode-tabs button {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  padding: 13px 10px;
+  display: flex;
+  gap: 12px;
+  color: #929f8b;
+  font-size: 12px;
+}
+.episode-tabs button[aria-pressed='true'] {
+  color: #e6eadc;
+  border-color: #c0d394;
+}
+.episode-tabs button > span {
+  color: #a9b695;
+  font-size: 10px;
+}
+.coming-story {
+  margin-left: auto;
+  font-size: 10px;
+  color: #71816f;
+}
+.hub-dialog {
+  max-width: 560px !important;
+}
+.hub-people {
+  display: grid;
+  gap: 16px;
+  padding: 16px 0;
+}
+.hub-people > div {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  column-gap: 14px;
+  align-items: center;
+}
+.person-initial {
+  grid-row: 1/3;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}
+.hub-people small {
+  color: #a6b79b;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.hub-total {
+  display: grid;
+  justify-items: center;
+  color: #d4e2ad;
+  gap: 7px;
+  padding: 20px;
+}
+.hub-total strong {
+  font-size: 56px;
+  line-height: 1;
+}
+.hub-total span {
+  color: #99aa8c;
+  font-size: 12px;
+}
+.hub-results {
+  max-height: 300px;
+  overflow: auto;
+}
+.hub-results > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid #4d5a45;
+  font-size: 13px;
+}
+.hub-results small {
+  display: block;
+  font-size: 10px;
+  color: #9cac8c;
+  margin-top: 5px;
+}
+.hub-input-help p {
+  line-height: 2;
+}
+.story-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 20px;
+  background: #15201c;
+  animation: story-cut 0.95s both;
+  pointer-events: all;
+}
+.story-transition > span {
+  color: #7f9378;
+  font-size: 9px;
+  letter-spacing: 3px;
+}
+.story-transition strong {
+  color: #e5edcc;
+  font-size: clamp(20px, 3vw, 36px);
+  font-weight: 400;
+  letter-spacing: 2px;
+  text-align: center;
+}
+.story-transition i {
+  height: 1px;
+  width: 100px;
+  background: #c6d995;
+  animation: transition-line 0.95s ease-out;
+}
+@keyframes episode-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes story-cut {
+  0% {
+    opacity: 0;
+  }
+  20%,
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes transition-line {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (max-width: 760px) {
+  .hub {
+    padding: 0 12px;
+  }
+  .hub .topbar {
+    height: 62px;
+  }
+  .hub-brand {
+    font-size: 10px;
+  }
+  .hub-brand > span {
+    width: 26px;
+    height: 26px;
+  }
+  .hub .top-actions {
+    gap: 5px;
+  }
+  .hub-stage {
+    height: calc(100dvh - 150px);
+    min-height: 580px;
+  }
+  .hub-welcome {
+    left: 23px;
+    top: 24px;
+  }
+  .hub-story {
+    left: 23px;
+    top: auto;
+    bottom: 105px;
+  }
+  .hub-story h1 {
+    font-size: 38px;
+    max-width: 250px;
+  }
+  .hub-shade {
+    background: linear-gradient(
+      0deg,
+      #17231fed 0%,
+      #18232188 45%,
+      transparent 77%
+    );
+  }
+  .hub-team {
+    left: 23px;
+    bottom: 25px;
+  }
+  .hub-scene-caption {
+    display: none;
+  }
+  .episode-selector {
+    height: 75px;
+    gap: 4px;
+  }
+  .episode-tabs {
+    gap: 0;
+  }
+  .episode-tabs button {
+    font-size: 11px;
+    gap: 7px;
+    padding: 12px 7px;
+  }
+  .coming-story {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-preview,
+  .hub-story,
+  .story-transition,
+  .story-transition i {
+    animation-duration: 0.05s;
+  }
+}

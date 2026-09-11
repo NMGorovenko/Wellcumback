@@ -1,463 +1,619 @@
-/* oxlint-disable jsx-a11y/prefer-tag-over-role -- The dynamic WebGL scene has an accessible image role, not an image URL. */
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- A live WebGL surface has no static image URL. */
 'use client';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
-import { people, room } from '@/lib/game/presets';
-import { createCharacter } from './character';
-import type { GameState } from '@/lib/game/screen/engine';
+import { people } from '@/lib/game/presets';
+import {
+  freshGame,
+  PHYSICAL_LAYOUT,
+  type GameState,
+  type WorkerAction,
+} from '@/lib/game/screen/engine';
+import { RenderKit } from '../world/render-kit';
+import { createRig, type Pose } from '../world/rig';
+import { createApartment } from '../world/apartment';
+import { makeLabel } from '../world/labels';
+import {
+  createScreenModel,
+  FLOOR_SCALE,
+  FLOOR_Z,
+  hookHeight,
+  hookX,
+  MOUNT_Z,
+} from './screen-model';
 
-type Props = { game?: RefObject<GameState>; playing?: boolean };
-export default function Scene({ game, playing = false }: Props) {
-  const host = useRef<HTMLDivElement>(null);
+export type CameraMode = 'auto' | 'wide' | 'faces';
+type Props = {
+  stateRef?: RefObject<GameState>;
+  preview?: boolean;
+  cameraMode?: CameraMode;
+};
+const poses: Record<WorkerAction, Pose> = {
+  idle: 'idle',
+  walk: 'walk',
+  hold: 'work',
+  feed: 'work',
+  pull: 'pull',
+  throw: 'throw',
+  catch: 'catch',
+  drill: 'drill',
+  fall: 'fall',
+  lift: 'carry',
+};
+
+export default function Scene({
+  stateRef,
+  preview = !stateRef,
+  cameraMode = 'auto',
+}: Props) {
+  const host = useRef<HTMLDivElement>(null),
+    options = useRef({ stateRef, preview, cameraMode });
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    const el = host.current;
-    if (!el) return;
+    options.current = { stateRef, preview, cameraMode };
+  }, [stateRef, preview, cameraMode]);
+  useEffect(() => {
+    const element = host.current;
+    if (!element) return;
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: 'high-performance',
+      });
     } catch {
-      // WebGL is an external system; initialization failure must reach the HUD.
+      // External WebGL initialization may fail on unsupported devices.
       // oxlint-disable-next-line react/react-compiler
       setFailed(true);
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.65));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
-    renderer.setClearColor('#9ea48f');
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
-    el.appendChild(renderer.domElement);
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog('#a5ab97', 35, 65);
-    const camera = new THREE.OrthographicCamera(-14, 14, 10, -10, 0.1, 100);
-    camera.position.set(18, 12, 22);
-    camera.lookAt(0, 3, 0);
-    scene.add(new THREE.HemisphereLight('#ffefd4', '#536348', 2.8));
-    const sun = new THREE.DirectionalLight('#ffe3ad', 4);
-    sun.position.set(1, 17, 13);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, {
-      left: -20,
-      right: 20,
-      top: 20,
-      bottom: -20,
+    renderer.setClearColor('#181e25');
+    element.appendChild(renderer.domElement);
+    const world = new THREE.Scene(),
+      kit = new RenderKit(world);
+    world.fog = new THREE.Fog('#21262a', 20, 42);
+    const camera = new THREE.PerspectiveCamera(49, 1, 0.05, 65);
+    camera.position.set(7.5, 7.7, 11.5);
+    world.add(new THREE.HemisphereLight('#e4e9f0', '#6d5037', 1.15));
+    const key = new THREE.DirectionalLight('#ffdfb1', 3.1);
+    key.position.set(-3.5, 8, 5);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.normalBias = 0.025;
+    key.shadow.bias = -0.00012;
+    Object.assign(key.shadow.camera, {
+      left: -9,
+      right: 9,
+      top: 8,
+      bottom: -8,
+      near: 0.1,
+      far: 25,
     });
-    sun.shadow.bias = -0.001;
-    sun.shadow.normalBias = 0.04;
-    scene.add(sun);
-    const materials: THREE.Material[] = [];
-    const geometries: THREE.BufferGeometry[] = [];
-    const textures: THREE.Texture[] = [];
-    function box(
-      w: number,
-      h: number,
-      d: number,
-      color: string,
-      x = 0,
-      y = 0,
-      z = 0,
-      parent: THREE.Object3D = scene,
-    ) {
-      const geo = new THREE.BoxGeometry(w, h, d);
-      geometries.push(geo);
-      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
-      materials.push(mat);
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(x, y, z);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      parent.add(m);
-      return m;
-    }
-    function round(
-      r: number,
-      h: number,
-      color: string,
-      x: number,
-      y: number,
-      z: number,
-      parent: THREE.Object3D = scene,
-    ) {
-      const geo = new THREE.CylinderGeometry(r, r, h, 12);
-      geometries.push(geo);
-      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
-      materials.push(mat);
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(x, y, z);
-      m.castShadow = true;
-      parent.add(m);
-      return m;
-    }
-    function label(
-      text: string,
-      w: number,
-      h: number,
-      x: number,
-      y: number,
-      z: number,
-      color = '#313c2e',
-      bg = '#e4e7c6',
-      parent: THREE.Object3D = scene,
-    ) {
-      const c = document.createElement('canvas');
-      c.width = 512;
-      c.height = 128;
-      const ctx = c.getContext('2d')!;
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, 512, 128);
-      ctx.fillStyle = color;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = 'bold 40px Arial';
-      ctx.fillText(text, 256, 64);
-      const texture = new THREE.CanvasTexture(c);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      textures.push(texture);
-      const mat = new THREE.MeshBasicMaterial({ map: texture });
-      materials.push(mat);
-      const geo = new THREE.PlaneGeometry(w, h);
-      geometries.push(geo);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(x, y, z);
-      parent.add(mesh);
-      return mesh;
-    }
-    box(23, 0.3, 17, room.floor, 0, -0.2, 1);
-    for (let z = -6; z < 10; z += 0.65) {
-      box(23, 0.012, 0.018, '#594a36', 0, -0.04, z);
-      for (let x = -11; x < 11; x += 3.5)
-        box(
-          0.014,
-          0.013,
-          0.64,
-          '#5e4a37',
-          x + (Math.round(z * 2) % 2) * 1.5,
-          -0.03,
-          z,
-        );
-    }
-    box(23, 11, 0.4, room.wall, 0, 5.4, -6);
-    box(0.35, 11, 14, '#939d8c', -11.5, 5.4, 1);
-    box(23, 0.25, 0.3, '#d4d6ba', 0, 0.05, -5.72);
-    const ceiling = box(23, 0.2, 0.6, '#d6d7bf', 0, 10.4, -5.65);
-    ceiling.rotation.z = room.ceilingSlope;
-    for (let i = -11; i < 12; i += 0.5) {
-      box(0.016, 10.3, 0.015, '#929c8a', i, 5.4, -5.79);
-    }
-    // Tiny sofa against the absurdly large screen.
-    const sofa = new THREE.Group();
-    scene.add(sofa);
-    sofa.position.set(4.3, 0, 1.5);
-    box(3.3, 0.65, 1.35, room.sofa, 0, 0.65, 0, sofa);
-    box(3.4, 1.35, 0.4, '#677b60', 0, 1.2, -0.65, sofa);
-    box(0.4, 1.1, 1.5, '#7e906e', -1.7, 0.85, 0, sofa);
-    box(0.4, 1.1, 1.5, '#7e906e', 1.7, 0.85, 0, sofa);
-    for (const x of [-0.8, 0.8]) box(1.48, 0.2, 1.18, '#8e9f78', x, 1, 0, sofa);
-    for (const x of [-1.3, 1.3])
-      for (const z of [-0.5, 0.5])
-        box(0.15, 0.4, 0.15, '#423a2c', x, 0.2, z, sofa);
-    const pillow = box(0.65, 0.65, 0.23, '#cb9e66', 1.05, 1.46, -0.3, sofa);
-    pillow.rotation.z = -0.25;
-    // Rug, coffee table and half-finished Saturday.
-    box(6, 0.025, 4, '#a47754', 3.5, 0.01, 4.3);
-    for (const z of [2.5, 6.1]) box(5.6, 0.02, 0.12, '#d0b27c', 3.5, 0.03, z);
-    box(1.7, 0.12, 1.15, '#bd9e6b', 3.5, 0.85, 4);
-    for (const x of [2.9, 4.1])
-      for (const z of [3.6, 4.4]) box(0.12, 0.8, 0.12, '#423f30', x, 0.42, z);
-    round(0.14, 0.24, '#e4d8b3', 3.7, 1.01, 4);
-    box(0.48, 0.07, 0.65, '#435743', 3.13, 0.96, 3.9);
-    // Radiator and window, a plant, cardboard, slippers.
-    box(2.8, 3.6, 0.2, '#d8dcc8', -8, 6.6, -5.6);
-    box(2.45, 3.25, 0.1, '#91b6b1', -8, 6.6, -5.43);
-    box(0.12, 3.3, 0.15, '#edead5', -8, 6.6, -5.3);
-    box(2.5, 0.13, 0.15, '#edead5', -8, 6.6, -5.3);
-    box(3.2, 0.13, 0.65, '#e0dcc5', -8, 4.85, -5.25);
-    for (let i = 0; i < 10; i++)
-      box(0.18, 1.6, 0.35, '#c4c9b4', -9.2 + i * 0.26, 2.7, -5.45);
-    round(0.45, 0.8, '#b89064', 8.6, 0.4, -2.8);
-    for (let i = 0; i < 7; i++) {
-      const leaf = box(
-        0.2,
-        1.9,
-        0.65,
-        i % 2 ? '#576e3d' : '#697f43',
-        8.6,
-        1.3,
-        -2.8,
+    world.add(key);
+    const fill = new THREE.DirectionalLight('#b8cff1', 1.4);
+    fill.position.set(6, 3, -1);
+    world.add(fill);
+    const warm = new THREE.PointLight('#ffc88a', 15, 8, 2);
+    warm.position.set(-4, 2.8, 0);
+    world.add(warm);
+    const apartment = createApartment(kit);
+    apartment.sofa.position.z = PHYSICAL_LAYOUT.sofaZ;
+    const screen = createScreenModel(kit);
+    const rigs = people.map((p) => createRig(kit, p));
+    const nameplates = rigs.map((rig, i) => {
+      const label = makeLabel(
+        kit,
+        people[i].name,
+        i === 0 ? '#eadca9' : i === 1 ? '#b4ced7' : '#c6d3b1',
+        0.83,
       );
-      leaf.rotation.z = (i - 3) * 0.22;
-      leaf.rotation.y = i * 0.9;
-    }
-    const carton = box(1.9, 0.7, 0.8, '#b49363', -4, 0.37, 3);
-    carton.rotation.y = 0.2;
-    label('135″  ↑  ХРУПКОЕ', 1.55, 0.35, -4, 0.4, 3.43, '#51452e', '#b49363');
-    box(0.6, 0.12, 0.26, '#6c7864', -0.3, 0.12, 5);
-    box(0.6, 0.12, 0.26, '#6c7864', 0.3, 0.12, 5.2);
-    const screen = new THREE.Group();
-    scene.add(screen);
-    screen.scale.y = 0.7; // Cinemascope frame: mounted bottom stays above the floor.
-    screen.position.set(1.4, 6.2, -5.12);
-    const frame = [
-      box(12.3, 0.19, 0.25, '#343b32', 0, 3.5, 0, screen),
-      box(0.19, 7, 0.25, '#343b32', 6.05, 0, 0, screen),
-      box(12.3, 0.19, 0.25, '#343b32', 0, -3.5, 0, screen),
-      box(0.19, 7, 0.25, '#343b32', -6.05, 0, 0, screen),
-    ];
-    const cloth = box(11.9, 6.85, 0.08, '#edeedb', 0, 0, 0.02, screen);
-    const title = label(
-      'ВЕЧЕР ДЛЯ СВОИХ',
-      6,
-      0.9,
-      0,
-      0.15,
-      0.08,
-      '#a4af8c',
-      '#edeedb',
-      screen,
-    );
-    const corners = [
-      [-6, 3.45],
-      [6, 3.45],
-      [6, -3.45],
-      [-6, -3.45],
-    ].map(([x, y]) => box(0.35, 0.35, 0.3, '#d6ee8a', x, y, 0.15, screen));
-    const rods = [
-      box(11.8, 0.04, 0.15, '#d4e990', 0, 3.2, 0.2, screen),
-      box(0.04, 6.4, 0.15, '#d4e990', 5.75, 0, 0.2, screen),
-      box(11.8, 0.04, 0.15, '#d4e990', 0, -3.2, 0.2, screen),
-      box(0.04, 6.4, 0.15, '#d4e990', -5.75, 0, 0.2, screen),
-    ];
-    const clips: THREE.Mesh[][] = [];
-    for (let i = 0; i < 4; i++) {
-      clips[i] = [];
-      for (let j = 0; j < 4; j++) {
-        const k = j - 1.5;
-        clips[i].push(
-          box(
-            0.22,
-            0.22,
-            0.35,
-            '#c7e578',
-            i % 2 === 0 ? k * 2.5 : i === 1 ? 5.95 : -5.95,
-            i % 2 === 1 ? k * 1.4 : i === 0 ? 3.45 : -3.45,
-            0.22,
-            screen,
-          ),
-        );
-      }
-    }
-    const human = (index: number, x: number, z: number) =>
-      createCharacter(people[index], box, round, scene, x, z);
-    const humans = [
-      human(0, -2.9, -2.6),
-      human(1, 6.7, -2.2),
-      human(2, 1, 1.4),
-    ];
-    humans[0].rotation.y = 0.3;
-    humans[1].rotation.y = -0.5;
-    humans[2].rotation.y = -0.6;
-    const chairGroup = new THREE.Group();
-    scene.add(chairGroup);
-    chairGroup.position.set(-2.8, 0, -3.5);
-    function chair(y: number) {
-      const g = new THREE.Group();
-      chairGroup.add(g);
-      box(1.1, 0.17, 1, '#b69a62', 0, 1.8 + y, 0, g);
-      for (const x of [-0.42, 0.42])
-        for (const z of [-0.38, 0.38]) {
-          const leg = box(0.12, 1.8, 0.12, '#837048', x, 0.9 + y, z, g);
-          leg.rotation.z = x * 0.12;
-        }
-      box(1, 0.75, 0.12, '#b69a62', 0, 2.2 + y, -0.47, g);
-      box(1, 0.09, 0.1, '#837048', 0, 0.7 + y, 0.4, g);
-      return g;
-    }
-    chair(0);
-    const secondChair = chair(1.9);
-    secondChair.rotation.y = 0.15;
-    secondChair.visible = false;
-    const drill = box(0.2, 0.2, 0.55, '#ddad42', 0, 0, 0, humans[0]);
-    drill.position.set(0.48, 1.8, -0.28);
-    box(0.07, 0.06, 0.4, '#666d60', 0.48, 1.8, -0.7, humans[0]);
-    const hooks = [
-      box(0.16, 0.16, 0.3, '#d5ee89', -3, 6, -5.4),
-      box(0.16, 0.16, 0.3, '#d5ee89', 5.8, 6, -5.4),
-    ];
-    const ringGeo = new THREE.TorusGeometry(0.16, 0.04, 6, 16);
-    geometries.push(ringGeo);
-    const ringMat = new THREE.MeshStandardMaterial({ color: '#b6c872' });
-    materials.push(ringMat);
-    const rings = [-4.4, 4.4].map((x) => {
-      const m = new THREE.Mesh(ringGeo, ringMat);
-      m.position.set(x, 3, 0.2);
-      screen.add(m);
-      return m;
+      rig.root.add(label);
+      label.position.y = 2.24;
+      return label;
     });
-    let raf = 0;
-    let t = 0;
-    function resize() {
-      const w = el!.clientWidth,
-        h = el!.clientHeight;
-      renderer.setSize(w, h);
-      const aspect = w / h;
-      const size = playing ? 10 : 9.4;
-      camera.left = -size * aspect;
-      camera.right = size * aspect;
-      camera.top = size;
-      camera.bottom = -size;
+    const previewState = freshGame(3);
+    previewState.phase = 'result';
+    previewState.holes = [5.9, 6.04];
+    previewState.clips = [4, 4, 4, 4];
+    previewState.tension = [1, 1, 1, 1];
+    previewState.latched = [true, true];
+    const wallHooks = [0, 1].map((i) => {
+      const group = new THREE.Group();
+      world.add(group);
+      group.position.set(hookX(i), 3.05, -3.22);
+      kit.box(0.068, 0.22, 0.025, '#5b5f5f', 0, -0.025, 0, group, 0.009);
+      const adjustable = new THREE.Group();
+      group.add(adjustable);
+      const stem = kit.rod(
+        new THREE.Vector3(0, -0.04, 0),
+        new THREE.Vector3(0, -0.04, MOUNT_Z + 3.22),
+        0.014,
+        '#b8bbae',
+        adjustable,
+      );
+      kit.rod(
+        new THREE.Vector3(0, -0.04, MOUNT_Z + 3.22),
+        new THREE.Vector3(0, 0.035, MOUNT_Z + 3.22),
+        0.013,
+        '#b8bbae',
+        adjustable,
+      );
+      const screw = kit.cylinder(
+        0.017,
+        0.017,
+        0.26,
+        '#858e8c',
+        0,
+        0,
+        0.04,
+        group,
+      );
+      return { group, adjustable, stem, screw };
+    });
+    const marks = [0, 1].map((i) => {
+      const label = makeLabel(
+        kit,
+        i === 0 ? '① ЛЕВЫЙ КРЮЧОК' : '② ПРАВЫЙ КРЮЧОК',
+        '#dbd8ba',
+        1.1,
+      );
+      world.add(label);
+      return label;
+    });
+    const drill = new THREE.Group();
+    world.add(drill);
+    kit.box(0.22, 0.13, 0.12, '#457b70', 0, 0, 0, drill, 0.03);
+    kit.box(0.08, 0.19, 0.1, '#283c36', -0.04, -0.1, 0, drill, 0.02);
+    const bit = kit.cylinder(0.007, 0.007, 0.2, '#b8b9ae', 0.17, 0, 0, drill);
+    bit.rotation.z = Math.PI / 2;
+    const screwdriver = new THREE.Group();
+    world.add(screwdriver);
+    kit.cylinder(0.027, 0.021, 0.19, '#be803d', 0, 0, 0, screwdriver);
+    kit.cylinder(0.005, 0.005, 0.24, '#b3b9b8', 0, 0.2, 0, screwdriver);
+    const tip = kit.torus(0.025, 0.005, '#bdc2be', 0, 0.332, 0, screwdriver);
+    tip.scale.x = 0.6;
+    const toolHalo = kit.torus(0.16, 0.008, '#dfbd78', 0, 0.028, 0);
+    toolHalo.rotation.x = -Math.PI / 2;
+    const drillDust = Array.from({ length: 16 }, () =>
+      kit.sphere(0.009, 0.009, 0.009, '#cfbda2'),
+    );
+    const popParts = Array.from({ length: 12 }, () =>
+      kit.sphere(0.018, 0.018, 0.018, '#d0c4a2'),
+    );
+    const targetPosition = new THREE.Vector3(),
+      lookAt = new THREE.Vector3(0, 1, -0.2),
+      wantedLook = new THREE.Vector3();
+    const hand = new THREE.Vector3(),
+      temp = new THREE.Vector3(),
+      grip = new THREE.Vector3(),
+      workTarget = new THREE.Vector3(),
+      drillTarget = new THREE.Vector3();
+    let time = 0,
+      last = performance.now(),
+      raf = 0,
+      lastToolStatus = 'held',
+      sceneInitialized = false;
+    const throwStart = new THREE.Vector3();
+    const size = () => {
+      const w = element.clientWidth,
+        h = element.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
-    }
-    const observer = new ResizeObserver(resize);
-    observer.observe(el);
-    resize();
-    function render() {
-      raf = requestAnimationFrame(render);
-      t += 0.015;
-      const s = game?.current;
-      if (s && playing) {
-        const construction = ['frame', 'rods', 'tension'].includes(s.phase);
-        const target = construction
-          ? new THREE.Vector3(1.4, 6, -1)
-          : new THREE.Vector3(1.4, 4.6, -1);
-        const cam = construction
-          ? new THREE.Vector3(1.4, 7.5, 21)
-          : new THREE.Vector3(3, 7.4, 23);
-        camera.position.lerp(cam, 0.05);
-        camera.lookAt(target);
-        screen.position.set(1.4, 6, -4.8);
-        screen.rotation.set(0, 0, 0);
-        screen.visible = s.phase !== 'drill';
-        cloth.visible = s.phase !== 'frame';
-        title.visible = s.phase === 'result';
-        frame.forEach((f, i) => {
-          (f.material as THREE.MeshStandardMaterial).color.set(
-            construction && s.phase === 'frame' && i >= s.corners
-              ? '#899378'
-              : '#343b32',
+    };
+    const resize = new ResizeObserver(size);
+    resize.observe(element);
+    size();
+    function render(now: number) {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      const opt = options.current,
+        s = opt.stateRef?.current ?? previewState;
+      if (!s.paused) time += dt;
+      const isPreview = opt.preview;
+      if (isPreview) previewState.elapsed = time;
+      screen.update(s, sceneInitialized ? (s.paused ? 0 : dt) : 1, isPreview);
+      sceneInitialized = true;
+      const floor =
+        ['frame', 'rods', 'tension'].includes(s.phase) && !isPreview;
+      const drillPhase = s.phase === 'drill' && !isPreview;
+      const count = isPreview ? 3 : Math.max(2, s.players);
+      rigs.forEach((rig, i) => {
+        rig.root.visible = i < count;
+        if (i >= count) return;
+        const worker = s.workers[i];
+        let pose: Pose = poses[worker.animation];
+        let x = worker.x * FLOOR_SCALE,
+          z = worker.z * FLOOR_SCALE + FLOOR_Z,
+          y = 0,
+          rotation = Math.atan2(-x, -z);
+        const floorWork =
+          floor && ['hold', 'feed', 'pull'].includes(worker.animation);
+        if (floor && worker.animation === 'walk' && worker.navigation.length) {
+          const next = worker.navigation[0];
+          rotation = Math.atan2(
+            next.x * FLOOR_SCALE - x,
+            next.z * FLOOR_SCALE + FLOOR_Z - z,
           );
-        });
-        corners.forEach((m, i) => {
-          m.visible = s.phase === 'frame';
-          (m.material as THREE.MeshStandardMaterial).color.set(
-            i < s.corners ? '#dcf484' : i === s.corners ? '#f6c666' : '#75836c',
-          );
-          m.scale.setScalar(i === s.corners ? 1.2 + Math.sin(t * 6) * 0.15 : 1);
-        });
-        rods.forEach((m, i) => {
-          m.visible = s.phase === 'rods' || s.phase === 'tension';
-          m.scale.set(
-            i % 2 === 0 ? Math.max(0.01, s.rods[i]) : 1,
-            i % 2 ? Math.max(0.01, s.rods[i]) : 1,
-            1,
-          );
-        });
-        clips.forEach((arr, i) =>
-          arr.forEach(
-            (m, j) => (m.visible = s.phase === 'tension' && j < s.clips[i]),
-          ),
-        );
-        secondChair.visible = s.chairs === 2;
-        chairGroup.visible = s.phase === 'drill';
-        chairGroup.position.x = s.holes.length === 0 ? -3 : 5.8;
-        chairGroup.rotation.z = -s.balance * 0.14;
-        hooks.forEach((m, i) => {
-          m.visible = ['drill', 'lift', 'level', 'result'].includes(s.phase);
-          m.position.y = s.holes[i] ?? s.aim;
-          (m.material as THREE.MeshStandardMaterial).color.set(
-            s.holes[i] ? '#dcf484' : '#e8a754',
-          );
-        });
-        humans.forEach(
-          (h, i) => (h.visible = i < s.players || (s.players === 1 && i === 1)),
-        );
-        if (s.phase === 'drill') {
-          humans[0].position.set(
-            chairGroup.position.x - s.balance * 0.6,
-            s.cooldown > 0.6 ? 0 : s.chairs === 1 ? 1.9 : 3.8,
-            -3.6,
-          );
-          humans[0].rotation.y = Math.PI;
-          humans[0].rotation.z = -s.balance * 0.14;
-          humans[1].position.set(chairGroup.position.x + 1.2, 0, -2.8);
-        } else if (s.phase === 'lift') {
-          const ringHeight = (s.liftLeft + s.liftRight) / 2;
-          const upright = Math.min(
-            1,
-            Math.max(0.1, (ringHeight - 0.12) / 4.55),
-          );
-          const tilt = Math.acos(upright);
-          screen.rotation.x = tilt;
-          screen.position.set(
-            1.4 + s.liftX,
-            ringHeight - 2.1 * upright,
-            -4.8 + 2.45 * Math.sin(tilt),
-          );
-          screen.rotation.z = Math.atan2(s.liftRight - s.liftLeft, 8.8);
-          humans[0].position.set(
-            -3 + s.liftX,
-            Math.max(0, s.liftLeft - 5),
-            -3.7,
-          );
-          humans[1].position.set(
-            5.8 + s.liftX,
-            Math.max(0, s.liftRight - 5),
-            -3.7,
-          );
-        } else if (s.phase === 'level' || s.phase === 'result') {
-          screen.position.y = (s.holes[0] + s.holes[1]) / 2 - 2.1;
-          screen.rotation.z = s.angle;
-          humans[0].position.set(-3, 0, -2);
-          humans[1].position.set(6.5, 0, -2);
-        } else {
-          humans[0].position.set(
-            s.side === 3 ? -5 : s.side === 1 ? 8 : 0,
-            0,
-            -2,
-          );
-          humans[1].position.set(6.7, 0, -2.2);
         }
-        rings.forEach((m) => (m.visible = s.phase === 'lift'));
-        drill.visible = s.phase === 'drill';
-      } else {
-        corners.forEach((m) => (m.visible = false));
-        rods.forEach((m) => (m.visible = false));
-        clips.flat().forEach((m) => (m.visible = false));
-        rings.forEach((m) => (m.visible = false));
-        hooks.forEach((m) => (m.visible = false));
-        humans[0].position.y = 1.9;
-        humans[0].rotation.y = Math.PI;
-        humans[2].rotation.z = Math.sin(t) * 0.035;
-        chairGroup.rotation.z = Math.sin(t) * 0.01;
+        if (floorWork) {
+          // Feet remain at the navigation system's collision-tested work slots.
+          // Only the working owner reaches the active spring/rod; other hands hold
+          // the cloth at distinct points directly in front of their own bodies.
+          if (worker.animation === 'feed' || worker.animation === 'pull')
+            screen.workWorld(
+              worker.side,
+              worker.animation === 'feed' ? 'rod' : 'spring',
+              s.clips[worker.side],
+              workTarget,
+            );
+          else {
+            const horizontal = worker.side % 2 === 0;
+            workTarget.set(
+              horizontal
+                ? THREE.MathUtils.clamp(x, -2.17, 2.17)
+                : worker.side === 1
+                  ? 2.265
+                  : -2.265,
+              horizontal
+                ? worker.side === 0
+                  ? 1.215
+                  : -1.215
+                : THREE.MathUtils.clamp(-(z - FLOOR_Z), -1.12, 1.12),
+              0.028,
+            );
+            screen.root.updateWorldMatrix(true, false);
+            screen.root.localToWorld(workTarget);
+          }
+          rotation = Math.atan2(workTarget.x - x, workTarget.z - z);
+        }
+        if (isPreview) {
+          x = [-1.1, 0.05, 1.25][i];
+          z = 1.12 + Math.sin(i) * 0.2;
+          rotation = [0.13, -0.1, -0.3][i];
+          pose = 'idle';
+        } else if (!floor && !drillPhase) {
+          // Both carriers stand on the floor and lift with their arms. Ring height never raises a body.
+          if (i < 2) {
+            screen.gripWorld(i, grip);
+            x = grip.x;
+            z = grip.z + 0.34;
+          } else {
+            x = 0;
+            z = -1.8;
+          }
+          rotation = Math.PI;
+          pose = s.phase === 'result' ? 'celebrate' : i < 2 ? 'carry' : 'idle';
+        } else if (drillPhase) {
+          const activeDriller = s.players === 1 ? 0 : 1;
+          x =
+            s.chairX * FLOOR_SCALE +
+            (i === activeDriller ? 0 : i === 0 ? -0.64 : 0.7);
+          z = -2.68 + (i === activeDriller ? 0 : 0.55);
+          rotation = Math.PI;
+          if (i === activeDriller) {
+            y =
+              s.drillMode === 'position'
+                ? 0
+                : s.climb * (s.chairs === 2 ? 1.47 : 0.8);
+            pose =
+              s.drillMode === 'drill'
+                ? 'drill'
+                : s.drillMode === 'climb'
+                  ? 'walk'
+                  : 'idle';
+          } else pose = s.drillMode === 'position' ? 'walk' : 'work';
+          const fall = s.events.findLast((e) => e.kind === 'fall');
+          if (fall && s.elapsed - fall.at < 0.65 && i === activeDriller) {
+            const t = (s.elapsed - fall.at) / 0.65;
+            y = Math.max(0, (1 - t) * 0.8);
+            pose = 'fall';
+            rig.root.rotation.z = Math.sin(t * Math.PI) * 0.5;
+          } else
+            rig.root.rotation.z =
+              s.drillMode === 'drill' ? s.balance * 0.065 : 0;
+        }
+        if (opt.cameraMode === 'faces') rotation = 0;
+        if (floor) rig.root.position.set(x, y, z);
+        else rig.root.position.lerp(temp.set(x, y, z), 1 - Math.exp(-dt * 11));
+        if (
+          !drillPhase ||
+          (s.drillMode === 'position' &&
+            !s.events.some((e) => e.kind === 'fall' && s.elapsed - e.at < 0.65))
+        )
+          rig.root.position.y = 0;
+        const difference =
+          THREE.MathUtils.euclideanModulo(
+            rotation - rig.root.rotation.y + Math.PI,
+            Math.PI * 2,
+          ) - Math.PI;
+        rig.root.rotation.y += difference * (1 - Math.exp(-dt * 10));
+        if (!s.paused)
+          rig.update(
+            time + i * 0.83,
+            pose,
+            s.spring.worker === i ? s.spring.power : s.tool.charge,
+          );
+        if (floorWork && opt.cameraMode !== 'faces') {
+          rig.setCrouch(0.72);
+          rig.reach('right', workTarget);
+          rig.reach(
+            'left',
+            workTarget
+              .clone()
+              .add(
+                new THREE.Vector3(
+                  worker.side % 2 === 0 ? 0.13 : 0,
+                  0,
+                  worker.side % 2 === 1 ? 0.13 : 0,
+                ),
+              ),
+          );
+        } else if (
+          !floor &&
+          !drillPhase &&
+          !isPreview &&
+          i < 2 &&
+          s.phase !== 'result' &&
+          opt.cameraMode !== 'faces'
+        ) {
+          screen.gripWorld(i, grip);
+          rig.setCrouch(THREE.MathUtils.clamp(1.39 - grip.y - 0.43, 0, 0.72));
+          rig.reach('left', grip.clone().add(new THREE.Vector3(0.13, 0, 0)));
+          rig.reach('right', grip.clone().add(new THREE.Vector3(-0.13, 0, 0)));
+        } else if (
+          drillPhase &&
+          i === (s.players === 1 ? 0 : 1) &&
+          s.drillMode === 'drill' &&
+          opt.cameraMode !== 'faces'
+        ) {
+          const mark = new THREE.Vector3(
+            s.chairX * FLOOR_SCALE,
+            hookHeight(s.aim),
+            -3.16,
+          );
+          const reachTarget = mark
+            .clone()
+            .add(
+              new THREE.Vector3(-0.035, s.chairs === 1 ? -0.24 : -0.12, 0.23),
+            );
+          rig.reach('right', reachTarget);
+          rig.reach(
+            'left',
+            reachTarget.clone().add(new THREE.Vector3(0.18, -0.05, 0.05)),
+          );
+        }
+        nameplates[i].visible = !isPreview && opt.cameraMode !== 'faces';
+      });
+      apartment.stools.forEach((stool, i) => {
+        if (drillPhase) {
+          stool.position.set(
+            s.chairX * FLOOR_SCALE,
+            i === 1 && s.chairs === 2 ? 0.67 : 0,
+            i === 1 && s.chairs === 1 ? -0.75 : -2.65,
+          );
+          stool.rotation.set(0, Math.PI, s.balance * 0.065);
+        } else {
+          const parked = PHYSICAL_LAYOUT.parkedStools[i];
+          stool.position.set(parked.x, 0, parked.z);
+          stool.rotation.set(0, -Math.PI / 2, 0);
+        }
+      });
+      wallHooks.forEach(({ group, adjustable, screw }, i) => {
+        group.visible = isPreview || s.holes.length > i;
+        group.position.y = hookHeight(s.holes[i] ?? s.aim);
+        if (
+          isPreview ||
+          ['level', 'result'].includes(s.phase) ||
+          (s.phase === 'lift' && s.latched[i])
+        ) {
+          screen.ringWorld(i, grip);
+          adjustable.position.set(
+            grip.x - group.position.x,
+            grip.y - group.position.y,
+            0,
+          );
+          screw.scale.y = Math.max(1, Math.abs(adjustable.position.y) / 0.13);
+          screw.position.y = adjustable.position.y * 0.5;
+        } else {
+          adjustable.position.set(0, 0, 0);
+          screw.scale.y = 1;
+          screw.position.y = 0;
+        }
+        marks[i].visible = !isPreview && ['drill', 'lift'].includes(s.phase);
+        marks[i].position.set(
+          hookX(i),
+          hookHeight(s.holes[i] ?? s.aim) + 0.22,
+          -3.04,
+        );
+      });
+      drill.visible = drillPhase && s.drillMode !== 'position';
+      if (drill.visible) {
+        const user = rigs[s.players === 1 ? 0 : 1];
+        user.rightHand.getWorldPosition(hand);
+        drill.position.copy(hand);
+        drillTarget.set(s.chairX * FLOOR_SCALE, hookHeight(s.aim), -3.16);
+        const direction = drillTarget.clone().sub(hand);
+        drill.quaternion.setFromUnitVectors(
+          new THREE.Vector3(1, 0, 0),
+          direction.clone().normalize(),
+        );
+        const length = Math.max(0.16, direction.length() - 0.12);
+        bit.scale.y = length / 0.2;
+        bit.position.x = 0.12 + length / 2;
       }
-      renderer.render(scene, camera);
+      const drilling = drill.visible && s.drillHeat > 0 && s.drillHeat < 0.85;
+      drillDust.forEach((dust, i) => {
+        dust.visible = drilling;
+        const t = (time * 1.7 + i / 16) % 1;
+        dust.position.set(
+          s.chairX * FLOOR_SCALE + Math.sin(i * 7) * t * 0.13,
+          hookHeight(s.aim) - t * 0.7,
+          -3.12 + t * 0.13,
+        );
+      });
+      screwdriver.visible = s.phase === 'tension';
+      toolHalo.visible = s.phase === 'tension' && s.tool.status === 'ground';
+      if (screwdriver.visible) {
+        const t = s.tool;
+        if (t.status === 'flight') {
+          if (lastToolStatus !== 'flight')
+            rigs[t.owner].rightHand.getWorldPosition(throwStart);
+          rigs[t.target].rightHand.getWorldPosition(hand);
+          const receiver = s.workers[t.target];
+          hand.x += (t.toX - receiver.x) * FLOOR_SCALE;
+          hand.z += (t.toZ - receiver.z) * FLOOR_SCALE;
+          screwdriver.position.lerpVectors(throwStart, hand, t.flight);
+          screwdriver.position.y += Math.sin(t.flight * Math.PI) * 2;
+          screwdriver.rotation.set(time * 14, 0, time * 3);
+        } else if (t.status === 'ground') {
+          screwdriver.position.set(
+            t.x * FLOOR_SCALE,
+            0.07,
+            t.z * FLOOR_SCALE + FLOOR_Z,
+          );
+          screwdriver.rotation.set(Math.PI / 2, 0, time * 0.1);
+        } else {
+          rigs[t.owner].rightHand.getWorldPosition(hand);
+          screwdriver.position.copy(hand);
+          screwdriver.rotation.set(-Math.PI / 3, 0, 0.2);
+        }
+        lastToolStatus = t.status;
+        toolHalo.position.set(
+          screwdriver.position.x,
+          0.045,
+          screwdriver.position.z,
+        );
+        toolHalo.scale.setScalar(1 + Math.sin(time * 4) * 0.15);
+      }
+      const event = s.events.findLast((e) =>
+        ['snap', 'pop', 'spring', 'latch', 'miss'].includes(e.kind),
+      );
+      popParts.forEach((part, i) => {
+        const age = event ? s.elapsed - event.at : 10;
+        part.visible = age >= 0 && age < 0.65;
+        if (!part.visible || !event) return;
+        const worker = s.workers[event.worker] ?? s.workers[0],
+          a = i * 2.4;
+        part.position.set(
+          worker.x * FLOOR_SCALE + Math.cos(a) * age * 0.8,
+          0.3 + Math.sin((age * Math.PI) / 0.65) * 0.4,
+          worker.z * FLOOR_SCALE + FLOOR_Z + Math.sin(a) * age * 0.8,
+        );
+      });
+      if (opt.cameraMode === 'faces') {
+        const index = isPreview
+          ? 1
+          : s.phase === 'tension'
+            ? s.tool.owner
+            : s.phase === 'drill' && s.players > 1
+              ? 1
+              : 0;
+        const rig = rigs[index];
+        rig.head.getWorldPosition(wantedLook);
+        targetPosition.set(
+          THREE.MathUtils.clamp(rig.root.position.x + 0.18, -5.7, 5.7),
+          wantedLook.y + 0.09,
+          Math.max(-2.15, rig.root.position.z + 2.1),
+        );
+      } else if (opt.cameraMode === 'wide') {
+        targetPosition.set(8.9, 8.4, 12.4);
+        wantedLook.set(0, 0.7, -0.1);
+      } else if (isPreview) {
+        targetPosition.set(6.9, 4.15, 9.3);
+        wantedLook.set(-0.2, 1.3, -0.9);
+      } else if (floor) {
+        targetPosition.set(4.45, 5.25, 6.25);
+        wantedLook.set(0, 0.55, -0.25);
+      } else if (drillPhase) {
+        targetPosition.set(s.chairX * FLOOR_SCALE * 0.25 + 3.5, 4.1, 6.3);
+        wantedLook.set(s.chairX * FLOOR_SCALE * 0.5, 1.65, -2.35);
+      } else {
+        targetPosition.set(3.4, 3.35, 6.6);
+        wantedLook.set(0, 1.5, -2.4);
+      }
+      // AUTO stays close, then expands only enough to retain every participant,
+      // the whole working frame, and a pending screwdriver arc inside the frustum.
+      if (floor && opt.cameraMode === 'auto') {
+        const forward = targetPosition.clone().sub(wantedLook).normalize();
+        const right = new THREE.Vector3()
+          .crossVectors(new THREE.Vector3(0, 1, 0), forward)
+          .normalize();
+        const up = new THREE.Vector3().crossVectors(forward, right).normalize();
+        const tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)),
+          tanX = tanY * camera.aspect;
+        const bounds = [
+          new THREE.Vector3(-2.55, 0.1, FLOOR_Z - 1.5),
+          new THREE.Vector3(2.55, 0.1, FLOOR_Z - 1.5),
+          new THREE.Vector3(-2.55, 0.1, FLOOR_Z + 1.5),
+          new THREE.Vector3(2.55, 0.1, FLOOR_Z + 1.5),
+        ];
+        rigs.slice(0, count).forEach((rig) => {
+          bounds.push(
+            rig.root.position.clone(),
+            rig.root.position.clone().add(new THREE.Vector3(0, 2.18, 0)),
+          );
+        });
+        if (
+          s.phase === 'tension' &&
+          (s.tool.status === 'flight' || s.tool.status === 'charging')
+        )
+          bounds.push(new THREE.Vector3(0, 3.5, FLOOR_Z));
+        let distance = targetPosition.distanceTo(wantedLook);
+        for (const point of bounds) {
+          point.sub(wantedLook);
+          distance = Math.max(
+            distance,
+            point.dot(forward) +
+              (Math.abs(point.dot(right)) / Math.max(0.2, tanX)) * 1.12,
+            point.dot(forward) + (Math.abs(point.dot(up)) / tanY) * 1.12,
+          );
+        }
+        targetPosition.copy(wantedLook).addScaledVector(forward, distance);
+      }
+      // Narrow viewports pull back, keeping the whole working area visible.
+      if (
+        camera.aspect < 1.3 &&
+        opt.cameraMode !== 'faces' &&
+        !(floor && opt.cameraMode === 'auto')
+      )
+        targetPosition
+          .sub(wantedLook)
+          .multiplyScalar(1.3 / Math.max(0.75, camera.aspect))
+          .add(wantedLook);
+      camera.position.lerp(targetPosition, 1 - Math.exp(-dt * 3));
+      lookAt.lerp(wantedLook, 1 - Math.exp(-dt * 3));
+      camera.lookAt(lookAt);
+      renderer.render(world, camera);
+      raf = requestAnimationFrame(render);
     }
-    render();
+    raf = requestAnimationFrame(render);
     return () => {
       cancelAnimationFrame(raf);
-      observer.disconnect();
-      geometries.forEach((g) => g.dispose());
-      materials.forEach((m) => m.dispose());
-      textures.forEach((tx) => tx.dispose());
+      resize.disconnect();
+      kit.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [game, playing]);
+  }, []);
   return (
     <div
-      className="scene-canvas"
+      className="three-host"
       ref={host}
       role="img"
-      aria-label="Трёхмерная квартира с огромным экраном, маленьким диваном и бригадой друзей"
+      aria-label="Трёхмерная кухня-гостиная по вашим фотографиям. Бригада собирает огромный экран."
     >
       {failed && (
-        <p className="render-error">
-          Не удалось включить 3D. Включите аппаратное ускорение браузера и
-          обновите страницу.
-        </p>
+        <div className="webgl-error">
+          Не удалось включить 3D. Проверьте, включено ли аппаратное ускорение в
+          браузере.
+        </div>
       )}
     </div>
   );

@@ -70,7 +70,7 @@ export const stories = [
   {
     id: 'clean',
     title: 'Операция «Чистый проход»',
-    subtitle: 'Байки из другой роты · 2D',
+    subtitle: 'Байки из другой роты · 2.5D',
     available: true,
   },
   {
