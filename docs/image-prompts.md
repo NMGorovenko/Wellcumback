@@ -1,0 +1,23 @@
+# Генерация персонажей · версия 1
+
+Инструмент: встроенный imagegen. Референсы сохраняются в `references/characters/`. Готовые файлы скопированы в `public/characters/`. Это растровые портреты, не 3D-модели.
+
+## Рома — `public/characters/roma-v1.png`
+
+```text
+Use case: stylized-concept. Asset type: square co-op game character selection portrait, single image. Create a stylish warm low-poly/clay 3D caricature portrait of Roma, the same young adult man in the reference photos. Input image 1 and 2 are face identity references only; image 3 is outfit reference and additional face reference. Preserve recognizable visible facial features: light skin, broad slightly rounded jaw and face, straight nose, light eyebrows, gray-blue eyes, very short buzz cut. Chest-up centered bust, friendly mildly amused subtle closed-mouth smile, looking at viewer. Wear dark navy-black ushanka with ear flaps up and blue-gray digital camouflage winter jacket as in outfit reference. No readable insignia or text. Plain medium olive green studio background (#74794c family), soft warm key light from upper left, subtle rim light. Rounded sculpted matte clay forms mixed with gentle low-poly faceting, restrained stylized proportions and slightly enlarged head, premium cozy indie co-op game aesthetic, clear silhouette readable as a small thumbnail. Square 1:1 composition, entire hat and shoulders visible with comfortable margin, bust fills frame, no hands or props. No photo textures, no photorealism, no environment, no interface, no labels, no watermark.
+```
+
+## Ярослав — `public/characters/yaroslav-v1.png`
+
+```text
+Use case: stylized-concept. Asset type: square co-op game character selection portrait, single image. Create a stylish warm low-poly/clay 3D caricature portrait of Yaroslav, the same young adult man in the reference photo. Input image is face and hairstyle identity reference. Preserve recognizable visible appearance: dark brown skin, short tight black curls with fade sides, dark eyes, broad gently rounded nose, full lips and visible face proportions. Chest-up centered bust wearing plain charcoal crew-neck T-shirt, relaxed friendly expression with subtle closed-mouth smile, looking at viewer. Plain medium olive green studio background (#74794c family), soft warm key light from upper left, subtle rim light. Rounded sculpted matte clay forms mixed with gentle low-poly faceting, restrained stylized proportions and slightly enlarged head, premium cozy indie co-op game aesthetic, clear silhouette readable as a small thumbnail. Square 1:1 composition, entire head and shoulders visible with comfortable margin, bust fills frame, no hands or props. No photo textures, no photorealism, no environment, no interface, no labels, no watermark.
+```
+
+## Никита — запрос отклонён до генерации
+
+Вторая входная фотография определена инструментом как MPO: `HTTP 400 Unsupported image format: mpo`. Повторных генераций в этой версии не было. В игре временно используется поддерживаемое исходное фото. Для следующего запроса исключить `portrait-jacket.jpg` из референсов либо подготовить совместимую производную, сохранив исходник.
+
+```text
+Use case: stylized-concept. Asset type: square co-op game character selection portrait, single image. Create a stylish warm low-poly/clay 3D caricature portrait of Nikita, the same young adult man in the three reference photos. Input image 1 is face, hairstyle, and dark brown turtleneck reference; image 2 is additional face, hair, and beard reference; image 3 is brown shearling jacket outfit reference and friendly expression reference. Preserve recognizable visible facial features: light skin, medium-length dark brown hair loosely parted and swept back with a few natural loose strands, full dark beard and moustache, thick eyebrows, dark eyes, and the reference face proportions. Chest-up centered bust with a slight friendly closed-mouth smile, looking at viewer. Wear rich dark brown shearling jacket with beige fleece collar over a dark brown top. Plain medium olive green studio background (#74794c family), soft warm key light from upper left, subtle golden rim light. Rounded sculpted matte clay forms mixed with visible gentle low-poly faceting, restrained stylized proportions and slightly enlarged head, premium cozy indie co-op game aesthetic, clear silhouette readable as a small thumbnail. Match a character portrait set made with faceted clay faces, olive backgrounds, warm upper-left lighting and chest-up centered framing. Square 1:1 composition, entire head and shoulders visible with comfortable margin, bust fills frame, no hands or props. No photo textures, no photorealism, no environment, no interface, no labels, no logos, no watermark.
+```
