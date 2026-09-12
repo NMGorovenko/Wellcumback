@@ -12,7 +12,7 @@ const step = (s, seconds, keys = []) => {
   for (let n = 0; n < Math.round(seconds * 60); n++)
     tick(s, 1 / 60, new Set(keys));
 };
-test('fixed-step simulation produces same state with 30 Hz or 60 Hz rendering', () => {
+void test('fixed-step simulation produces same state with 30 Hz or 60 Hz rendering', () => {
   const a = freshGame(),
     b = freshGame();
   for (let n = 0; n < 600; n++) tick(a, 1 / 60, new Set(['KeyA']));
@@ -21,7 +21,7 @@ test('fixed-step simulation produces same state with 30 Hz or 60 Hz rendering', 
   assert.equal(a.frameFit, b.frameFit);
   assert.equal(a.frameTwist, b.frameTwist);
 });
-test('pause cancels a charged throw and freezes the entire simulation', () => {
+void test('pause cancels a charged throw and freezes the entire simulation', () => {
   const s = freshGame();
   s.phase = 'tension';
   step(s, 0.3, ['KeyQ']);
@@ -36,7 +36,7 @@ test('pause cancels a charged throw and freezes the entire simulation', () => {
   assert.equal(s.tool.status, 'held');
   assert.equal(s.tool.flight, 0);
 });
-test('shared keyboard E plus explicit act generates one action edge', () => {
+void test('shared keyboard E plus explicit act generates one action edge', () => {
   const s = freshGame();
   s.frameFit = 0;
   s.frameTwist = 0;
@@ -47,7 +47,7 @@ test('shared keyboard E plus explicit act generates one action edge', () => {
   step(s, 1, ['KeyE']);
   assert.equal(s.corners, 0);
 });
-test('bad throw lands on recoverable perimeter side; action retrieves unique tool', () => {
+void test('bad throw lands on recoverable perimeter side; action retrieves unique tool', () => {
   const s = freshGame(2);
   s.phase = 'tension';
   step(s, 4);
@@ -60,7 +60,7 @@ test('bad throw lands on recoverable perimeter side; action retrieves unique too
   assert.equal(s.tool.status, 'held');
   assert.equal(s.tool.owner, 1);
 });
-test('accurate throw still requires receiver action, it cannot catch remotely', () => {
+void test('accurate throw still requires receiver action, it cannot catch remotely', () => {
   const s = freshGame(2);
   s.phase = 'tension';
   step(s, 4);
@@ -70,7 +70,7 @@ test('accurate throw still requires receiver action, it cannot catch remotely', 
   assert.equal(s.tool.status, 'ground');
   assert.equal(s.tool.catches, 0);
 });
-test('walking changes world positions continuously and stays outside floor frame', () => {
+void test('walking changes world positions continuously and stays outside floor frame', () => {
   const s = freshGame();
   s.phase = 'rods';
   moveToSide(s, 0, 0);
@@ -84,7 +84,7 @@ test('walking changes world positions continuously and stays outside floor frame
   assert.equal(s.workers[0].side, 0);
   assert.ok(Math.abs(s.workers[0].z + 3.58) < 0.08);
 });
-test('jam does not clear while pushing; releasing recovers without resetting other sleeves', () => {
+void test('jam does not clear while pushing; releasing recovers without resetting other sleeves', () => {
   const s = freshGame();
   s.phase = 'rods';
   s.rodAlignment[2] = -1;
@@ -96,7 +96,7 @@ test('jam does not clear while pushing; releasing recovers without resetting oth
   assert.equal(s.rodJam[2], 0);
   assert.equal(s.rods[1], 1);
 });
-test('extra hook by same worker requires passing the unique screwdriver', () => {
+void test('extra hook by same worker requires passing the unique screwdriver', () => {
   const s = freshGame(2);
   s.phase = 'tension';
   step(s, 4);
@@ -110,7 +110,7 @@ test('extra hook by same worker requires passing the unique screwdriver', () => 
   assert.equal(s.clips[2], 1);
   assert.equal(s.score, score);
 });
-test('two chair loss of balance preserves finished hole and resets current work', () => {
+void test('two chair loss of balance preserves finished hole and resets current work', () => {
   const s = freshGame(2);
   s.phase = 'drill';
   s.drillMode = 'drill';
@@ -124,7 +124,7 @@ test('two chair loss of balance preserves finished hole and resets current work'
   assert.equal(s.drillMode, 'position');
   assert.ok(s.cooldown > 0);
 });
-test('overheating cannot finish a hole by holding action forever', () => {
+void test('overheating cannot finish a hole by holding action forever', () => {
   const s = freshGame();
   s.phase = 'drill';
   s.drillMode = 'drill';
@@ -134,7 +134,7 @@ test('overheating cannot finish a hole by holding action forever', () => {
   assert.ok(s.drill < 0.8);
 });
 
-test('chair height is selectable with the same vertical controls as a controller stick', () => {
+void test('chair height is selectable with the same vertical controls as a controller stick', () => {
   const s = freshGame(1);
   s.phase = 'drill';
   s.cooldown = 0;

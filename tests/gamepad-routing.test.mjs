@@ -26,14 +26,14 @@ const pad = (buttons = [], axes = [0, 0]) => ({
     value: buttons.includes(i) ? 1 : 0,
   })),
 });
-test('available input slots follow playable humans and never recruit a solo AI helper', () => {
+void test('available input slots follow playable humans and never recruit a solo AI helper', () => {
   assert.equal(inputPlayerCount({ players: 3 }), 3);
   assert.equal(inputPlayerCount({ players: 3, actorCount: 1 }), 1);
   assert.equal(inputPlayerCount({ players: 1, actorCount: 2 }), 1);
   assert.equal(inputPlayerCount({ players: 2, actorCount: 2 }), 2);
 });
 for (const players of [2, 3])
-  test(`one controller completes the anonymous-soldier chapters with ${players} selected players, then changes to partner`, () => {
+  void test(`one controller completes the anonymous-soldier chapters with ${players} selected players, then changes to partner`, () => {
     const s = freshClean(players),
       memory = createPadInput();
     const update = (buttons = [], axes = [0, 0], dt = 0.025) => {
@@ -126,7 +126,7 @@ for (const players of [2, 3])
     assert.equal(s.players, players);
   });
 
-test('any teammate can resume with B or confirm A and navigate a shared pause menu', () => {
+void test('any teammate can resume with B or confirm A and navigate a shared pause menu', () => {
   const s = createPadInput(),
     navigation = createPadNavigation();
   const devices = (active = -1, buttons = [], axes = [0, 0]) =>

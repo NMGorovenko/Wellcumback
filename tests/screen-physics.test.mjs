@@ -40,14 +40,14 @@ function assertSettled(s) {
     );
   });
 }
-test('three workers converge on separate left-side work slots without overlap or furniture clipping', () => {
+void test('three workers converge on separate left-side work slots without overlap or furniture clipping', () => {
   const s = freshGame(3);
   s.phase = 'rods';
   for (let p = 0; p < 3; p++) moveToSide(s, p, 3);
   step(s, 35);
   assertSettled(s);
 });
-test('opposing workers exchange sides without deadlock or teleportation', () => {
+void test('opposing workers exchange sides without deadlock or teleportation', () => {
   const s = freshGame(2);
   s.phase = 'rods';
   moveToSide(s, 0, 0);
@@ -55,7 +55,7 @@ test('opposing workers exchange sides without deadlock or teleportation', () => 
   step(s, 30);
   assertSettled(s);
 });
-test('three workers can repeatedly change direction and all share each work edge', () => {
+void test('three workers can repeatedly change direction and all share each work edge', () => {
   const s = freshGame(3);
   s.phase = 'rods';
   for (const goals of [
@@ -71,7 +71,7 @@ test('three workers can repeatedly change direction and all share each work edge
     assertSettled(s);
   }
 });
-test('empty navigation grid does not allow passage through loose fabric', () => {
+void test('empty navigation grid does not allow passage through loose fabric', () => {
   const s = freshGame(1);
   s.phase = 'rods';
   moveToSide(s, 0, 0);

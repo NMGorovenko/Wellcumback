@@ -53,7 +53,7 @@ function visibleBounds(model) {
   return box;
 }
 
-test('drill keeps the assembled screen flat and leaves actual camera rays to both chair positions clear', () => {
+void test('drill keeps the assembled screen flat and leaves actual camera rays to both chair positions clear', () => {
   const { kit, model, state } = fixture();
   settle(model, state);
   const box = visibleBounds(model);
@@ -88,7 +88,7 @@ test('drill keeps the assembled screen flat and leaves actual camera rays to bot
   kit.dispose();
 });
 
-test('drill to lift rotates smoothly without driving any visible frame corner through the floor', () => {
+void test('drill to lift rotates smoothly without driving any visible frame corner through the floor', () => {
   const { kit, model, state } = fixture();
   settle(model, state);
   const before = model.root.quaternion.clone();
@@ -109,7 +109,7 @@ test('drill to lift rotates smoothly without driving any visible frame corner th
   kit.dispose();
 });
 
-test('after the floor transition both actual ring meshes still converge exactly to unequal hook positions', () => {
+void test('after the floor transition both actual ring meshes still converge exactly to unequal hook positions', () => {
   const { kit, model, state } = fixture();
   settle(model, state);
   state.phase = 'lift';
@@ -127,7 +127,7 @@ test('after the floor transition both actual ring meshes still converge exactly 
   kit.dispose();
 });
 
-test('preview remains upright independently of the drill floor pose', () => {
+void test('preview remains upright independently of the drill floor pose', () => {
   const { kit, model, state } = fixture();
   settle(model, state, true);
   assert.ok(visibleBounds(model).max.y > 3);

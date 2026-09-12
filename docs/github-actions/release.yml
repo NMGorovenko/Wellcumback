@@ -1,0 +1,58 @@
+name: Release game
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build:portable
+      - name: Validate and package the tagged version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/package-release.py --tag "$RELEASE_TAG"
+      - name: Publish downloadable game
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="outputs/release/$RELEASE_TAG"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [[ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" != "true" ]]; then
+              echo "Release is already published; keeping its assets unchanged."
+              exit 0
+            fi
+          else
+            notes="docs/releases/$RELEASE_TAG.md"
+            if [[ -f "$notes" ]]; then
+              gh release create "$RELEASE_TAG" --draft --verify-tag --title "Ну, с возвращением! $RELEASE_TAG" --notes-file "$notes"
+            else
+              gh release create "$RELEASE_TAG" --draft --verify-tag --title "Ну, с возвращением! $RELEASE_TAG" --generate-notes
+            fi
+          fi
+          gh release upload "$RELEASE_TAG" "$release_dir"/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest

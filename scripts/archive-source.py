@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make a portable source archive, including the intentionally untracked originals."""
+"""Make a portable source archive, including original reference photographs."""
 import argparse
 import hashlib
 import json

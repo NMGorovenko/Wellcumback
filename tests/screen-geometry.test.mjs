@@ -72,7 +72,7 @@ function matrix(t) {
     new THREE.Vector3(t.scaleX, 1, 1),
   );
 }
-test('lift anchors match target hook X Y Z, including extreme uneven holes', () => {
+void test('lift anchors match target hook X Y Z, including extreme uneven holes', () => {
   for (const [l, r] of [
     [2.6, 2.6],
     [5.9, 5.9],
@@ -93,7 +93,7 @@ test('lift anchors match target hook X Y Z, including extreme uneven holes', () 
     }
   }
 });
-test('upright initial screen stays above floor and supported range fits ceiling', () => {
+void test('upright initial screen stays above floor and supported range fits ceiling', () => {
   const t = mountTransform(2.6, 2.6);
   assert.ok(t.y - 1.35 >= 0.08);
   const top = mountTransform(7.5, 7.5);
@@ -108,7 +108,7 @@ test('upright initial screen stays above floor and supported range fits ceiling'
       assert.ok(new THREE.Vector3(x, -1.35, 0).applyMatrix4(m).y >= 0);
   }
 });
-test('two-bone hands reach real lower edge with grounded feet', () => {
+void test('two-bone hands reach real lower edge with grounded feet', () => {
   for (const height of [2.6, 5.9, 7]) {
     const kit = new Kit(),
       rig = createRig(kit, person);
@@ -128,7 +128,7 @@ test('two-bone hands reach real lower edge with grounded feet', () => {
     assert.equal(rig.root.position.y, 0);
   }
 });
-test('floor crouch hand reaches cloth without raising character origin', () => {
+void test('floor crouch hand reaches cloth without raising character origin', () => {
   const kit = new Kit(),
     rig = createRig(kit, person);
   rig.root.position.set(0, 0, 0.34);
@@ -138,7 +138,7 @@ test('floor crouch hand reaches cloth without raising character origin', () => {
   assert.ok(rig.reach('right', new THREE.Vector3(-0.13, 0.15, 0)) < 1e-8);
   assert.equal(rig.root.position.y, 0);
 });
-test('anonymous recruit never loads a photograph, existing calls still use photo', () => {
+void test('anonymous recruit never loads a photograph, existing calls still use photo', () => {
   const kit = new Kit();
   let photos = 0;
   kit.texture = () => {

@@ -21,11 +21,11 @@ const person = {
 };
 const kit = () => new RenderKit(new THREE.Scene());
 
-test('map coordinates have exact common engine anchors', () => {
+void test('map coordinates have exact common engine anchors', () => {
   assert.deepEqual(floorWorld(600, 400).toArray(), [0, 0, 0]);
   assert.deepEqual(floorWorld(60, 750).toArray(), [-540 / 70, 0, 5]);
 });
-test('washer opens towards the playable approach; trousers live inside visible drum', () => {
+void test('washer opens towards the playable approach; trousers live inside visible drum', () => {
   const k = kit(),
     w = createWasher(k, floorWorld(1040, 655));
   w.root.rotation.y = 0;
@@ -57,7 +57,7 @@ test('washer opens towards the playable approach; trousers live inside visible d
   assert.ok(Math.abs(w.hinge.rotation.y) > 1.5);
   k.dispose();
 });
-test('laundry interaction hands reach door from grounded stance', () => {
+void test('laundry interaction hands reach door from grounded stance', () => {
   const k = kit(),
     w = createWasher(k, floorWorld(1040, 655));
   w.root.rotation.y = 0;
@@ -76,7 +76,7 @@ test('laundry interaction hands reach door from grounded stance', () => {
   assert.equal(r.root.position.y, 0);
   k.dispose();
 });
-test('canonical stains, footprints and cleanup progress use one bounded instance pool', () => {
+void test('canonical stains, footprints and cleanup progress use one bounded instance pool', () => {
   const k = kit(),
     field = createTraceField(k, 4);
   const geometryCount = k.geometries.size,
@@ -111,7 +111,7 @@ test('canonical stains, footprints and cleanup progress use one bounded instance
   );
   k.dispose();
 });
-test('visible trouser leak and shower water stop without new meshes', () => {
+void test('visible trouser leak and shower water stop without new meshes', () => {
   const k = kit(),
     parent = new THREE.Group();
   k.scene.add(parent);
@@ -137,7 +137,7 @@ test('visible trouser leak and shower water stop without new meshes', () => {
   k.dispose();
 });
 
-test('entire room builds with batched scenery and independent interactive props', async () => {
+void test('entire room builds with batched scenery and independent interactive props', async () => {
   const previousDocument = globalThis.document;
   Object.defineProperty(globalThis, 'document', {
     configurable: true,

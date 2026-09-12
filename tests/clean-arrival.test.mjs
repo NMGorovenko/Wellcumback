@@ -52,7 +52,7 @@ function finishWithoutHumanInput(s, dt) {
   );
 }
 
-test('solo helper reaches the final 2.9 units of the exact browser-reported route', () => {
+void test('solo helper reaches the final 2.9 units of the exact browser-reported route', () => {
   for (const dt of [0.025, 1 / 60, 0.01]) {
     const s = cleanupWithFootprint(
       { x: 882.9126469713698, y: 500.0000245531383 },
@@ -64,7 +64,7 @@ test('solo helper reaches the final 2.9 units of the exact browser-reported rout
   }
 });
 
-test('sub-three-unit final legs reach cleanup radius around fractional traces in every direction', () => {
+void test('sub-three-unit final legs reach cleanup radius around fractional traces in every direction', () => {
   for (let i = 0; i < 24; i++) {
     const angle = (i * Math.PI) / 12,
       dx = Math.cos(angle),

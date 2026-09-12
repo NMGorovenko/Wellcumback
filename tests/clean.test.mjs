@@ -107,7 +107,7 @@ function throughLaundry(players = 1, rhythm = true) {
   return s;
 }
 
-test('Q/E restraint accepts timed alternating presses, rejects mashing and does not repeat held keys', () => {
+void test('Q/E restraint accepts timed alternating presses, rejects mashing and does not repeat held keys', () => {
   const s = freshClean();
   cleanAction(s);
   run(s, 4.1);
@@ -124,7 +124,7 @@ test('Q/E restraint accepts timed alternating presses, rejects mashing and does 
   assert.ok(s.rhythm.misses <= misses + 1, 'holding is not a repeat tap');
 });
 
-test('perfect restraint cannot defeat the rising baseline indefinitely; duty NPC intercepts timeout', () => {
+void test('perfect restraint cannot defeat the rising baseline indefinitely; duty NPC intercepts timeout', () => {
   const s = freshClean();
   cleanAction(s);
   for (let t = 0; t < 90 && ['duty', 'find'].includes(s.phase); t += 0.025)
@@ -139,7 +139,7 @@ test('perfect restraint cannot defeat the rising baseline indefinitely; duty NPC
   assert.equal(s.npcs[0].line, 'Иди, блять, сри в туалете');
 });
 
-test('asking at the desk triggers the actual accident; traces follow movement and shower stops new footprints', () => {
+void test('asking at the desk triggers the actual accident; traces follow movement and shower stops new footprints', () => {
   const s = throughLaundry();
   assert.equal(s.simulation.incidentAtDesk, true);
   assert.ok(getDrops(s).some((p) => p.kind === 'spill'));
@@ -158,7 +158,7 @@ test('asking at the desk triggers the actual accident; traces follow movement an
   assert.equal(getFootprints(s).length, footprints);
 });
 
-test('successful rhythm leaves less contamination for the identical route', () => {
+void test('successful rhythm leaves less contamination for the identical route', () => {
   const careful = throughLaundry(1, true),
     careless = throughLaundry(1, false);
   assert.ok(careful.rhythm.hits > careless.rhythm.hits);
@@ -173,7 +173,7 @@ test('successful rhythm leaves less contamination for the identical route', () =
   );
 });
 
-test('witnesses physically approach the spinning washer, react, collect suits and hand over to crew', () => {
+void test('witnesses physically approach the spinning washer, react, collect suits and hand over to crew', () => {
   const s = throughLaundry(3);
   const start = s.npcs.slice(1).map((p) => ({ x: p.x, y: p.y }));
   run(s, 1);
@@ -197,7 +197,7 @@ test('witnesses physically approach the spinning washer, react, collect suits an
 });
 
 for (const players of [1, 2, 3])
-  test(`complete v3 with ${players} players using real movement/actions, all traces, machine and rinsing`, () => {
+  void test(`complete v3 with ${players} players using real movement/actions, all traces, machine and rinsing`, () => {
     const s = throughLaundry(players);
     run(s, 35);
     assert.equal(s.phase, 'clean');
@@ -248,7 +248,7 @@ for (const players of [1, 2, 3])
     assert.equal(s.score, score);
   });
 
-test('pause freezes pressure, NPC paths, trails, water and interaction holds', () => {
+void test('pause freezes pressure, NPC paths, trails, water and interaction holds', () => {
   const s = throughLaundry();
   s.paused = true;
   const before = JSON.stringify(s);
@@ -257,7 +257,7 @@ test('pause freezes pressure, NPC paths, trails, water and interaction holds', (
   assert.equal(JSON.stringify(s), before);
 });
 
-test('all public station goals are reachable from the duty post without entering any obstacle', () => {
+void test('all public station goals are reachable from the duty post without entering any obstacle', () => {
   for (const target of stations) {
     const route = planRoute(stations[7], target, 52);
     assert.ok(route.length || target === stations[7], target.id);
@@ -265,7 +265,7 @@ test('all public station goals are reachable from the duty post without entering
   }
 });
 
-test('holding a station action keeps the actor anchored during toilet/shower/load animation', () => {
+void test('holding a station action keeps the actor anchored during toilet/shower/load animation', () => {
   const s = freshClean();
   cleanAction(s);
   run(s, 4.1);
@@ -282,7 +282,7 @@ test('holding a station action keeps the actor anchored during toilet/shower/loa
   assert.ok(s.x[0] > start.x, 'releasing action restores walking');
 });
 
-test('after the accident Q temporarily stops the stream, reduces real traces, then exhausts', () => {
+void test('after the accident Q temporarily stops the stream, reduces real traces, then exhausts', () => {
   const base = freshClean();
   cleanAction(base);
   run(base, 4.1);
@@ -310,7 +310,7 @@ test('after the accident Q temporarily stops the stream, reduces real traces, th
   );
 });
 
-test('three colliding cleaners separate without entering walls or furniture', () => {
+void test('three colliding cleaners separate without entering walls or furniture', () => {
   const s = freshClean(3);
   s.phase = 'clean';
   s.actorCount = 3;
@@ -324,7 +324,7 @@ test('three colliding cleaners separate without entering walls or furniture', ()
   }
 });
 
-test('cleaners walking head-on through the toilet doorway yield sideways and can pass', () => {
+void test('cleaners walking head-on through the toilet doorway yield sideways and can pass', () => {
   const s = freshClean(2);
   s.phase = 'clean';
   s.actorCount = 2;
