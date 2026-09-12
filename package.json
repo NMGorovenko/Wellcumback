@@ -12,7 +12,8 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:portable": "node scripts/build-portable.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
