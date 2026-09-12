@@ -30,6 +30,7 @@ import {
   roomActive,
   roomFresh,
   roomHost,
+  roomInputDeadlineMs,
   roomSnapshot,
   roomWorld,
   takeRoomFrame,
@@ -38,6 +39,12 @@ import type { RoomCommand, RoomFrame, RoomWorld } from './room-types.ts';
 
 const held = new Map<number, RoomFrame>();
 const inputAt = new Map<number, number>();
+const disarmedSlots = new Set<number>();
+function suspendRemoteInput() {
+  held.clear();
+  for (const member of roomSnapshot().roster)
+    if (member.slot) disarmedSlots.add(member.slot);
+}
 const HOST_STEP = 1 / 60;
 let lastWorldKey = '';
 let hostAccumulator = 0;
@@ -112,7 +119,7 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
     (command.kind === 'pause' || (command.kind === 'resume' && isOwner))
   ) {
     world.state.paused = command.kind === 'pause';
-    held.clear();
+    suspendRemoteInput();
     inputArmed = false;
     publishRoomWorld({ ...world });
     return;
@@ -154,9 +161,10 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
     includeJoinedPlayers(s);
     if (command.kind === 'pause') {
       setPaused(s, true);
-      held.clear();
+      suspendRemoteInput();
       inputArmed = false;
     } else if (command.kind === 'resume' && isOwner && roomFresh()) {
+      suspendRemoteInput();
       setPaused(s, false);
       inputArmed = false;
     } else if (command.kind === 'begin' && isOwner && roomFresh()) {
@@ -200,14 +208,27 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
 function collect(world: RoomWorld) {
   for (const p of roomSnapshot().roster) {
     if (!p.slot) continue;
-    const frame = takeRoomFrame(p.slot, world.epoch);
-    if (frame) {
-      held.set(p.slot, frame);
-      inputAt.set(p.slot, performance.now());
-      if (frame.command) roomCommand(frame.command, p.slot);
-    }
-    if (!p.connected || performance.now() - (inputAt.get(p.slot) ?? 0) > 650)
+    if (
+      !p.connected ||
+      (held.has(p.slot) &&
+        performance.now() - (inputAt.get(p.slot) ?? 0) > roomInputDeadlineMs())
+    ) {
       held.delete(p.slot);
+      // A fast host can see a healthy guest's next frame after its own input
+      // deadline. Neutralize the gap, but reserve the release latch for an
+      // actual disconnect or explicit pause.
+      if (!p.connected) disarmedSlots.add(p.slot);
+    }
+    const frame = takeRoomFrame(p.slot, world.epoch);
+    if (frame && p.connected) {
+      inputAt.set(p.slot, performance.now());
+      if (!frame.keys.length && driveIsNeutral(frame.drive) && !frame.command)
+        disarmedSlots.delete(p.slot);
+      if (!disarmedSlots.has(p.slot)) {
+        held.set(p.slot, frame);
+        if (frame.command) roomCommand(frame.command, p.slot);
+      }
+    }
   }
 }
 /** Consume a queued input only when its corresponding simulation step runs.
@@ -221,6 +242,7 @@ function hostSteps(
   if (lastWorldKey !== worldKey) {
     held.clear();
     inputAt.clear();
+    disarmedSlots.clear();
     inputArmed = false;
     hostAccumulator = 0;
     lastWorldKey = worldKey;
@@ -275,7 +297,7 @@ export function tickRoomCity(
     const s = current.state as unknown as CityState;
     if (!roomFresh()) {
       inputArmed = false;
-      held.clear();
+      suspendRemoteInput();
       s.paused = true;
     }
     const driver = current.driver ?? 0;
@@ -325,7 +347,7 @@ export function tickRoomScreen(
     includeJoinedPlayers(s);
     if (!roomFresh()) {
       setPaused(s, true);
-      held.clear();
+      suspendRemoteInput();
       inputArmed = false;
     }
     if (!keys.size && roomFresh()) inputArmed = true;

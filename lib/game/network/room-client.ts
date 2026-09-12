@@ -20,6 +20,24 @@ const EMPTY: RoomView = {
   frozen: false,
 };
 const STORAGE = 'wellcum-room-v3';
+const REQUEST_TIMEOUT_MS = 8000;
+const POLL_IDLE_MS = 250;
+let latencyMs = 0;
+let pendingSince: number | null = null;
+// Successful RTT rises immediately and decays slowly, so one fast response
+// does not discard the allowance a slow relay just demonstrated. An in-flight
+// request also grants bounded grace before its first timing sample arrives.
+const relayLatency = () =>
+  Math.max(
+    latencyMs,
+    pendingSince === null ? 0 : Math.max(0, performance.now() - pendingSince),
+  );
+export const roomInputDeadlineMs = () =>
+  Math.min(8000, 650 + relayLatency() * 3);
+const freshnessDeadlineMs = () => Math.min(10000, 1500 + relayLatency() * 3);
+function recordLatency(elapsed: number) {
+  latencyMs = Math.max(Math.min(REQUEST_TIMEOUT_MS, elapsed), latencyMs * 0.95);
+}
 const LOCAL_KEYS = new Set([
   'KeyW',
   'KeyA',
@@ -63,7 +81,7 @@ export const subscribeRoom = (listener: () => void) => {
 export const roomFresh = () =>
   !!credential &&
   view.status === 'connected' &&
-  performance.now() - acceptedAt < 1500 &&
+  performance.now() - acceptedAt < freshnessDeadlineMs() &&
   !view.frozen;
 
 function saveCredential() {
@@ -84,7 +102,7 @@ async function request(payload: Record<string, unknown>): Promise<RoomReply> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...payload, version: ROOM_VERSION }),
     cache: 'no-store',
-    signal: AbortSignal.timeout(4000),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const body = (await response.json().catch(() => null)) as
     | (Partial<RoomReply> & { error?: { code?: string; message?: string } })
@@ -102,7 +120,8 @@ async function request(payload: Record<string, unknown>): Promise<RoomReply> {
     );
   return body as RoomReply;
 }
-function ingest(reply: RoomReply) {
+function ingest(reply: RoomReply, elapsed: number) {
+  recordLatency(elapsed);
   acceptedAt = performance.now();
   snapshotSeq = Math.max(snapshotSeq, reply.snapshotSeq || 0);
   if (reply.resumed) {
@@ -154,13 +173,19 @@ function ingest(reply: RoomReply) {
     roster: reply.roster,
     world,
     frozen: reply.frozen,
-    message: reply.frozen ? 'Друг отошёл или потерял связь. История ждёт.' : '',
+    ping: Math.round(elapsed),
+    message: reply.frozen
+      ? 'Друг отошёл или потерял связь. История ждёт.'
+      : elapsed > 700
+        ? 'Медленная связь: действия приходят с задержкой.'
+        : '',
   });
   saveCredential();
 }
 async function poll(run: number) {
   if (run !== generation || !credential) return;
   const started = performance.now();
+  pendingSince = started;
   try {
     const reply = await request({
       op: 'poll',
@@ -175,11 +200,12 @@ async function poll(run: number) {
         : { frames: needsResync ? [] : outbox.slice(0, 60) }),
     });
     if (run !== generation) return;
-    ingest(reply);
+    pendingSince = null;
+    ingest(reply, performance.now() - started);
     needsResync = false;
-    announce({ ping: Math.round(performance.now() - started) });
   } catch (error) {
     if (run !== generation) return;
+    pendingSince = null;
     readyForInput = false;
     const code = (error as { code?: string }).code;
     if (['STALE_EPOCH', 'INPUT_SEQUENCE_GAP'].includes(code ?? '')) {
@@ -212,12 +238,9 @@ async function poll(run: number) {
     if (terminal) return;
   }
   if (run === generation)
-    timer = setTimeout(
-      () => {
-        void poll(run);
-      },
-      Math.max(40, 120 - (performance.now() - started)),
-    );
+    timer = setTimeout(() => {
+      void poll(run);
+    }, POLL_IDLE_MS);
 }
 export async function openRoom(
   name: string,
@@ -235,6 +258,8 @@ export async function openRoom(
   if (credential) await leaveRoom();
   const run = ++generation;
   announce({ ...EMPTY, status: 'connecting' });
+  const started = performance.now();
+  pendingSince = started;
   try {
     const reply = await request(
       code
@@ -246,10 +271,12 @@ export async function openRoom(
     sequence = 0;
     snapshotSeq = 0;
     readyForInput = false;
-    ingest(reply);
+    pendingSince = null;
+    ingest(reply, performance.now() - started);
     void poll(run);
   } catch (error) {
-    if (run === generation)
+    if (run === generation) {
+      pendingSince = null;
       announce({
         status: 'failed',
         message:
@@ -257,6 +284,7 @@ export async function openRoom(
             ? error.message
             : 'Не удалось открыть комнату.',
       });
+    }
   }
 }
 export function restoreRoom() {
@@ -299,6 +327,8 @@ export async function leaveRoom() {
   acks = {};
   sequence = 0;
   snapshotSeq = 0;
+  latencyMs = 0;
+  pendingSince = null;
   lastInput = '';
   readyForInput = false;
   needsResync = false;
@@ -354,7 +384,8 @@ export function captureRoomInput(
   if (
     !command &&
     safe.join() === JSON.parse(lastInput || '[[],{}]')[0].join() &&
-    now - lastDriveAt < 50
+    now - lastDriveAt <
+      Math.max(50, Math.min(250, (relayLatency() + POLL_IDLE_MS) / 30))
   )
     return;
   if (outbox.length >= 100) {

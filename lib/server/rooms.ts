@@ -1,7 +1,8 @@
 /** Host-authoritative room relay. No game simulation or secrets belong in logs. */
 export const ROOM_VERSION = 3;
 export const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
-export const MEMBER_STALE_MS = 2500;
+// HTTP relay requests can take several seconds through the hosting gateway.
+export const MEMBER_STALE_MS = 10000;
 export const MAX_INPUT_FRAMES = 120;
 const MAX_SNAPSHOT_BYTES = 96 * 1024;
 const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -293,6 +294,9 @@ async function getRoom(
     .prepare('SELECT * FROM rooms WHERE code = ?')
     .bind(code)
     .first<RoomRow>();
+  return validateRoom(room, now);
+}
+function validateRoom(room: RoomRow | null, now: number): RoomRow {
   if (!room)
     return fail(404, 'ROOM_NOT_FOUND', 'Комната не найдена. Проверьте код.');
   if (room.closed_at !== null)
@@ -325,13 +329,26 @@ async function roomView(
   now: number,
   resumed = false,
 ): Promise<RoomView> {
-  const room = await getRoom(db, code, now);
-  const members = (
-    await db
-      .prepare('SELECT * FROM room_members WHERE room_code = ? ORDER BY slot')
-      .bind(code)
-      .all<MemberRow>()
-  ).results;
+  // Read one consistent view in one D1 round trip, rather than separately
+  // fetching room, roster and input queue over the hosting gateway.
+  const row = await db
+    .prepare(`SELECT r.*,
+    (SELECT json_group_array(json_object('id', m.id, 'slot', m.slot,
+      'name', m.name, 'last_seen', m.last_seen, 'last_seq', m.last_seq,
+      'left_at', m.left_at)) FROM (
+        SELECT * FROM room_members WHERE room_code = r.code ORDER BY slot
+      ) m) AS members_json,
+    CASE WHEN ? = 0 THEN (
+      SELECT json_group_array(json_object('slot', f.slot, 'seq', f.seq, 'payload', f.payload))
+      FROM (SELECT slot, seq, payload FROM room_frames
+        WHERE room_code = r.code AND epoch = r.epoch ORDER BY slot, seq) f
+    ) ELSE '[]' END AS frames_json
+    FROM rooms r WHERE r.code = ?`)
+    .bind(slot, code)
+    .first<RoomRow & { members_json: string; frames_json: string }>();
+  const room = validateRoom(row, now);
+  const members = JSON.parse(row!.members_json) as MemberRow[];
+  const pending = JSON.parse(row!.frames_json) as FrameRow[];
   const roster = members.map((member) => ({
     id: member.id,
     slot: member.slot,
@@ -341,20 +358,10 @@ async function roomView(
     lastSeen: member.last_seen,
   }));
   const frames: Record<string, RoomInput[]> = {};
-  if (slot === 0) {
-    const pending = (
-      await db
-        .prepare(
-          'SELECT slot, seq, payload FROM room_frames WHERE room_code = ? AND epoch = ? ORDER BY slot, seq',
-        )
-        .bind(code, room.epoch)
-        .all<FrameRow>()
-    ).results;
-    for (const row of pending)
-      (frames[String(row.slot)] ??= []).push(
-        JSON.parse(row.payload) as RoomInput,
-      );
-  }
+  for (const row of pending)
+    (frames[String(row.slot)] ??= []).push(
+      JSON.parse(row.payload) as RoomInput,
+    );
   return {
     version: ROOM_VERSION,
     code,

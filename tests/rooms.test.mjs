@@ -366,3 +366,25 @@ void test('bounded payloads reject invalid objects, forged slots, unsupported co
     1,
   );
 });
+
+void test('slow 3s polling and one missed response retain presence; a real gap still freezes and discards offline commands', async () => {
+  const { hostPoll, guestPoll } = await party(2);
+  for (let index = 1; index <= 3; index++) {
+    const now = 1000 + index * 3250;
+    const guest = await guestPoll({ frames: [frame(index, ['KeyW'])] }, now);
+    assert.equal(guest.body.resumed, false);
+    assert.equal(guest.body.frozen, false);
+    const host = await hostPoll({}, now);
+    assert.equal(host.body.resumed, false);
+    assert.equal(host.body.frozen, false);
+    assert.equal(host.body.frames['1'].at(-1).seq, index);
+  }
+  const lastSeen = 10750;
+  assert.equal((await hostPoll({}, lastSeen + 6500)).body.frozen, false);
+  const lostAt = lastSeen + MEMBER_STALE_MS + 1;
+  assert.equal((await hostPoll({}, lostAt)).body.frozen, true);
+  const resumed = await guestPoll({ frames: [frame(4, ['KeyE'])] }, lostAt);
+  assert.equal(resumed.body.resumed, true);
+  assert.equal(resumed.body.ack, 4);
+  assert.deepEqual((await hostPoll({}, lostAt)).body.frames, {});
+});

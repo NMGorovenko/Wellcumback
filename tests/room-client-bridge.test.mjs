@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { handleRoomRequest } from '../lib/server/rooms.ts';
+import { handleRoomRequest, MEMBER_STALE_MS } from '../lib/server/rooms.ts';
 import { freshCity } from '../lib/game/city/engine.ts';
 import { freshGame } from '../lib/game/screen/engine.ts';
 import * as client from '../lib/game/network/room-client.ts';
@@ -20,7 +20,8 @@ let now = 0,
   timers = [],
   db,
   requests,
-  nextResponseDelay = 0;
+  nextResponseDelay = 0,
+  nextRtt = 0;
 const pollWaiters = new Set();
 function setup() {
   const sqlite = new DatabaseSync(':memory:');
@@ -53,6 +54,7 @@ function setup() {
   timers = [];
   requests = [];
   nextResponseDelay = 0;
+  nextRtt = 0;
   pollWaiters.clear();
   globalThis.performance = { now: () => now };
   globalThis.location = { protocol: 'https:' };
@@ -76,11 +78,14 @@ function setup() {
     const payload = JSON.parse(options.body);
     const requestDb = db,
       requestTime = 1000 + now;
-    const delay = nextResponseDelay;
+    const delay = nextResponseDelay,
+      rtt = nextRtt;
     nextResponseDelay = 0;
+    nextRtt = 0;
     if (delay)
       await new Promise((resolve) => original.setTimeout(resolve, delay));
     const reply = await handleRoomRequest(requestDb, payload, requestTime);
+    now += rtt;
     requests.push({ payload, reply });
     return new Response(JSON.stringify(reply.body), {
       status: reply.status,
@@ -196,7 +201,7 @@ void test('city authority needs neutral analog axes before arming after ownershi
   }
 });
 
-void test('last remote throttle expires in 600ms even when HTTP presence remains healthy', async () => {
+void test('last remote throttle expires at the short deadline on a fast relay even while HTTP presence stays healthy', async () => {
   setup();
   try {
     now = 100;
@@ -249,7 +254,7 @@ void test('city host must release held analog throttle again after transport rec
     bridge.tickRoomCity(state, 0.1, new Set(), { throttle: 0, steer: 0 });
     bridge.tickRoomCity(state, 0.1, new Set(), { throttle: 1, steer: 0 });
     assert.ok(state.speed > 0);
-    now += 3000;
+    now += MEMBER_STALE_MS + 1;
     await api({ op: 'poll', code, token: guest.token });
     await nextPoll();
     assert.equal(client.roomSnapshot().frozen, true);
@@ -470,6 +475,311 @@ void test('stale host bootstrap recovers server scene by polling without another
       requests.at(-1).reply.status,
       200,
       'normal publishing resumes after recovery',
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('1.3s relay RTT preserves fresh state and held controls between slow polls, then expires within a bounded deadline', async () => {
+  setup();
+  try {
+    now = 10000;
+    nextRtt = 1300;
+    const { code, guest, epoch } = await hostCity(1);
+    const state = freshCity();
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [{ seq: 1, epoch, keys: [] }],
+    });
+    nextRtt = 1300;
+    await nextPoll();
+    bridge.tickRoomCity(state, 1 / 60, new Set());
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [{ seq: 2, epoch, keys: ['KeyW'] }],
+    });
+    nextRtt = 1300;
+    await nextPoll();
+    bridge.tickRoomCity(state, 0.1, new Set());
+    const previousSpeed = state.speed;
+    now += 1600;
+    assert.equal(
+      client.roomFresh(),
+      true,
+      'a healthy slow request is not a disconnect',
+    );
+    assert.match(client.roomSnapshot().message, /Медленная связь/);
+    bridge.tickRoomCity(state, 0.1, new Set());
+    assert.equal(state.paused, false);
+    assert.ok(
+      state.speed > previousSpeed,
+      'held throttle must span slow relay responses',
+    );
+    assert.equal(
+      timers[0].ms,
+      250,
+      'leave gateway idle time after each completed poll',
+    );
+    now += client.roomInputDeadlineMs() + 1;
+    // Continue receiving HTTP presence but no input from the guest renderer.
+    await api({ op: 'poll', code, token: guest.token });
+    await nextPoll();
+    assert.equal(client.roomSnapshot().frozen, false);
+    const speedBeforeExpiry = state.speed;
+    bridge.tickRoomCity(state, 0.1, new Set());
+    assert.ok(
+      state.speed <= speedBeforeExpiry,
+      'missing input must neutralize by its deadline',
+    );
+    const beforeFreshInput = state.speed;
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [{ seq: 3, epoch, keys: ['KeyW'] }],
+    });
+    await nextPoll();
+    bridge.tickRoomCity(state, 0.1, new Set());
+    assert.ok(
+      state.speed > beforeFreshInput,
+      'a connected peer can resume sending controls after an input-only gap',
+    );
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [
+        { seq: 4, epoch, keys: [] },
+        { seq: 5, epoch, keys: ['KeyW'] },
+      ],
+    });
+    await nextPoll();
+    const beforeRearm = state.speed;
+    bridge.tickRoomCity(state, 0.1, new Set());
+    assert.ok(
+      state.speed > beforeRearm,
+      'a release and new press restore normal control',
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('3s relay RTT remains fresh between replies but never extends a lost connection past 10s', async () => {
+  setup();
+  try {
+    now = 20000;
+    await hostCity();
+    nextRtt = 3000;
+    await nextPoll();
+    assert.equal(client.roomSnapshot().ping, 3000);
+    assert.equal(client.roomInputDeadlineMs(), 8000);
+    now += 3250;
+    assert.equal(client.roomFresh(), true);
+    now += 6751;
+    assert.equal(
+      client.roomFresh(),
+      false,
+      'bounded grace cannot hold a lost connection forever',
+    );
+    const state = freshCity();
+    bridge.tickRoomCity(state, 1 / 60, new Set(['KeyW']));
+    assert.equal(state.paused, true);
+    assert.equal(state.speed, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('a first unexpectedly slow in-flight poll gets bounded grace before its first RTT sample', async () => {
+  setup();
+  try {
+    now = 30000;
+    await hostCity();
+    nextResponseDelay = 25;
+    const timer = timers.shift();
+    timer.fn();
+    now += 3000;
+    assert.equal(client.roomFresh(), true);
+    now += 7001;
+    assert.equal(client.roomFresh(), false);
+    await drain();
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('continuous analog steering on a 3s relay does not outrun bounded reliable frame delivery', async () => {
+  setup();
+  try {
+    const host = (await api({ op: 'create', capacity: 2 })).body;
+    await api({
+      op: 'poll',
+      code: host.code,
+      token: host.token,
+      snapshot: {
+        scene: 'city',
+        epoch: 0,
+        brief: false,
+        state: freshCity(),
+        driver: 1,
+      },
+      snapshotSeq: 1,
+    });
+    nextRtt = 3000;
+    await client.openRoom('Driver', 2, host.code);
+    await drain();
+    client.captureRoomInput(new Set());
+    for (let cycle = 0; cycle < 5; cycle++) {
+      nextResponseDelay = 25;
+      const timer = timers.shift();
+      timer.fn();
+      for (let frame = 0; frame < 60; frame++) {
+        now += 50;
+        client.captureRoomInput(new Set(), {
+          throttle: Math.cos(frame / 10),
+          steer: 0.5,
+        });
+        assert.equal(
+          client.roomSnapshot().status,
+          'connected',
+          'analog samples must not fill the reliable queue',
+        );
+      }
+      await drain();
+      const received =
+        (await api({ op: 'poll', code: host.code, token: host.token })).body
+          .frames['1'] ?? [];
+      assert.ok(received.length <= 60);
+      if (received.length)
+        await api({
+          op: 'poll',
+          code: host.code,
+          token: host.token,
+          acks: { 1: received.at(-1).seq },
+        });
+    }
+    assert.equal(client.roomSnapshot().ping, 3000);
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('a healthy slow guest stays controllable on a fast host after an input-only timeout', async () => {
+  setup();
+  try {
+    const { code, guest, epoch } = await hostCity(1);
+    const state = freshCity();
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [{ seq: 1, epoch, keys: [] }],
+    });
+    await nextPoll();
+    bridge.tickRoomCity(state, 0.1, new Set());
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [{ seq: 2, epoch, keys: ['KeyW'] }],
+    });
+    await nextPoll();
+    bridge.tickRoomCity(state, 0.1, new Set());
+    assert.ok(state.speed > 0);
+    for (let i = 0; i < 6; i++) {
+      now += 250;
+      await nextPoll();
+      bridge.tickRoomCity(state, 0.1, new Set());
+    }
+    assert.equal(client.roomSnapshot().frozen, false);
+    assert.equal(client.roomFresh(), true);
+    const before = state.speed;
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [{ seq: 3, epoch, keys: ['KeyW'] }],
+    });
+    await nextPoll();
+    bridge.tickRoomCity(state, 0.1, new Set());
+    assert.ok(
+      state.speed > before,
+      'healthy held input from a slow guest must resume after its next response',
+    );
+  } finally {
+    await cleanup();
+  }
+});
+void test('screen resume discards held controls delivered during pause and requires new neutral input', async () => {
+  setup();
+  try {
+    const { code, guest } = await hostCity();
+    const state = freshGame(2);
+    state.paused = false;
+    state.frameTwist = 0.7;
+    client.publishRoomWorld({
+      scene: 'screen',
+      epoch: 200,
+      state,
+      brief: false,
+    });
+    await nextPoll();
+    bridge.tickRoomScreen(state, 1 / 60, new Set());
+    // Both frames were created before the guest could see the host's pause.
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [
+        { seq: 1, epoch: 200, keys: [] },
+        { seq: 2, epoch: 200, keys: ['KeyW'] },
+      ],
+    });
+    bridge.roomCommand({ kind: 'pause' }, 0);
+    await nextPoll();
+    bridge.tickRoomScreen(state, 0.1, new Set());
+    assert.equal(state.paused, true);
+    const before = state.frameTwist;
+    bridge.roomCommand({ kind: 'resume' }, 0);
+    bridge.tickRoomScreen(state, 0.1, new Set());
+    assert.equal(
+      state.frameTwist,
+      before,
+      'pre-pause queued hold must not reactivate at resume',
+    );
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [{ seq: 3, epoch: 200, keys: ['KeyW'] }],
+    });
+    await nextPoll();
+    bridge.tickRoomScreen(state, 0.1, new Set());
+    assert.equal(
+      state.frameTwist,
+      before,
+      'a still-held control cannot bypass the resume latch',
+    );
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [
+        { seq: 4, epoch: 200, keys: [] },
+        { seq: 5, epoch: 200, keys: ['KeyW'] },
+      ],
+    });
+    await nextPoll();
+    bridge.tickRoomScreen(state, 0.1, new Set());
+    assert.ok(
+      state.frameTwist > before,
+      'release and new press restore control after resume',
     );
   } finally {
     await cleanup();
