@@ -23,6 +23,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import Scene from '@/components/game/screen/scene';
+import { EveningResults } from '@/components/game/evening-results';
 import CleanScene from '@/components/game/clean/scene';
 import CityHub from '@/components/game/city/city-hub';
 import { freshCity } from '@/lib/game/city/engine';
@@ -31,8 +32,9 @@ import MovingScene from '@/components/game/moving/scene';
 import { freshMoving } from '@/lib/game/moving/engine';
 import { ControlSettings } from '@/components/game/input/control-settings';
 import { NetworkDialog } from '@/components/game/network/network-dialog';
-import { useNetworkSession } from '@/hooks/use-network-session';
-import { disconnectNetwork } from '@/lib/game/network/session';
+import { useRoom } from '@/hooks/use-room';
+import { roomCommand } from '@/lib/game/network/room-game';
+import { leaveRoom } from '@/lib/game/network/room-client';
 import ScreenGame from '@/components/game/screen/screen-game';
 import CleanGame from '@/components/game/clean/clean-game';
 import { useGameFullscreen } from '@/hooks/use-game-fullscreen';
@@ -87,12 +89,22 @@ function Preview({ story }: { story: Story }) {
 }
 export default function Home() {
   const city = useRef(freshCity());
-  const [hubMode, setHubMode] = useState<'city' | 'stories'>('city');
+  const [localHubMode, setHubMode] = useState<'city' | 'stories'>('city');
   const [networkOpen, setNetworkOpen] = useState(false);
-  const network = useNetworkSession();
+  const room = useRoom();
+  const online = room.code.length > 0;
+  const hubMode = online ? 'city' : localHubMode;
   const [players, setPlayers] = useState(2),
     [sound, setSound] = useState(true),
-    [active, setActive] = useState<Story | null>(null);
+    [localActive, setActive] = useState<Story | null>(null);
+  const active = online
+    ? room.world?.scene === 'screen'
+      ? 'screen'
+      : null
+    : localActive;
+  const screenPlayers = online
+    ? Number(room.world?.state.players ?? room.capacity)
+    : players;
   const [selected, setSelected] = useState(0),
     [panel, setPanel] = useState<'people' | 'scores' | 'controls' | null>(null);
   const [transition, setTransition] = useState<{
@@ -109,7 +121,10 @@ export default function Home() {
   );
   const episode = episodes[selected];
   const play = (story: Story) => {
-    if (network.role) disconnectNetwork();
+    if (online) {
+      if (story === 'screen') roomCommand({ kind: 'start-screen' });
+      return;
+    }
     if (!transition)
       setTransition({
         target: story,
@@ -117,6 +132,11 @@ export default function Home() {
       });
   };
   const exit = () => {
+    if (online) {
+      if (room.slot === 0) roomCommand({ kind: 'exit' });
+      else void leaveRoom();
+      return;
+    }
     city.current.paused = false;
     city.current.interaction = null;
     setHubMode('city');
@@ -208,7 +228,7 @@ export default function Home() {
               <button
                 className="icon-button"
                 onClick={() => setNetworkOpen(true)}
-                aria-label="Сетевая поездка"
+                aria-label="Онлайн-комната"
               >
                 <Radio size={18} />
               </button>
@@ -259,10 +279,28 @@ export default function Home() {
           </button>
         </div>
       </header>
+      {online && (
+        <div className="room-strip">
+          <button onClick={() => setNetworkOpen(true)}>
+            Комната {room.code} ·{' '}
+            {room.roster.filter((p) => p.connected).length}/{room.capacity}
+          </button>
+          <span>
+            {room.message ||
+              (active
+                ? `Ты — ${['Никита', 'Ярик', 'Рома'][room.slot]}`
+                : `Руль: ${room.roster.find((p) => p.slot === (room.world?.driver ?? 0))?.name ?? 'ведущий'}`)}
+          </span>
+          <small>{room.ping ? `${room.ping} мс` : 'Соединяемся…'}</small>
+        </div>
+      )}
       {active === 'screen' ? (
         <ScreenGame
-          key={`screen-${players}`}
-          players={players}
+          key={
+            online ? `${room.code}-${room.world?.epoch}` : `screen-${players}`
+          }
+          players={screenPlayers}
+          online={online}
           sound={sound}
           onExit={exit}
           onFinish={finish}
@@ -419,36 +457,12 @@ export default function Home() {
             </div>
           )}
           {panel === 'scores' && (
-            <>
-              <div className="hub-total">
-                <Trophy size={26} />
-                <strong>{total.toLocaleString('ru')}</strong>
-                <span>очков за вечер</span>
-              </div>
-              {results.length ? (
-                <div className="hub-results">
-                  {results
-                    .slice()
-                    .reverse()
-                    .map((r, i) => (
-                      <div key={r.date + i}>
-                        <span>
-                          {episodes.find((episode) => episode.id === r.story)
-                            ?.title || 'История'}
-                          <small>
-                            {r.players} чел. · {r.seconds} сек.
-                          </small>
-                        </span>
-                        <strong>{r.score}</strong>
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                <p className="quiet">
-                  Сыграйте первую историю — здесь появится ваш результат.
-                </p>
+            <EveningResults
+              results={results}
+              titles={Object.fromEntries(
+                episodes.map((episode) => [episode.id, episode.title]),
               )}
-            </>
+            />
           )}
 
           <button className="secondary-button" onClick={() => setPanel(null)}>

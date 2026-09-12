@@ -59,16 +59,16 @@ export function instructions(state: GameState): [string, string][] {
       return state.frameStage === 'align'
         ? [
             ['A / D', 'сдвиг профиля'],
-            ['W / S', 'поворот'],
+            [state.players > 1 ? '↑ / ↓' : 'W / S', 'поворот уголка'],
             ['E', 'вставить'],
             ...(state.players > 1
-              ? [['Enter', 'напарник держит'] as [string, string]]
+              ? [['Enter', 'Ярик придерживает'] as [string, string]]
               : []),
           ]
         : [
             ['E', 'щёлкнуть в зелёной зоне'],
             ...(state.players > 1
-              ? [['Enter', 'напарник держит'] as [string, string]]
+              ? [['E / Enter / O', 'щёлкнуть может каждый'] as [string, string]]
               : []),
           ];
     case 'rods':
@@ -113,7 +113,10 @@ export function instructions(state: GameState): [string, string][] {
     case 'level':
       return [
         ['A / D', 'регулировать подвесы'],
-        ['E', 'принять, когда пузырёк успокоится'],
+        [
+          state.players > 1 ? 'ДЕЙСТВИЕ' : 'E',
+          'проверить, когда пузырёк успокоится',
+        ],
       ];
     case 'result':
       return [];

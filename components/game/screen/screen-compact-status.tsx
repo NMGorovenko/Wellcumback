@@ -2,6 +2,12 @@
 
 import { Check } from 'lucide-react';
 import {
+  gamepadPrompt,
+  keyboardPrompt,
+  type PadFrame,
+  type InputControl,
+} from '@/lib/game/input/gamepads';
+import {
   springWindow,
   throwTargetPower,
   type GameState,
@@ -36,7 +42,21 @@ function Edges({ view }: { view: GameState }) {
     </div>
   );
 }
-export function ScreenCompactStatus({ view }: { view: GameState }) {
+export function ScreenCompactStatus({
+  view,
+  localPlayer,
+  pads = { assignments: [] },
+}: {
+  view: GameState;
+  localPlayer?: number;
+  pads?: Pick<PadFrame, 'assignments'>;
+}) {
+  const hint = (player: number, control: InputControl, offline: string) =>
+    localPlayer === undefined
+      ? offline
+      : player === localPlayer
+        ? gamepadPrompt(pads, 0, control) || keyboardPrompt(0, control)
+        : NAMES[player];
   switch (view.phase) {
     case 'frame':
       return (
@@ -53,7 +73,7 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
                 min={-1}
                 max={1}
                 target={[-0.1, 0.1]}
-                hint="A / D"
+                hint={hint(0, 'horizontal', 'A / D')}
               />
               <Meter
                 label="Поворот"
@@ -61,7 +81,11 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
                 min={-1}
                 max={1}
                 target={[-0.1, 0.1]}
-                hint="W / S"
+                hint={hint(
+                  view.players > 1 ? 1 : 0,
+                  'vertical',
+                  view.players > 1 ? 'Ярик · ↑ / ↓' : 'W / S',
+                )}
               />
             </>
           ) : (
@@ -72,7 +96,7 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
                 0.5 - (0.075 + view.frameBrace * 0.08),
                 0.5 + (0.075 + view.frameBrace * 0.08),
               ]}
-              hint="E"
+              hint={hint(localPlayer ?? 0, 'action', 'E')}
             />
           )}
         </>
@@ -92,12 +116,15 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
                   view.rodTarget[worker.side] - 0.19,
                   view.rodTarget[worker.side] + 0.19,
                 ]}
-                hint={ACTION_LABELS[player]}
+                hint={hint(player, 'action', ACTION_LABELS[player])}
                 danger={view.rodPressure[worker.side] > 0.5}
               />
               {view.rodJam[worker.side] > 0 && (
                 <span className="hud-compact-alert">
-                  Закусило — отпусти {ACTION_LABELS[player]}
+                  Закусило ·{' '}
+                  {localPlayer === undefined || player === localPlayer
+                    ? `отпусти ${hint(player, 'action', ACTION_LABELS[player])}`
+                    : NAMES[player]}
                 </span>
               )}
             </div>
@@ -121,6 +148,13 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
                   : NAMES[tool.owner]}
             </strong>
           </div>
+          {view.springSupport > 0 &&
+            tool.status === 'held' &&
+            !tool.needsPass && (
+              <span className="hud-compact-alert is-ready">
+                Край поддержан · легче натянуть
+              </span>
+            )}
           {tool.status === 'ground' ? (
             <div className="hud-compact-alert">
               {SIDES[tool.groundSide]} сторона · подними действием
@@ -129,20 +163,29 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
             <Fill
               label={
                 tool.target < view.players
-                  ? `${ACTION_LABELS[tool.target]} · лови`
+                  ? `${hint(tool.target, 'action', ACTION_LABELS[tool.target])} · лови`
                   : 'Ярик ловит'
               }
               value={tool.flight}
             />
           ) : tool.status === 'charging' || tool.needsPass ? (
             <Meter
-              label="Бросок → отпусти Q"
+              label={
+                localPlayer !== undefined && localPlayer !== tool.owner
+                  ? `${NAMES[tool.owner]} · готовит бросок`
+                  : `Бросок → отпусти ${hint(tool.owner, 'throw', 'Q')}`
+              }
               value={tool.status === 'charging' ? tool.charge : 0}
               target={[target - 0.105, target + 0.105]}
             />
           ) : (
             <Meter
-              label="Пружина → отпусти действие"
+              label={
+                view.clips[view.workers[tool.owner].side] >
+                Math.min(...view.clips)
+                  ? 'Этот край туже · напротив отскочит!'
+                  : 'Пружина → отпусти действие'
+              }
               value={view.spring.active ? view.spring.power : 0}
               target={force}
               danger={view.spring.power > force[1]}
@@ -166,7 +209,7 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
               min={-7}
               max={7}
               target={view.holes.length === 0 ? [-4.75, -4.05] : [4.05, 4.75]}
-              hint="A / D"
+              hint={hint(0, 'horizontal', 'A / D')}
             />
           ) : view.drillMode === 'climb' || view.drillMode === 'descend' ? (
             <Fill
@@ -253,7 +296,7 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
             min={-1.5}
             max={1.5}
             target={[-0.12, 0.12]}
-            hint="W / S"
+            hint={hint(0, 'vertical', 'W / S')}
           />
           <Meter
             label={view.latched[1] ? 'Правый ✓' : 'Правый край'}
@@ -261,7 +304,7 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
             min={-1.5}
             max={1.5}
             target={[-0.12, 0.12]}
-            hint={view.players > 1 ? '↑ / ↓' : 'Ярик'}
+            hint={hint(1, 'vertical', view.players > 1 ? '↑ / ↓' : 'Ярик')}
           />
           <Meter
             label="Сдвиг"
@@ -269,7 +312,7 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
             min={-2}
             max={2}
             target={[-0.16, 0.16]}
-            hint="A / D"
+            hint={hint(0, 'horizontal', 'A / D')}
           />
         </>
       );
@@ -288,7 +331,12 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
           >
             {view.levelStable >= 1 ? (
               <>
-                <Check size={13} /> E · готово
+                <Check size={13} />{' '}
+                {localPlayer !== undefined
+                  ? `${hint(localPlayer, 'action', 'E')} · готово`
+                  : view.players > 1
+                    ? 'Действие · готово'
+                    : 'E · готово'}
               </>
             ) : view.levelStable > 0 ? (
               'Дай пузырьку успокоиться'

@@ -70,7 +70,7 @@ for (const players of [1, 2, 3])
       assert.equal(s.score, 0);
       assert.equal(s.paused, false);
       assert.equal(s.players, players);
-      assert.equal(s.actorCount, episode.id === 'clean' ? players : 1);
+      assert.equal(s.actorCount, players);
       for (let actor = 0; actor < s.actorCount; actor++)
         assert.ok(canStand(s.x[actor], s.y[actor]), `actor ${actor}`);
       assert.ok(

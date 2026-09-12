@@ -15,6 +15,7 @@ export type Phase =
   | 'result';
 export type WorkerAction =
   | 'idle'
+  | 'guide'
   | 'walk'
   | 'hold'
   | 'feed'
@@ -125,6 +126,7 @@ export type GameState = DrillingState & {
   tool: ToolState;
   spring: { worker: number; side: number; power: number; active: boolean };
   springTarget: number;
+  springSupport: number;
   tension: number[];
   recommendedSide: number;
   chairX: number;
@@ -242,7 +244,9 @@ export function freshGame(players = 1): GameState {
     rods: [0, 0, 0, 0],
     clips: [0, 0, 0, 0],
     message:
-      'WASD совмести профиль и угол. E вставь. Напарник держит свой E / Enter.',
+      players > 1
+        ? 'Никита сдвигает профиль A/D. Ярик поворачивает уголок ↑/↓. E — вставить.'
+        : 'A/D совмести профиль, W/S поверни уголок. E — вставить в паз.',
     chairs: 2,
     balance: 0,
     drill: 0,
@@ -290,6 +294,7 @@ export function freshGame(players = 1): GameState {
     },
     spring: { worker: -1, side: 2, power: 0, active: false },
     springTarget: 0.64,
+    springSupport: 0,
     tension: [0, 0, 0, 0],
     recommendedSide: 2,
     drillTools: freshDrillTools(),
@@ -415,7 +420,8 @@ export function rodTargetAt(s: GameState, side: number) {
 }
 export function springWindow(s: GameState): [number, number] {
   const center = 0.62 + s.clips[s.spring.side] * 0.018;
-  return [center - 0.09, center + 0.09];
+  const tolerance = 0.09 + (s.springSupport ?? 0) * 0.035;
+  return [center - tolerance, center + tolerance];
 }
 export type Input = {
   x: number;
@@ -804,19 +810,30 @@ function frameStep(s: GameState, dt: number, input: Input[]) {
   s.frameBrace =
     s.players === 1
       ? 0.82
-      : (input[1].held ? 0.8 : 0) +
-        (s.players === 3 && input[2].held ? 0.2 : 0);
+      : (input[1].held || input[1].y ? 0.8 : 0) +
+        (s.players === 3 && (input[2].held || input[2].x) ? 0.2 : 0);
   const brace = clamp(s.frameBrace, 0, 1);
-  s.workers[1].animation = brace > 0 ? 'hold' : 'idle';
+  s.workers[1].animation =
+    s.players === 1 || input[1].held || input[1].y ? 'hold' : 'idle';
+  if (s.players === 3)
+    s.workers[2].animation = input[2].held || input[2].x ? 'hold' : 'idle';
+  // Helpers can work the actual parts without holding a second button. Opposed
+  // corrections cancel; the first player's axes remain an accessible fallback.
+  const slide = clamp(
+    input[0].x + (s.players === 3 ? input[2].x * 0.65 : 0),
+    -1,
+    1,
+  );
+  const twist = clamp(input[0].y + (s.players > 1 ? input[1].y : 0), -1, 1);
   if (s.frameStage === 'align') {
     s.frameFit = clamp(
       s.frameFit +
-        input[0].x * dt * 0.62 +
+        slide * dt * 0.62 +
         Math.sin(s.phaseTime * 1.4) * (1 - brace) * dt * 0.09,
       -1,
       1,
     );
-    s.frameTwist = clamp(s.frameTwist + input[0].y * dt * 0.56, -1, 1);
+    s.frameTwist = clamp(s.frameTwist + twist * dt * 0.56, -1, 1);
     s.workers[0].animation = input[0].x || input[0].y ? 'hold' : 'idle';
     if (input[0].pressed && s.cooldown === 0) {
       if (Math.abs(s.frameFit) < 0.1 && Math.abs(s.frameTwist) < 0.1) {
@@ -831,11 +848,12 @@ function frameStep(s: GameState, dt: number, input: Input[]) {
     }
   } else {
     s.cursor = (Math.sin(s.phaseTime * (2.8 + s.corners * 0.35)) + 1) / 2;
-    if (input[0].pressed && s.cooldown === 0) {
+    const locker = input.findIndex((c, p) => p < s.players && c.pressed);
+    if (locker >= 0 && s.cooldown === 0) {
       if (Math.abs(s.cursor - 0.5) < 0.075 + brace * 0.08) {
         s.corners++;
         award(s, `Угол ${s.corners}`, 150);
-        emit(s, 'snap', 0, s.corners - 1);
+        emit(s, 'snap', locker, s.corners - 1);
         s.message = [
           'Щёлк. Пока всё даже по инструкции.',
           'Есть! У нас совпали уже два мнения.',
@@ -943,7 +961,7 @@ function rodsStep(s: GameState, dt: number, input: Input[]) {
     );
   }
 }
-function chooseReceiver(s: GameState, owner: number): number {
+function chooseReceiver(s: GameState, owner: number, input: Input[]): number {
   const candidates = s.workers
     .slice(0, activeWorkers(s))
     .map((w, p) => ({
@@ -953,12 +971,15 @@ function chooseReceiver(s: GameState, owner: number): number {
     .filter((v) => v.p !== owner);
   candidates.sort(
     (a, b) =>
+      Number(input[b.p].held && arrived(s.workers[b.p])) -
+        Number(input[a.p].held && arrived(s.workers[a.p])) ||
       Number(
         s.workers[b.p].targetSide === opposite(s.workers[owner].targetSide),
       ) -
         Number(
           s.workers[a.p].targetSide === opposite(s.workers[owner].targetSide),
-        ) || b.d - a.d,
+        ) ||
+      b.d - a.d,
   );
   return candidates[0].p;
 }
@@ -1003,7 +1024,7 @@ function toolStep(
     ) {
       if (t.status !== 'charging') {
         t.charge = 0;
-        t.target = chooseReceiver(s, t.owner);
+        t.target = chooseReceiver(s, t.owner, input);
       }
       t.status = 'charging';
       t.charge = Math.min(1, t.charge + dt * 0.75);
@@ -1166,6 +1187,19 @@ function tensionStep(
     }
   }
   moveWorkers(s, dt, input);
+  const workingSide = s.spring.active ? s.spring.side : s.workers[t.owner].side;
+  const supporters = s.workers
+    .slice(0, activeWorkers(s))
+    .filter((helper, p) => {
+      const supporting =
+        p !== t.owner &&
+        arrived(helper) &&
+        input[p].held &&
+        (helper.side === workingSide || helper.side === opposite(workingSide));
+      if (supporting && helper.animation === 'idle') helper.animation = 'hold';
+      return supporting;
+    });
+  s.springSupport = supporters.length ? 1 : 0;
   toolStep(s, dt, input, throwing, throwRelease);
   if (s.cooldown > 0 || t.status !== 'held') return;
   const p = t.owner,
@@ -1191,7 +1225,9 @@ function tensionStep(
     s.spring = { worker: p, side: w.side, power: 0, active: true };
     s.springTarget = (springWindow(s)[0] + springWindow(s)[1]) / 2;
     s.message =
-      'Тяни и отпусти действие в зелёном секторе. Держать до упора — плохая идея.';
+      s.clips[w.side] > Math.min(...s.clips)
+        ? 'Этот край уже туже остальных. Ещё крючок — противоположный отскочит!'
+        : 'Тяни и отпусти в зелёном. Напарник на краю полотна расширяет зелёную зону.';
   }
   for (let i = 0; i < 4; i++)
     s.tension[i] =
@@ -1206,7 +1242,18 @@ function liftStep(s: GameState, dt: number, input: Input[]) {
     input[1].held = input[0].held;
   }
   const damping = s.players === 3 && input[2].held ? 6.5 : 4.5;
-  s.liftXVelocity += (input[0].x * 3.4 - s.liftXVelocity * damping) * dt;
+  const shift = clamp(
+    input[0].x + (s.players === 3 ? input[2].x * 0.65 : 0),
+    -1,
+    1,
+  );
+  if (s.players === 3)
+    s.workers[2].animation = input[2].x
+      ? 'guide'
+      : input[2].held
+        ? 'hold'
+        : 'idle';
+  s.liftXVelocity += (shift * 3.4 - s.liftXVelocity * damping) * dt;
   s.liftX = clamp(
     s.liftX + s.liftXVelocity * dt,
     -CARRY_SHIFT_LIMIT,
@@ -1278,14 +1325,19 @@ function liftStep(s: GameState, dt: number, input: Input[]) {
   }
 }
 function levelStep(s: GameState, dt: number, input: Input[]) {
-  const direction = input[0].x || (s.players > 1 ? input[1].x : 0);
+  const steering = input.slice(0, s.players).filter((c) => c.x !== 0);
+  const direction = steering.length
+    ? steering.reduce((sum, c) => sum + c.x, 0) / steering.length
+    : 0;
+  for (let p = 0; p < s.players; p++)
+    s.workers[p].animation = input[p].x ? (p === 2 ? 'guide' : 'lift') : 'hold';
   s.angle = clamp(s.angle + direction * dt * 0.045, -0.22, 0.22);
   s.bubble += (s.angle - s.bubble) * Math.min(1, dt * 4);
   s.levelStable =
     Math.abs(s.angle) < 0.012 && Math.abs(s.bubble) < 0.013 && !direction
       ? Math.min(1.2, s.levelStable + dt)
       : 0;
-  if (input[0].pressed && s.cooldown === 0) {
+  if (input.some((c, p) => p < s.players && c.pressed) && s.cooldown === 0) {
     if (s.levelStable < 1) {
       s.message = 'Пузырёк ещё думает. Поправь подвесы и дай ему секунду.';
       return;

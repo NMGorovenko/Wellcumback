@@ -1,3 +1,4 @@
+import { movingLaptopCue } from './incidents.ts';
 import { movingStations } from './layout.ts';
 import {
   bagById,
@@ -31,16 +32,27 @@ export function movingIntent(s: MovingState, index: number): MovingIntent {
     return {
       kind: 'laptop',
       target: null,
-      label: 'Разобрать рабочий алерт',
-      hold: true,
+      ...movingLaptopCue(s),
     };
   if (actor.activity === 'rest')
-    return { kind: 'rest', target: actor.id, label: 'Отложить рилсы и встать' };
+    return {
+      kind: 'rest',
+      target: actor.id,
+      label:
+        actor.stamina >= 84
+          ? 'Силы вернулись · встать'
+          : 'Силы восстанавливаются · можно встать',
+    };
   if (actor.bagId !== null)
     return {
       kind: 'travel',
       target: actor.bagId,
-      label: 'К двери · вдвоём легче',
+      label: (() => {
+        const bag = bagById(s, actor.bagId)!;
+        return bag.carriers.length > 1
+          ? `К двери · по ${bag.weight / bag.carriers.length} кг каждому`
+          : `К двери · ${bag.weight} кг${bag.weight >= 12 ? ' · вдвоём легче' : ''}`;
+      })(),
     };
   if (actor.heldItem !== null) {
     const item = itemById(s, actor.heldItem)!;
@@ -48,7 +60,7 @@ export function movingIntent(s: MovingState, index: number): MovingIntent {
       return {
         kind: 'pack',
         target: actor.packingBag,
-        label: `Упаковать: ${item.label}`,
+        label: `${item.label} · ${item.weight} кг → сумка ${actor.packingBag + 1}`,
         hold: true,
       };
     const bags = s.bags.filter(
@@ -57,12 +69,17 @@ export function movingIntent(s: MovingState, index: number): MovingIntent {
     const nearby = bags.filter((b) => distance(actor, b) <= REACH);
     const fits = nearby.filter((b) => b.weight + item.weight <= b.capacity);
     const bag = nearest(actor, fits.length ? fits : nearby);
-    if (!bag) return { kind: 'search', target: null, label: 'К жёлтой сумке' };
+    if (!bag)
+      return {
+        kind: 'search',
+        target: null,
+        label: `${item.label} · ${item.weight} кг → к жёлтой сумке`,
+      };
     if (bag.weight + item.weight > bag.capacity)
       return {
         kind: 'blocked',
         target: bag.id,
-        label: `Не влезает · ${bag.weight}/${bag.capacity} кг`,
+        label: `${item.label}: ${item.weight} кг · свободно ${bag.capacity - bag.weight} кг. К другой сумке`,
       };
     if (bag.status === 'closed')
       return {
@@ -73,7 +90,7 @@ export function movingIntent(s: MovingState, index: number): MovingIntent {
     return {
       kind: 'pack',
       target: bag.id,
-      label: `Уложить: ${bag.weight + item.weight}/${bag.capacity} кг`,
+      label: `Уложить ${item.weight} кг · останется ${bag.capacity - bag.weight - item.weight} кг места`,
       hold: true,
     };
   }

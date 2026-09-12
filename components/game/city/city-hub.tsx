@@ -16,19 +16,25 @@ import {
 } from '@/lib/game/input/gamepads';
 import {
   freshCity,
+  tickCity,
   resetCityCar,
   type CityState,
 } from '@/lib/game/city/engine';
 import { cityStops, type CityMission } from '@/lib/game/city/layout';
 import CityScene from './scene';
 import { useGameInspection } from '@/hooks/use-game-inspection';
-import { useNetworkSession } from '@/hooks/use-network-session';
+import { useRoom } from '@/hooks/use-room';
 import {
-  disconnectNetwork,
-  isNetworkDrive,
-  passNetworkWheel,
-  tickNetworkCity,
-} from '@/lib/game/network/session';
+  leaveRoom,
+  roomActive,
+  roomFresh,
+} from '@/lib/game/network/room-client';
+import { roomCommand, tickRoomCity } from '@/lib/game/network/room-game';
+const disconnectNetwork = () => {
+  void leaveRoom();
+};
+const isNetworkDrive = roomActive;
+const passNetworkWheel = () => roomCommand({ kind: 'wheel' });
 import { useControlSettings } from '@/hooks/use-control-settings';
 
 export default function CityHub({
@@ -51,9 +57,17 @@ export default function CityHub({
   onGamepads?: (status: Pick<PadFrame, 'assignments' | 'unsupported'>) => void;
 }) {
   const game = useRef(savedGame.current);
-  const network = useNetworkSession();
+  const room = useRoom();
+  const network = {
+    role: room.code ? (room.slot === 0 ? 'host' : 'guest') : null,
+    status: room.status,
+    driver: (room.world?.driver ?? 0) === 0 ? 'host' : 'guest',
+  };
   const { settings } = useControlSettings();
   const shared = network.role !== null;
+  const canManage = !shared || room.slot === 0;
+  const canResume = canManage && (!shared || roomFresh());
+  const isDriver = !shared || (room.world?.driver ?? 0) === room.slot;
   const [view, setView] = useState(freshCity);
   const [target, setTarget] = useState(0);
   const [closeView, setCloseView] = useState(true);
@@ -69,7 +83,13 @@ export default function CityHub({
   const keys = useRef(new Set<string>());
   useGameInspection(game, keys);
   const pause = () => {
-    if (isNetworkDrive() && !document.hasFocus()) return;
+    if (isNetworkDrive()) {
+      const resume = document.hasFocus() && game.current.paused;
+      if (resume && !canResume) return;
+      roomCommand({ kind: resume ? 'resume' : 'pause' });
+      keys.current.clear();
+      return;
+    }
     game.current.paused = !game.current.paused;
     setPauseSelected(0);
     keys.current.clear();
@@ -78,14 +98,37 @@ export default function CityHub({
   const launch = () => {
     const s = game.current,
       stop = cityStops[s.nearStop];
-    if (!isNetworkDrive() && stop?.mission && s.speed < 2.3) {
-      s.vx = s.vz = s.speed = 0;
-      s.paused = true;
+    if (
+      (!isNetworkDrive() || (room.slot === 0 && stop?.mission === 'screen')) &&
+      stop?.mission &&
+      s.speed < 2.3
+    ) {
+      if (!shared) {
+        s.vx = s.vz = s.speed = 0;
+        s.paused = true;
+      }
       onPlay(stop.mission);
     }
   };
+  const resetCar = () => {
+    if (!canManage) return;
+    keys.current.clear();
+    if (shared) roomCommand({ kind: 'restart' });
+    else {
+      resetCityCar(game.current);
+      setView({ ...game.current });
+    }
+  };
   const pauseItems = [
-    { id: 'resume', label: 'Продолжить поездку' },
+    {
+      id: 'resume',
+      label: !canManage
+        ? 'Продолжит ведущий'
+        : !canResume
+          ? 'Ждём связи с комнатой'
+          : 'Продолжить поездку',
+      disabled: !canResume,
+    },
     { id: 'stories', label: 'Все истории', disabled: shared },
     { id: 'players', label: `Игроков в истории: ${players}`, disabled: shared },
     { id: 'target', label: `Куда едем: ${cityStops[target].title}` },
@@ -105,9 +148,11 @@ export default function CityHub({
           {
             id: 'wheel',
             label:
-              network.driver === 'host'
-                ? 'Передать руль другу'
-                : 'Вернуть руль себе',
+              room.roster.length > 2
+                ? 'Передать руль следующему игроку'
+                : network.driver === 'host'
+                  ? 'Передать руль другу'
+                  : 'Вернуть руль себе',
             disabled: network.status !== 'connected',
           },
         ]
@@ -117,6 +162,7 @@ export default function CityHub({
       : []),
   ];
   const runPauseAction = (id: string) => {
+    if (pauseItems.find((item) => item.id === id)?.disabled) return;
     switch (id) {
       case 'resume':
         pause();
@@ -132,11 +178,11 @@ export default function CityHub({
         break;
       case 'camera':
         setCloseView(!closeView);
-        pause();
+        if (canResume) pause();
         break;
       case 'reset':
-        resetCityCar(game.current);
-        pause();
+        resetCar();
+        if (canResume) pause();
         break;
       case 'controls':
         onControls();
@@ -150,7 +196,6 @@ export default function CityHub({
         break;
       case 'disconnect':
         disconnectNetwork();
-        pause();
         break;
     }
   };
@@ -176,7 +221,8 @@ export default function CityHub({
     game,
     keys,
     tick: (s, dt, input, axes) => {
-      tickNetworkCity(s, dt, input, axes);
+      if (shared) tickRoomCity(s, dt, input, axes);
+      else tickCity(s, dt, input, axes);
       if (s.interaction) {
         const id = s.interaction as CityMission;
         s.interaction = null;
@@ -184,7 +230,9 @@ export default function CityHub({
         onPlay(id);
       }
     },
-    action: () => {},
+    action: () => {
+      if (shared) launch();
+    },
     pause,
     snapshot: setView,
     onGamepads: (status) => {
@@ -192,6 +240,7 @@ export default function CityHub({
       onGamepads?.(status);
     },
     tickWhileBlocked: shared,
+    inputPlayers: shared ? 1 : undefined,
     profile: 'city',
     padMenu: {
       enabled: view.paused,
@@ -243,12 +292,13 @@ export default function CityHub({
           </button>
           <button
             aria-label="Вернуть машину на дорогу"
-            title="Вернуть машину на дорогу"
+            title={
+              canManage
+                ? 'Вернуть машину на дорогу'
+                : 'Машину возвращает ведущий'
+            }
             disabled={shared && network.role === 'guest'}
-            onClick={() => {
-              resetCityCar(game.current);
-              setView({ ...game.current });
-            }}
+            onClick={resetCar}
           >
             <RotateCcw size={16} />
           </button>
@@ -268,15 +318,29 @@ export default function CityHub({
               <strong>{stop.title}</strong>
               <span>{stop.subtitle}</span>
             </div>
-            {stop.mission && !shared && (
-              <button onClick={launch} disabled={view.speed >= 2.3}>
-                <kbd>{control('action')}</kbd>
-                {view.speed >= 2.3 ? 'Остановись' : 'Начать историю'}
-              </button>
-            )}
+            {stop.mission &&
+              (!shared || (room.slot === 0 && stop.mission === 'screen')) && (
+                <button onClick={launch} disabled={view.speed >= 2.3}>
+                  <kbd>{control('action')}</kbd>
+                  {view.speed >= 2.3
+                    ? 'Остановись'
+                    : shared
+                      ? 'Начать вместе'
+                      : 'Начать историю'}
+                </button>
+              )}
+            {shared &&
+              stop.mission &&
+              (room.slot !== 0 || stop.mission !== 'screen') && (
+                <span>
+                  {stop.mission === 'screen'
+                    ? 'Историю запускает ведущий'
+                    : 'В комнате доступен «Экран на полстены»'}
+                </span>
+              )}
           </div>
         )}
-        {settings.showWorldPrompts && !stop && !view.paused && (
+        {settings.showWorldPrompts && isDriver && !stop && !view.paused && (
           <div className="city-drive-hints">
             <span>
               <kbd>{control('vertical')}</kbd> газ / тормоз
@@ -308,6 +372,9 @@ export default function CityHub({
                   {item.label}
                 </button>
               ))}
+              {!canManage && (
+                <small>Пауза общая. Продолжить поездку может ведущий.</small>
+              )}
               <small>
                 ↑↓ / стик — выбрать · E / A / × — подтвердить · Esc / B / ○ —
                 назад
@@ -324,10 +391,10 @@ export default function CityHub({
           <div className="city-network">
             <span>
               {network.status === 'connected'
-                ? `Онлайн · руль ${network.driver === network.role ? 'у тебя' : 'у друга'}`
-                : network.status === 'failed' || network.status === 'closed'
+                ? `Онлайн · руль ${(room.world?.driver ?? 0) === room.slot ? 'у тебя' : 'у друга'}`
+                : network.status === 'failed'
                   ? 'Нет связи · выйди из поездки, чтобы играть локально'
-                  : 'Подключение · открой сетевое меню для обмена кодами'}
+                  : 'Ждём связь с комнатой…'}
             </span>
             {network.role === 'host' && (
               <button

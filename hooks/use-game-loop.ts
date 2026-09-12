@@ -49,6 +49,7 @@ export function useGameLoop<
   onGamepads,
   tickWhileBlocked = false,
   profile = 'game',
+  inputPlayers,
 }: {
   game: RefObject<T>;
   keys: RefObject<Set<string>>;
@@ -61,6 +62,8 @@ export function useGameLoop<
   /** City transport keeps sending neutral heartbeats while a dialog blocks controls. */
   tickWhileBlocked?: boolean;
   profile?: InputProfile;
+  /** Online clients own one local controller, later mapped to their room slot. */
+  inputPlayers?: number;
 }) {
   const callbacks = useRef({
     tick,
@@ -71,6 +74,7 @@ export function useGameLoop<
     onGamepads,
     tickWhileBlocked,
     profile,
+    inputPlayers,
   });
   useEffect(() => {
     callbacks.current = {
@@ -82,6 +86,7 @@ export function useGameLoop<
       onGamepads,
       tickWhileBlocked,
       profile,
+      inputPlayers,
     };
   }, [
     tick,
@@ -92,6 +97,7 @@ export function useGameLoop<
     onGamepads,
     tickWhileBlocked,
     profile,
+    inputPlayers,
   ]);
   useEffect(() => {
     initializeControlSettings();
@@ -230,7 +236,7 @@ export function useGameLoop<
       const pads = mapGamepads(
         padState,
         document.hidden || !focused ? [] : readGamepads(),
-        inputPlayerCount(game.current),
+        callbacks.current.inputPlayers ?? inputPlayerCount(game.current),
         callbacks.current.profile,
       );
       const nextStatus =

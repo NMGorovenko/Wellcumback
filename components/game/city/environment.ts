@@ -14,6 +14,7 @@ import {
 } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { makeLabel } from '../world/labels.ts';
+import { createCityLandmarks } from './landmarks.ts';
 
 /** Bake static boxes/windows into material groups once, including nested props.
  * Source geometries are released after merging, rather than retained per window. */
@@ -400,6 +401,7 @@ export function createCityEnvironment(kit: RenderKit) {
   kit.sphere(0.25, 0.35, 0.25, '#d6b46d', 0, 4.28, 0, chapel, 12);
   kit.box(0.08, 0.85, 0.08, '#e8dca7', 0, 4.85, 0, chapel, 0);
   kit.box(0.5, 0.08, 0.08, '#e8dca7', 0, 4.95, 0, chapel, 0);
+  const scenery = createCityLandmarks(kit, root, lit);
   batchCity(kit, root);
   const labels: THREE.Sprite[] = [];
   const label = (text: string, x: number, z: number, width: number, y = 3) => {
@@ -473,6 +475,7 @@ export function createCityEnvironment(kit: RenderKit) {
   dummy.rotation.set(-Math.PI / 2, 0, -Math.atan(RIVER_SLOPE));
   return {
     root,
+    scenery,
     stops,
     labels,
     update(

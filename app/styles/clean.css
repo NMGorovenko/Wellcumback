@@ -334,3 +334,28 @@
     grid-row: 3;
   }
 }
+
+/* Optional compact rows; add to app globals beside clean-status. */
+.clean-support-status {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+.clean-support-status p {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.clean-support-status strong {
+  color: #d4d9bb;
+}
+.clean-support-status span {
+  color: #a6ad95;
+}
+.touch-key[aria-pressed='true'] {
+  border-color: #d8c078;
+  background: #494936;
+  color: #fff1c3;
+}

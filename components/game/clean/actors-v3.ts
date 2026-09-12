@@ -144,6 +144,23 @@ export function createNpc(kit: RenderKit, index: number) {
   };
 }
 
+/** Friends provide practical help in clean clothes. None uses the incident rig. */
+export function createSupporter(kit: RenderKit, index: number) {
+  const role = cleanCrew[index];
+  const person = people.find((person) => person.id === role.id)!;
+  const rig = createRig(kit, { ...person, uniform: false });
+  rig.root.name = `support-${role.id}`;
+  const name = makeLabel(kit, role.name, '#eef0d5', 1.25);
+  name.position.set(0, 2.29, 0);
+  rig.root.add(name);
+  const kitBag = new THREE.Group();
+  rig.rightHand.add(kitBag);
+  kit.box(0.23, 0.13, 0.18, '#e1e4d2', 0, -0.03, 0.025, kitBag, 0.025);
+  kit.box(0.035, 0.135, 0.185, '#849778', 0, -0.03, 0.025, kitBag, 0.01);
+  kitBag.visible = false;
+  return { rig, name, kitBag, previous: new THREE.Vector3() };
+}
+
 export function createCleaner(kit: RenderKit, index: number) {
   const color = ['#b3bea0', '#a4b5a1', '#b2b493'][index];
   const role = cleanCrew[index];

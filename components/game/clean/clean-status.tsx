@@ -1,5 +1,10 @@
 import { inputPrompt, type PadFrame } from '@/lib/game/input/gamepads';
-import { cleanCrew, type CleanState } from '@/lib/game/clean/engine';
+import { cleanSupportTask } from '@/lib/game/clean/support';
+import {
+  cleanCrew,
+  cleanFloorProgress,
+  type CleanState,
+} from '@/lib/game/clean/engine';
 
 export function CleanMeter({
   label,
@@ -129,6 +134,22 @@ export default function CleanStatus({
             : '«Это, блять, какой режим стирки?»'}
         </p>
       )}
+      {s.players > 1 && !['brief', 'clean', 'result'].includes(s.phase) && (
+        <div className="clean-support-status" aria-label="Помощь друзей">
+          {Array.from({ length: s.players - 1 }, (_, slot) => {
+            const actor = slot + 1,
+              task = cleanSupportTask(s, actor);
+            return (
+              <p key={actor}>
+                <strong>{cleanCrew[actor].name}</strong>
+                <span>
+                  {task ? task.destination : 'Всё готово. Сбор у прачечной.'}
+                </span>
+              </p>
+            );
+          })}
+        </div>
+      )}
       {s.phase === 'clean' && (
         <>
           {s.valve < 1 && (
@@ -136,7 +157,7 @@ export default function CleanStatus({
           )}
           <CleanMeter
             label="Чистый проход"
-            value={cleaned / Math.max(1, s.spots.length)}
+            value={cleanFloorProgress(s)}
             detail={`${cleaned} / ${s.spots.length}`}
           />
           <CleanMeter label="Корпус стиралки" value={s.machineClean} />

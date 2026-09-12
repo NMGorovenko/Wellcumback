@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ControlSettings } from '@/components/game/input/control-settings';
 import { useControlSettings } from '@/hooks/use-control-settings';
 import {
@@ -20,10 +20,12 @@ import {
 } from '@/components/ui/dialog';
 import {
   cleanCrew,
+  cleanBindings,
   freshClean,
   cleanTick,
   cleanAction,
 } from '@/lib/game/clean/engine';
+import { cleanPrompts } from '@/lib/game/clean/prompts';
 import type { Result } from '@/lib/game/types';
 import { gamepadHint, type PadFrame } from '@/lib/game/input/gamepads';
 import { useGameInspection } from '@/hooks/use-game-inspection';
@@ -45,6 +47,38 @@ import {
   cleanTitles,
 } from './clean-hud-data';
 
+function CleanTouchButton({
+  code,
+  label,
+  input,
+}: {
+  code: string;
+  label: string;
+  input: RefObject<Set<string>>;
+}) {
+  useEffect(() => {
+    const held = input.current;
+    return () => {
+      held.delete(code);
+    };
+  }, [input, code]);
+  return (
+    <button
+      className="touch-key"
+      aria-label={label}
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        input.current.add(code);
+      }}
+      onPointerUp={() => input.current.delete(code)}
+      onPointerCancel={() => input.current.delete(code)}
+      onLostPointerCapture={() => input.current.delete(code)}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function CleanGame({
   players,
   sound,
@@ -62,6 +96,7 @@ export default function CleanGame({
     keys = useRef(new Set<string>()),
     saved = useRef(false);
   const { settings } = useControlSettings();
+  const [touchActor, setTouchActor] = useState(0);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [view, setView] = useState(() => freshClean(players)),
     [cameraMode, setCameraMode] = useState<CleanCameraMode>('wide');
@@ -176,21 +211,12 @@ export default function CleanGame({
     players,
     onFinish,
   ]);
-  const hold = (key: string, title: string) => (
-    <button
-      key={key}
-      className="touch-key"
-      aria-label={title}
-      onPointerDown={(event) => {
-        event.currentTarget.setPointerCapture(event.pointerId);
-        keys.current.add(key);
-      }}
-      onPointerUp={() => keys.current.delete(key)}
-      onPointerCancel={() => keys.current.delete(key)}
-      onLostPointerCapture={() => keys.current.delete(key)}
-    >
-      {title}
-    </button>
+  const touchPrompts = cleanPrompts(view, touchActor);
+  const touchAction = touchPrompts.find(
+    (prompt) => prompt.control === 'action',
+  );
+  const touchSecondary = touchPrompts.find(
+    (prompt) => prompt.control === 'throw',
   );
   return (
     <section
@@ -281,9 +307,10 @@ export default function CleanGame({
               последствия.
             </p>
             <p className="quiet">
-              Первая часть — за безымянного солдата другой роты. На уборку
-              выходит Рома. Вдвоём к нему присоединяется Никита, втроём — Ярик.
-              В одиночку Рома справляется сам.
+              Первый игрок начинает за безымянного солдата другой роты. Никита и
+              Ярик помогают с самого начала: готовят кабинку, форму, стиралку и
+              ведро. На уборку вместо солдата выходит Рома. В одиночку Рома
+              справляется сам.
             </p>
             <button className="play-button" onClick={action}>
               Заступить на смену <ArrowRight size={16} />
@@ -339,26 +366,80 @@ export default function CleanGame({
             пауза.
           </p>
           <p>
-            До уборки первый геймпад управляет солдатом. При игре вдвоём или
-            втроём один геймпад после переодевания переходит Никите, клавиатура
-            остаётся у Ромы. Отпусти кнопки при смене ролей.
+            Первый игрок — солдат, затем Рома. Второй — Никита, третий — Ярик на
+            протяжении всей истории. Друзья готовят вещи заранее и помогают со
+            стиралкой. Подготовка ускоряет работу, но без неё тоже можно пройти.
           </p>
-          <details className="touch-controls">
-            <summary>Кнопки на экране</summary>
-            <div className="touch-row">
-              {hold('KeyW', '↑')}
-              {hold('KeyA', '←')}
-              {hold('KeyS', '↓')}
-              {hold('KeyD', '→')}
-              {hold('KeyQ', 'Q · сдержаться')}
-              {hold('KeyE', 'E · действие')}
-            </div>
-          </details>
+          {active && (
+            <details className="touch-controls">
+              <summary>Кнопки на экране</summary>
+              {players > 1 && (
+                <div className="touch-row" aria-label="Кем управлять на экране">
+                  {Array.from({ length: players }, (_, actor) => (
+                    <button
+                      key={actor}
+                      className="touch-key"
+                      aria-pressed={touchActor === actor}
+                      onClick={() => {
+                        keys.current.clear();
+                        setTouchActor(actor);
+                      }}
+                    >
+                      {actor === 0 && !['clean', 'result'].includes(view.phase)
+                        ? 'Солдат'
+                        : cleanCrew[actor].name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="touch-row">
+                <CleanTouchButton
+                  input={keys}
+                  code={cleanBindings[touchActor][2]}
+                  label="↑"
+                />
+                <CleanTouchButton
+                  input={keys}
+                  code={cleanBindings[touchActor][0]}
+                  label="←"
+                />
+                <CleanTouchButton
+                  input={keys}
+                  code={cleanBindings[touchActor][3]}
+                  label="↓"
+                />
+                <CleanTouchButton
+                  input={keys}
+                  code={cleanBindings[touchActor][1]}
+                  label="→"
+                />
+                {touchSecondary &&
+                  (touchSecondary.mode === 'release' ? (
+                    <span className="tiny-label">
+                      Отпусти Q · {touchSecondary.text}
+                    </span>
+                  ) : (
+                    <CleanTouchButton
+                      input={keys}
+                      code="KeyQ"
+                      label={`Q · ${touchSecondary.text}`}
+                    />
+                  ))}
+                {touchAction && (
+                  <CleanTouchButton
+                    input={keys}
+                    code={cleanBindings[touchActor][4]}
+                    label={touchAction.text}
+                  />
+                )}
+              </div>
+            </details>
+          )}
         </details>
       </aside>
       <footer className="game-footer">
         <div className="footer-message" aria-live="polite">
-          <span>РАДИООБМЕН</span>
+          <span>В КАЗАРМЕ</span>
           <p>{view.message}</p>
         </div>
       </footer>

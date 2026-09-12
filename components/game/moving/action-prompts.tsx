@@ -38,7 +38,7 @@ export function MovingActionPrompts({
           intent.kind,
         )
           ? 'move'
-          : 'action';
+          : (intent.control ?? 'action');
         const prompt = (kind: InputControl) =>
           gamepadPrompt(pads, i, kind) || keyboardPrompt(i, kind);
         const canOpen =
@@ -62,7 +62,10 @@ export function MovingActionPrompts({
                 {movingCrew[i].name}
                 {automated ? ' · сама' : ` · ${i + 1}`}
               </strong>
-              <span>{Math.round(actor.stamina)}% сил</span>
+              <span>
+                {actor.activity === 'rest' ? 'Отдых · ' : ''}
+                {Math.round(actor.stamina)}% сил
+              </span>
             </div>
             <progress
               aria-label={`Силы: ${movingCrew[i].name}`}
@@ -73,7 +76,13 @@ export function MovingActionPrompts({
               <span className={`context-cue${actor.working ? ' is-held' : ''}`}>
                 {!automated &&
                   !travellingForTask &&
-                  actor.activity !== 'toilet' && <kbd>{prompt(control)}</kbd>}
+                  actor.activity !== 'toilet' && (
+                    <kbd>
+                      {intent.release
+                        ? `${prompt('action')} / ${prompt('secondary')}`
+                        : prompt(control)}
+                    </kbd>
+                  )}
                 <span>
                   {intent.hold && !automated && <small>держи</small>}
                   {intent.label}
@@ -99,6 +108,32 @@ export function MovingActionPrompts({
                 value={actor.activityProgress}
               />
             )}
+            {actor.activity === 'rest' && (
+              <small>
+                {actor.stamina < 84
+                  ? `Ещё около ${Math.ceil((84 - actor.stamina) / 3.6)} с передышки`
+                  : 'Можно возвращаться к сумкам'}
+              </small>
+            )}
+            {actor.packingBag !== null &&
+              (() => {
+                const packing = state.bags.find(
+                  (b) => b.id === actor.packingBag,
+                );
+                const item = state.items.find(
+                  (item) => item.id === actor.heldItem,
+                );
+                return packing && item ? (
+                  <small>
+                    {packing.weight}/{packing.capacity} кг · после вещи свободно{' '}
+                    {Math.max(
+                      0,
+                      packing.capacity - packing.weight - item.weight,
+                    )}{' '}
+                    кг
+                  </small>
+                ) : null;
+              })()}
             {bag && actor.bagId !== null && (
               <small>
                 {bag.weight} кг ·{' '}

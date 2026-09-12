@@ -1,4 +1,5 @@
 'use client';
+import { movingLaptopCue } from '@/lib/game/moving/incidents';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -234,10 +235,12 @@ export default function MovingGame({
         {view.phase === 'moving' && view.alert.active && !view.paused && (
           <output className="moving-alert">
             <span className="moving-alert-dot" />
-            <strong>Прод зовёт</strong>
+            <strong>{movingLaptopCue(view).title}</strong>
             <span>
               {view.actors[0].activity === 'laptop'
-                ? 'Ярик чинит инцидент'
+                ? view.alert.awaitingRelease
+                  ? 'Шаг готов · отпусти кнопки'
+                  : `Шаг ${view.alert.operation + 1} из 2`
                 : 'Ярику нужен ноутбук'}
             </span>
             <progress

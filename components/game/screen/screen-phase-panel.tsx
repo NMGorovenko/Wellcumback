@@ -81,7 +81,9 @@ export function ScreenPhasePanel({
           {view.frameStage === 'align' ? (
             <>
               <p className="hud-instruction">
-                Два маркера в центре. Сдвиг — A/D, поворот — W/S.
+                {players > 1
+                  ? 'Никита двигает профиль A/D. Ярик поворачивает уголок ↑/↓.'
+                  : 'Два маркера в центре. Сдвиг — A/D, поворот — W/S.'}
               </p>
               <Meter
                 label="Сдвиг профиля"
@@ -138,8 +140,34 @@ export function ScreenPhasePanel({
           )}
           {players > 1 && (
             <div className="hud-helper">
-              {hold('Enter', 'Ярик · держать Enter')}
-              {players === 3 && hold('KeyO', 'Рома · проверить угол O')}
+              {view.frameStage === 'align' && (
+                <div className="hud-button-grid">
+                  {hold('ArrowUp', 'Ярик · уголок ↑')}
+                  {hold('ArrowDown', 'Ярик · уголок ↓')}
+                </div>
+              )}
+              {hold(
+                'Enter',
+                view.frameStage === 'align'
+                  ? 'Ярик · придержать'
+                  : 'Ярик · щёлкнуть',
+              )}
+              {players === 3 && (
+                <>
+                  {view.frameStage === 'align' && (
+                    <div className="hud-button-grid">
+                      {hold('KeyJ', 'Рома · направить ←')}
+                      {hold('KeyL', 'Рома · направить →')}
+                    </div>
+                  )}
+                  {hold(
+                    'KeyO',
+                    view.frameStage === 'align'
+                      ? 'Рома · придержать'
+                      : 'Рома · щёлкнуть',
+                  )}
+                </>
+              )}
             </div>
           )}
           {players === 1 && (
@@ -398,7 +426,19 @@ export function ScreenPhasePanel({
               />
             </>
           )}
-          {players === 3 && hold('KeyO', 'Рома · O страховать вместе')}
+          {players === 3 && (
+            <>
+              <p className="hud-note">
+                Рома смотрит со стороны: J/L подсказывает наклон. Верная
+                подсказка усиливает корректирующее движение того, кто держит
+                равновесие.
+              </p>
+              <div className="hud-button-grid">
+                {hold('KeyJ', 'Рома · подскажи ←')}
+                {hold('KeyL', 'Рома · подскажи →')}
+              </div>
+            </>
+          )}
           <p className="hud-note">
             При падении готовые отверстия сохраняются. Заберись и получи дрель с
             пылесосом заново.
@@ -475,7 +515,15 @@ export function ScreenPhasePanel({
               твоим E.
             </p>
           )}
-          {players === 3 && hold('KeyO', 'Рома · придержать экран O')}
+          {players === 3 && (
+            <>
+              <div className="hud-button-grid">
+                {hold('KeyJ', 'Рома · направить ←')}
+                {hold('KeyL', 'Рома · направить →')}
+              </div>
+              {hold('KeyO', 'Рома · придержать экран')}
+            </>
+          )}
         </>
       );
     case 'level':
@@ -513,6 +561,20 @@ export function ScreenPhasePanel({
           >
             <Check size={16} /> E · Вот теперь ровно
           </button>
+          {players > 1 && (
+            <div className="hud-helper">
+              <p className="hud-note">
+                Каждый может поправить уровень своими ←/→ и проверить своей
+                кнопкой действия.
+              </p>
+              <div className="hud-button-grid">
+                {hold('ArrowLeft', 'Ярик · подвес ←')}
+                {hold('ArrowRight', 'Ярик · подвес →')}
+                {players === 3 && hold('KeyJ', 'Рома · поправка ←')}
+                {players === 3 && hold('KeyL', 'Рома · поправка →')}
+              </div>
+            </div>
+          )}
           <p className="hud-note">
             «Слева пятнадцать. Справа пятнадцать. А потолок — со своим мнением».
           </p>

@@ -1,174 +1,182 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Copy, Link2, Radio, Unplug } from 'lucide-react';
+import { Copy, Radio, Unplug } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { useNetworkSession } from '@/hooks/use-network-session';
-import {
-  acceptNetworkAnswer,
-  createNetworkInvite,
-  disconnectNetwork,
-  joinNetworkInvite,
-  passNetworkWheel,
-} from '@/lib/game/network/session';
+import { roomCommand } from '@/lib/game/network/room-game';
+import { useRoom } from '@/hooks/use-room';
+import { leaveRoom, openRoom } from '@/lib/game/network/room-client';
 import { acquireControlInputBlock } from '@/lib/game/input/settings-store';
-const statuses = {
-  idle: 'Поедем вместе?',
-  gathering: 'Готовим код…',
-  waiting: 'Ждём друга',
-  connecting: 'Соединяемся…',
-  connected: 'Друг на связи',
-  closed: 'Поездка завершена',
-  failed: 'Нет соединения',
-};
 export function NetworkDialog({
   open,
   onOpenChange,
   onDrive,
 }: {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (value: boolean) => void;
   onDrive: () => void;
 }) {
-  const session = useNetworkSession(),
+  const room = useRoom();
+  const [name, setName] = useState('Друг'),
     [code, setCode] = useState(''),
+    [capacity, setCapacity] = useState<2 | 3>(2),
     [copied, setCopied] = useState(false);
   useEffect(() => {
     if (open) return acquireControlInputBlock();
   }, [open]);
-  const busy =
-    session.status === 'gathering' || session.status === 'connecting';
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(session.invite);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  };
+  const busy = room.status === 'connecting';
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="help-dialog network-dialog">
-        <span className="tiny-label">СОВМЕСТНАЯ ПОЕЗДКА · ЭКСПЕРИМЕНТ</span>
-        <DialogTitle>{statuses[session.status]}</DialogTitle>
+        <span className="tiny-label">ОНЛАЙН · ПЕРВАЯ СОВМЕСТНАЯ ИСТОРИЯ</span>
+        <DialogTitle>
+          {room.code ? 'Компания собирается' : 'Позови друга'}
+        </DialogTitle>
         <DialogDescription>
-          Два компьютера, один Mustang. Передавайте руль друг другу и катайтесь
-          по общей карте.
+          Ездите по городу и собирайте экран с разных компьютеров. У каждого
+          свои WASD + E или геймпад.
         </DialogDescription>
-        <p className="quiet">
-          В этом первом сетевом этапе доступны поездка и руль. Мини-игры пока
-          запускаются локально. Оба откройте одну версию игры.
-        </p>
-        {session.status !== 'connected' && (
+        {!room.code ? (
           <>
+            <label className="network-label" htmlFor="room-name">
+              Как тебя подписать
+            </label>
+            <input
+              id="room-name"
+              maxLength={24}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
             <div className="network-actions">
+              <label>
+                Мест{' '}
+                <select
+                  aria-label="Мест в комнате"
+                  value={capacity}
+                  onChange={(e) => setCapacity(Number(e.target.value) as 2 | 3)}
+                >
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                </select>
+              </label>
               <button
-                className="secondary-button"
+                className="play-button"
                 disabled={busy}
-                onClick={() => {
-                  setCopied(false);
-                  setCode('');
-                  void createNetworkInvite();
-                }}
+                onClick={() => void openRoom(name, capacity)}
               >
-                <Link2 size={15} /> Создать приглашение
+                <Radio size={15} />
+                Создать комнату
               </button>
             </div>
-            <label className="network-label" htmlFor="peer-code">
-              {session.role === 'host' ? 'Ответ друга' : 'Приглашение от друга'}
+            <label className="network-label" htmlFor="room-code">
+              Код от друга
             </label>
-            <textarea
-              id="peer-code"
+            <input
+              id="room-code"
+              className="room-code"
               value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="Вставь полный код WCB2…"
+              maxLength={8}
+              autoCapitalize="characters"
+              autoComplete="off"
               spellCheck={false}
+              onChange={(e) =>
+                setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+              }
+              placeholder="8 символов"
             />
             <button
-              className="play-button"
-              disabled={!code.trim() || busy}
-              onClick={() => {
-                setCopied(false);
-                if (session.role === 'host') void acceptNetworkAnswer(code);
-                else void joinNetworkInvite(code);
-              }}
+              className="secondary-button"
+              disabled={busy || code.length !== 8}
+              onClick={() => void openRoom(name, capacity, code)}
             >
-              {session.role === 'host'
-                ? 'Принять ответ'
-                : 'Подключиться и получить ответ'}
+              Войти по коду
             </button>
-            {session.invite && (
-              <>
-                <label className="network-label" htmlFor="own-peer-code">
-                  {session.role === 'host'
-                    ? '1. Отправь приглашение другу, затем вставь его ответ выше'
-                    : '2. Отправь этот ответ водителю'}
-                </label>
-                <textarea
-                  id="own-peer-code"
-                  readOnly
-                  value={session.invite}
-                  aria-label="Код для друга"
-                  onFocus={(e) => e.target.select()}
-                />
-                <button
-                  className="secondary-button"
-                  onClick={() => void copy()}
-                >
-                  <Copy size={15} />
-                  {copied ? 'Скопировано' : 'Скопировать код'}
-                </button>
-              </>
-            )}
           </>
-        )}
-        {session.status === 'connected' && (
+        ) : (
           <>
-            <p>
-              <Radio size={15} /> За рулём:{' '}
-              {session.driver === session.role ? 'ты' : 'друг'}. Пассажир может
-              подать сигнал кнопкой броска / Q.
+            <div className="room-invite">
+              <strong>{room.code}</strong>
+              <button
+                aria-label="Скопировать код комнаты"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(room.code);
+                    setCopied(true);
+                  } catch {
+                    setCopied(false);
+                  }
+                }}
+              >
+                <Copy size={18} />
+                {copied ? 'Скопировано' : 'Копировать'}
+              </button>
+            </div>
+            <div className="room-members">
+              {room.roster.map((member) => (
+                <div key={member.id}>
+                  <i className={member.connected ? 'connected' : ''} />
+                  <strong>
+                    {member.name}
+                    {member.slot === room.slot ? ' · ты' : ''}
+                  </strong>
+                  <span>
+                    {['Никита', 'Ярик', 'Рома'][member.slot]}
+                    {member.slot === 0 ? ' · ведущий' : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="quiet">
+              На время короткого разрыва история встаёт на паузу. Перезагрузка
+              этой вкладки возвращает тебя на своё место; ведущий затем
+              продолжает игру.
             </p>
-            {session.role === 'host' && (
-              <button className="secondary-button" onClick={passNetworkWheel}>
-                Передать руль {session.driver === 'host' ? 'другу' : 'себе'}
+            {room.slot === 0 && room.world?.scene === 'city' && (
+              <button
+                className="play-button"
+                disabled={
+                  room.roster.length < 2 ||
+                  room.roster.some((p) => !p.connected) ||
+                  room.frozen
+                }
+                onClick={() => {
+                  roomCommand({ kind: 'start-screen' });
+                  onOpenChange(false);
+                }}
+              >
+                Собрать экран вместе
               </button>
             )}
             <button
               className="play-button"
+              disabled={room.status === 'failed'}
               onClick={() => {
                 onDrive();
                 onOpenChange(false);
               }}
             >
-              На общую карту
+              Вернуться в игру
+            </button>
+            <button
+              className="secondary-button"
+              onClick={() => void leaveRoom()}
+            >
+              <Unplug size={15} />
+              {room.slot === 0 ? 'Закрыть комнату' : 'Выйти из комнаты'}
             </button>
           </>
         )}
-        {session.message && (
-          <output className="network-message">{session.message}</output>
+        {room.message && (
+          <output className="network-message">{room.message}</output>
         )}
         <p className="quiet">
-          Прямое соединение может не пройти через некоторые домашние или
-          мобильные сети. Автоматические комнаты и сервер для таких соединений —
-          следующий этап.
+          Комнаты работают в веб-версии. Казарма и переезд пока доступны
+          локально. Всем участникам нужен доступ к одному сайту игры.
         </p>
-        {session.role && (
-          <button
-            className="secondary-button"
-            onClick={() => {
-              disconnectNetwork();
-              setCode('');
-              setCopied(false);
-            }}
-          >
-            <Unplug size={15} /> Отключиться
-          </button>
-        )}
       </DialogContent>
     </Dialog>
   );

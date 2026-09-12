@@ -7,6 +7,8 @@ import {
   type MovingState,
 } from '@/lib/game/moving/engine';
 import { movingOverview, movingStations } from '@/lib/game/moving/layout';
+import { movingIncident } from '@/lib/game/moving/incidents';
+import { movingLoadFeel, movingGripSettle } from '@/lib/game/moving/load-feel';
 import { getPersonPreset } from '@/lib/game/presets';
 import { getControlSettings } from '@/lib/game/input/settings-store';
 import { RenderKit } from '../world/render-kit';
@@ -92,10 +94,15 @@ export default function MovingScene({
     const phones = movingCrew.map(() => createMovingPhone(kit));
     const itemProps = new Map<number, ReturnType<typeof createMovingItem>>();
     const bags = new Map<number, ReturnType<typeof createMovingBag>>();
+    const bagLiftTransitions = new Map<
+      number,
+      { carried: boolean; since: number }
+    >();
     const activityTransitions = new Map<
       number,
       {
         activity: string;
+        loadKey: string;
         from: THREE.Vector3;
         since: number;
         leavingSeat: boolean;
@@ -167,10 +174,16 @@ export default function MovingScene({
         phones[i].visible = false;
         if (!actor) return;
         const activity = actor.activity;
+        const loadKey = `${actor.bagId ?? '-'}:${actor.heldItem ?? '-'}`;
         let transition = activityTransitions.get(i);
-        if (!transition || transition.activity !== activity) {
+        if (
+          !transition ||
+          transition.activity !== activity ||
+          transition.loadKey !== loadKey
+        ) {
           transition = {
             activity,
+            loadKey,
             leavingSeat:
               transition?.activity === 'rest' ||
               transition?.activity === 'laptop',
@@ -237,7 +250,18 @@ export default function MovingScene({
             settle,
           );
         }
+        const feel = movingLoadFeel(s, i);
         rig.update(time, pose, 0.3 + (1 - actor.stamina / 100) * 0.65);
+        // The head and arms share this existing upper-body group. Lean it while
+        // leaving the legs and collision origin on their physical floor points.
+        const upperBody = rig.head.parent;
+        if (upperBody)
+          upperBody.rotation.set(
+            activity === 'free' || activity === 'packing' ? feel.lean : 0,
+            0,
+            activity === 'free' ? feel.sway : 0,
+          );
+        if (feel.load > 0 && activity === 'free') rig.setCrouch(feel.crouch);
         if (seated && settle < 1) rig.setCrouch(0.34 * settle);
         if (!seated && transition.leavingSeat && settle < 1)
           rig.setCrouch(0.34 * (1 - settle));
@@ -294,21 +318,31 @@ export default function MovingScene({
           1 + (bag.weight / bag.capacity) * 0.035,
         );
         const carried = bag.status === 'carried';
+        let liftTransition = bagLiftTransitions.get(bag.id);
+        if (!liftTransition || liftTransition.carried !== carried) {
+          liftTransition = { carried, since: time };
+          bagLiftTransitions.set(bag.id, liftTransition);
+        }
         const point = carried
           ? movingCarryPoint(bag.carriers.map((id) => s.actors[id]))
           : bag;
-        const moving = bag.carriers.some(
-          (id) => Math.hypot(s.actors[id].vx, s.actors[id].vy) > 0.001,
-        );
+        const feel =
+          carried && bag.carriers.length
+            ? movingLoadFeel(s, bag.carriers[0])
+            : null;
+        const liftSettle = carried
+          ? movingGripSettle(time - liftTransition.since)
+          : 1;
         prop.root.position.copy(
           world(
             point.x,
             point.y,
-            carried ? 0.46 + (moving ? Math.sin(time * 8) * 0.018 : 0) : 0.015,
+            carried && feel
+              ? 0.015 + (feel.carryHeight + feel.bob - 0.015) * liftSettle
+              : 0.015,
           ),
         );
-        prop.root.rotation.z =
-          carried && moving ? Math.sin(time * 8) * 0.025 : 0;
+        prop.root.rotation.z = feel ? feel.sway * 1.3 * liftSettle : 0;
         prop.flaps.forEach((flap, j) => {
           flap.rotation.z =
             (j ? -1 : 1) *
@@ -328,6 +362,9 @@ export default function MovingScene({
         prop.root.updateWorldMatrix(true, true);
         bag.carriers.forEach((id, carrierIndex) => {
           const rig = rigs[id];
+          const gripSettle = movingGripSettle(
+            time - (activityTransitions.get(id)?.since ?? time),
+          );
           for (const side of ['left', 'right'] as const) {
             target.set(
               bag.carriers.length > 1
@@ -341,6 +378,12 @@ export default function MovingScene({
               side === 'left' ? -0.31 : 0.31,
             );
             prop.body.localToWorld(target);
+            if (gripSettle < 1) {
+              (side === 'left' ? rig.leftHand : rig.rightHand).getWorldPosition(
+                hand,
+              );
+              target.lerpVectors(hand, target, gripSettle);
+            }
             rig.reach(side, target);
           }
         });
@@ -401,6 +444,11 @@ export default function MovingScene({
                   Math.cos(actor.facing) * 0.34,
                 ),
               );
+            const settleGrip = movingGripSettle(
+              time - (activityTransitions.get(item.carrier)?.since ?? time),
+            );
+            rig.rightHand.getWorldPosition(hand);
+            target.lerpVectors(hand, target, settleGrip);
             rig.reach('right', target);
             handOffset
               .copy(target)
@@ -411,6 +459,8 @@ export default function MovingScene({
                   Math.sin(actor.facing) * 0.13,
                 ),
               );
+            rig.leftHand.getWorldPosition(hand);
+            handOffset.lerpVectors(hand, handOffset, settleGrip);
             rig.reach('left', handOffset);
           }
           rig.rightHand.getWorldPosition(hand);
@@ -431,7 +481,8 @@ export default function MovingScene({
             target.set(0, 0.42, 0);
             bagProp.body.localToWorld(target);
             hand.lerpVectors(forward, target, progress);
-            hand.y += Math.sin(progress * Math.PI) * 0.18;
+            hand.y +=
+              Math.sin(progress * Math.PI) * (0.12 + item.weight * 0.012);
             rig.reach('right', hand);
             rig.reach(
               'left',
@@ -449,6 +500,11 @@ export default function MovingScene({
         !!s.alert?.active,
         s.alert?.progress ?? 0,
         s.actors.some((a) => a.activity === 'toilet'),
+        {
+          title: movingIncident(s.alert.count).title,
+          operation: s.alert.operation,
+          awaitingRelease: s.alert.awaitingRelease,
+        },
       );
       const speakerIndex = movingCrew.findIndex(
         (person) => person.name === s.speaker,

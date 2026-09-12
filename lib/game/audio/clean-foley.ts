@@ -17,6 +17,12 @@ export class CleanFoley {
     step: 0,
     wet: 0,
     scrub: 0,
+    cleanSound: 0,
+    completed: 0,
+    valve: 0,
+    cleaned: 0,
+    machineClean: 0,
+    full: false,
   };
   private sources = new Set<AudioScheduledSourceNode>();
   constructor() {
@@ -136,6 +142,11 @@ export class CleanFoley {
       a.activity = s.activity[0];
       a.trace = s.spots.length;
       a.hits = s.rhythm.hits;
+      a.completed = s.support.completed;
+      a.valve = s.valve;
+      a.cleaned = s.spots.filter((spot) => spot.progress >= 1).length;
+      a.machineClean = s.machineClean;
+      a.full = s.dirt.some((dirt) => dirt >= 0.98 - 1e-8);
       return;
     }
     if (s.phase !== a.phase) {
@@ -172,7 +183,20 @@ export class CleanFoley {
       else if (machine) this.hiss(0.4, 700, 0.13);
       a.trace = s.spots.length;
     }
+    const cleaned = s.spots.filter((spot) => spot.progress >= 1).length;
+    const full = s.dirt.some((dirt) => dirt >= 0.98 - 1e-8);
     if (running) {
+      if (s.support.completed > a.completed || (s.valve === 1 && a.valve < 1)) {
+        this.tone(520, 780, 0.13, 0.035);
+        this.tone(780, 780, 0.1, 0.025, 'sine', 0.12);
+      }
+      if (s.machineClean === 1 && a.machineClean < 1)
+        this.tone(660, 1100, 0.24, 0.035);
+      if (cleaned > a.cleaned && s.elapsed - a.cleanSound > 0.35) {
+        this.tone(680, 930, 0.09, 0.025);
+        a.cleanSound = s.elapsed;
+      }
+      if (full && !a.full) this.tone(240, 170, 0.13, 0.025, 'triangle');
       const moved = Math.hypot(s.x[0] - a.x, s.y[0] - a.y);
       if (moved > 2 && s.elapsed - a.step > 0.33) {
         this.hiss(0.055, s.soiled ? 440 : 180, 0.13);
@@ -199,6 +223,11 @@ export class CleanFoley {
         this.hiss(0.3, 450, 0.13);
       }
     }
+    a.completed = s.support.completed;
+    a.valve = s.valve;
+    a.cleaned = cleaned;
+    a.machineClean = s.machineClean;
+    a.full = full;
     a.x = s.x[0];
     a.y = s.y[0];
     a.activity = s.activity[0];

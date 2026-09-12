@@ -12,6 +12,7 @@ import { RenderKit } from '../components/game/world/render-kit.ts';
 import {
   createCleaner,
   createSoldier,
+  createSupporter,
 } from '../components/game/clean/actors-v3.ts';
 
 for (const players of [1, 2, 3]) {
@@ -91,6 +92,16 @@ void test('cleaner slots load the right portraits; the anonymous incident soldie
       '/characters/faces/nikita.jpg',
       '/characters/faces/yaroslav.jpg',
     ]);
+    const support = [1, 2].map((index) => createSupporter(k, index));
+    assert.deepEqual(
+      support.map((actor) => actor.rig.root.name),
+      ['support-nikita', 'support-yaroslav'],
+    );
+    assert.deepEqual(loaded.slice(3), [
+      '/characters/faces/nikita.jpg',
+      '/characters/faces/yaroslav.jpg',
+    ]);
+    assert.ok(support.every((actor) => actor.kitBag.visible === false));
     for (const name of ['Рома', 'Никита', 'Ярик'])
       assert.ok(labels.includes(name));
   } finally {

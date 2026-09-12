@@ -29,14 +29,17 @@ function textSurface(
   canvas.width = 512;
   canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, 512, 256);
-  ctx.fillStyle = color;
-  ctx.font = '600 40px system-ui';
-  ctx.textAlign = 'center';
-  text
-    .split('\n')
-    .forEach((line, i) => ctx.fillText(line, 256, 102 + i * 56, 480));
+  const paint = (value: string) => {
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, 512, 256);
+    ctx.fillStyle = color;
+    ctx.font = '600 40px system-ui';
+    ctx.textAlign = 'center';
+    value
+      .split('\n')
+      .forEach((line, i) => ctx.fillText(line, 256, 102 + i * 56, 480));
+  };
+  paint(text);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   kit.textures.add(texture);
@@ -48,7 +51,15 @@ function textSurface(
     new THREE.Group(),
   );
   mesh.castShadow = false;
-  return mesh;
+  let previous = text;
+  return Object.assign(mesh, {
+    setText(value: string) {
+      if (value === previous) return;
+      previous = value;
+      paint(value);
+      texture.needsUpdate = true;
+    },
+  });
 }
 
 function plant(
@@ -733,7 +744,7 @@ export function createMovingStudio(kit: RenderKit) {
     .copy(laptopPosition)
     .add(new THREE.Vector3(0.182, 0.24, 0));
   kit.scene.add(laptopScreen);
-  const alert = makeLabel(kit, 'НОУТБУК · ПИСЬМО!', '#ffd783', 1.65);
+  const alert = makeLabel(kit, 'НОУТБУК · РАБОТА', '#ffd783', 1.65);
   alert.position.copy(laptopPosition).y = 1.75;
   kit.scene.add(alert);
   const progress = kit.box(
@@ -757,7 +768,17 @@ export function createMovingStudio(kit: RenderKit) {
       alertActive: boolean,
       alertProgress: number,
       toiletActive: boolean,
+      laptopStatus?: {
+        title: string;
+        operation: number;
+        awaitingRelease: boolean;
+      },
     ) {
+      laptopScreen.setText(
+        alertActive && laptopStatus
+          ? `${laptopStatus.title}\n${laptopStatus.awaitingRelease ? 'ОТПУСТИ КНОПКИ' : laptopStatus.operation === 0 ? '1 · ПРОВЕРКА' : '2 · ИСПРАВЛЕНИЕ'}`
+          : 'ПРОЕКТ\nвсё почти готово',
+      );
       alert.visible = alertActive;
       alert.position.y = 1.75 + (alertActive ? Math.sin(time * 4) * 0.03 : 0);
       progress.visible = alertActive;

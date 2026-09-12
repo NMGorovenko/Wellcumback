@@ -84,8 +84,16 @@ export function screenPromptInput(
   const held =
     control === 'horizontal'
       ? heldKeys.includes(binding.left) || heldKeys.includes(binding.right)
-      : heldKeys.includes(code) ||
-        (player === 0 && control === 'action' && heldKeys.includes('Space'));
+      : control === 'vertical'
+        ? heldKeys.includes(binding.up) || heldKeys.includes(binding.down)
+        : control === 'move'
+          ? [binding.up, binding.down, binding.left, binding.right].some(
+              (key) => heldKeys.includes(key),
+            )
+          : heldKeys.includes(code) ||
+            (player === 0 &&
+              control === 'action' &&
+              heldKeys.includes('Space'));
   return {
     label:
       gamepadPrompt(pads, player, control) || keyboardPrompt(player, control),
@@ -117,9 +125,21 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
                 ? 'подаёт прибор'
                 : 'страхует и подаёт',
           'на стульях',
-          'наблюдает',
+          'подсказывает наклон',
         ][worker]
-      : ['левый край', 'правый край', 'на подхвате'][worker];
+      : s.phase === 'frame'
+        ? [
+            'совмещает профиль',
+            'поворачивает уголок',
+            'направляет и защёлкивает',
+          ][worker]
+        : s.phase === 'tension'
+          ? worker === s.tool.owner
+            ? 'с отвёрткой'
+            : 'готовит следующий край'
+          : s.phase === 'level'
+            ? ['левый подвес', 'правый подвес', 'сверяет уровень'][worker]
+            : ['левый край', 'правый край', 'направляет экран'][worker];
     const row: WorkerPrompt = { worker, player, role, prompts: [] };
     const cue = (
       control: InputControl,
@@ -128,47 +148,117 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
       details?: Pick<ScreenPrompt, 'direction' | 'emphasis' | 'satisfied'>,
     ) => row.prompts.push({ control, text, mode, ...details });
     if (player === null) return row;
+    const actionHeld =
+      s.heldKeys.includes(PLAYER_BINDINGS[player].action) ||
+      (player === 0 && s.heldKeys.includes('Space'));
     if (s.phase === 'frame') {
-      if (worker === 0) {
-        if (s.frameStage === 'align') {
-          cue('horizontal', 'совместить');
-          cue('vertical', 'повернуть');
-          cue('action', 'вставить', 'tap');
-        } else cue('action', 'щёлкнуть в зелёном', 'tap');
-      } else cue('action', 'держать профиль', 'hold');
+      if (s.frameStage === 'lock')
+        cue(
+          'action',
+          actionHeld ? 'затем щёлкни в зелёном' : 'щёлкнуть в зелёном',
+          actionHeld ? 'release' : 'tap',
+        );
+      else if (worker === 1) {
+        if (Math.abs(s.frameTwist) >= 0.1)
+          cue('vertical', s.frameTwist < 0 ? 'поверни вверх' : 'поверни вниз');
+        else cue('action', 'угол ровно · придержать', 'hold');
+      } else if (Math.abs(s.frameFit) >= 0.1)
+        cue('horizontal', 'профиль к центру', 'hold', {
+          direction: s.frameFit < 0 ? 'right' : 'left',
+        });
+      else if (worker === 0 && Math.abs(s.frameTwist) >= 0.1)
+        cue('vertical', solo ? 'повернуть уголок' : 'помочь Ярику повернуть');
+      else if (worker === 0) cue('action', 'вставить в паз', 'tap');
+      else cue('action', 'придержать до щелчка', 'hold');
     } else if (s.phase === 'rods') {
       const w = s.workers[worker];
-      if (s.rodJam[w.side] > 0) cue('action', 'освободить спицу', 'release');
-      else if (s.heldKeys.includes(['KeyE', 'Enter', 'KeyO'][player])) {
+      const moving = Math.abs(w.route - w.targetSide) >= 0.025;
+      const next = s.rods.indexOf(Math.min(...s.rods));
+      const across = (w.side + 2) % 4;
+      const supporting =
+        s.rods[w.side] === 1 &&
+        s.workers.some(
+          (other, p) =>
+            p !== worker &&
+            p < s.players &&
+            other.side === across &&
+            other.animation === 'feed',
+        );
+      if (moving) cue('move', 'к выбранному краю');
+      else if (s.rodJam[w.side] > 0)
+        cue('action', 'освободить спицу', 'release');
+      else if (supporting) cue('action', 'поддержать край напротив', 'hold');
+      else if (s.rods[w.side] === 1)
+        cue(
+          'move',
+          `дальше: ${['дальний', 'правый', 'ближний', 'левый'][next]} край`,
+        );
+      else if (actionHeld) {
+        const error = s.rodTarget[w.side] - s.rodAlignment[w.side];
         cue('action', 'вставлять спицу', 'hold');
-        cue('horizontal', 'в зелёную зону');
-      } else {
-        cue('move', 'обойти полотно');
-        cue('action', 'вставлять спицу', 'hold');
-      }
+        if (Math.abs(error) >= 0.15)
+          cue('horizontal', 'направь спицу', 'hold', {
+            direction: error > 0 ? 'right' : 'left',
+            emphasis: s.rodPressure[w.side] > 0.6 ? 'danger' : 'correct',
+          });
+      } else cue('action', 'вставлять спицу', 'hold');
     } else if (s.phase === 'tension') {
-      const t = s.tool;
-      if (t.status === 'flight' && t.target === worker)
-        cue('action', 'ЛОВИ!', 'hold');
-      else if (t.status === 'ground') {
-        cue('move', 'к отвёртке');
-        cue('action', 'подобрать', 'tap');
+      const t = s.tool,
+        w = s.workers[worker];
+      const moving = Math.abs(w.route - w.targetSide) >= 0.025;
+      const sideName = (side: number) =>
+        ['дальний', 'правый', 'ближний', 'левый'][side];
+      if (t.status === 'flight') {
+        if (t.target === worker) cue('action', 'ЛОВИ!', 'hold');
+      } else if (t.status === 'ground') {
+        if (w.side !== t.groundSide || moving)
+          cue('move', `к отвёртке: ${sideName(t.groundSide)} край`);
+        else cue('action', 'подобрать отвёртку', 'tap');
       } else if (t.owner === worker && (t.status === 'charging' || t.needsPass))
         cue(
           'throw',
-          t.status === 'charging' ? 'отпустить в зелёном' : 'зарядить бросок',
+          t.status === 'charging'
+            ? 'отпустить в зелёном'
+            : 'передать готовому напарнику',
           t.status === 'charging' ? 'release' : 'hold',
         );
       else if (t.owner === worker) {
-        cue('move', 'к свободной стороне');
-        cue(
-          'action',
-          s.spring.active ? 'отпустить в зелёном' : 'натянуть пружину',
-          s.spring.active ? 'release' : 'hold',
-        );
+        const uneven = s.clips[w.side] > Math.min(...s.clips);
+        if (s.spring.active)
+          cue(
+            'action',
+            uneven ? 'край перетянут · будет ДЗЫНЬ!' : 'отпустить в зелёном',
+            'release',
+            {
+              emphasis: uneven ? 'danger' : undefined,
+            },
+          );
+        else if (moving || s.clips[w.side] === 4 || uneven)
+          cue(
+            'move',
+            `к свободному краю: ${sideName(s.recommendedSide)}`,
+            undefined,
+            {
+              emphasis: uneven ? 'danger' : undefined,
+            },
+          );
+        else cue('action', 'натянуть пружину', 'hold');
       } else {
-        cue('move', 'встать напротив');
-        cue('action', 'ловить отвёртку', 'hold');
+        const opposite = (s.workers[t.owner].targetSide + 2) % 4;
+        const next =
+          worker === 2
+            ? ([0, 1, 2, 3].find(
+                (side) =>
+                  side !== s.workers[t.owner].targetSide &&
+                  side !== s.workers[1].targetSide &&
+                  s.clips[side] === Math.min(...s.clips),
+              ) ?? opposite)
+            : t.needsPass
+              ? s.recommendedSide
+              : opposite;
+        if (moving || w.side !== next)
+          cue('move', `готовь ${sideName(next)} край`);
+        else cue('action', 'готов принять · держать край', 'hold');
       }
     } else if (drilling) {
       const balance = chairBalanceCue(s);
@@ -265,19 +355,66 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
             cue('secondary', 'пылесосить', 'hold');
           }
         }
+      } else if (
+        worker === 2 &&
+        s.drillMode !== 'position' &&
+        s.drillMode !== 'fallen'
+      ) {
+        cue(
+          'horizontal',
+          'подскажи наклон',
+          balance.direction ? 'hold' : 'release',
+          {
+            direction: balance.direction ?? undefined,
+            emphasis: balance.emphasis,
+            satisfied:
+              balance.direction === null ||
+              s.heldKeys.includes(PLAYER_BINDINGS[player][balance.direction]),
+          },
+        );
       }
     } else if (s.phase === 'lift') {
       if (worker < 2) {
+        const height = worker === 0 ? s.liftLeft : s.liftRight;
+        if (!s.latched[worker] && Math.abs(height - s.holes[worker]) >= 0.12)
+          cue(
+            'vertical',
+            height < s.holes[worker] ? 'подними свой край' : 'опусти свой край',
+          );
+        else if (worker === 0 && Math.abs(s.liftX) >= 0.16)
+          cue('horizontal', 'совмести крючки', 'hold', {
+            direction: s.liftX < 0 ? 'right' : 'left',
+          });
+        else if (!s.latched[worker])
+          cue(
+            'action',
+            Math.abs(s.liftVelocity[worker]) >= 0.2
+              ? 'притормози у крючка'
+              : 'зацепить край',
+            'hold',
+          );
+      } else if (Math.abs(s.liftX) >= 0.16)
+        cue('horizontal', 'направь к крючкам', 'hold', {
+          direction: s.liftX < 0 ? 'right' : 'left',
+        });
+      else cue('action', 'придержать раскачку', 'hold');
+    } else if (s.phase === 'level') {
+      if (Math.abs(s.angle) >= 0.012)
         cue(
-          'vertical',
-          s.latched[worker] ? 'край зацеплен ✓' : 'поднять / опустить',
+          'horizontal',
+          worker === 2 ? 'подскажи поправку' : 'поправь подвес',
+          'hold',
+          {
+            direction: s.angle < 0 ? 'right' : 'left',
+          },
         );
-        if (worker === 0) cue('horizontal', 'совместить крючки');
-        if (!s.latched[worker]) cue('action', 'зацепить', 'hold');
-      } else cue('action', 'гасить раскачку', 'hold');
-    } else if (s.phase === 'level' && worker === 0) {
-      cue('horizontal', 'выставить уровень');
-      cue('action', s.levelStable >= 1 ? 'ГОТОВО' : 'дождаться уровня', 'tap');
+      else if (s.levelStable >= 1) {
+        cue(
+          'action',
+          actionHeld ? 'затем проверь уровень' : 'ГОТОВО · проверить',
+          actionHeld ? 'release' : 'tap',
+        );
+      } else cue('horizontal', 'дай пузырьку успокоиться', 'release');
     }
     return row;
   });

@@ -216,6 +216,15 @@ export function createScreenModel(kit: RenderKit) {
       clothMaterial.color.set(cinema ? '#ffffff' : '#f0eadb');
       clothMaterial.needsUpdate = true;
     }
+    // Impacts are tied to authoritative simulation time, so pause/reconnect
+    // never invents a fresh snap or a new spring flight.
+    const impulse = (kind: 'snap' | 'pop', side: number, duration: number) => {
+      const event = [...s.events]
+        .reverse()
+        .find((e) => e.kind === kind && e.side === side);
+      const age = event ? s.elapsed - event.at : duration;
+      return age >= 0 && age < duration ? 1 - age / duration : 0;
+    };
     const assembled = s.phase !== 'frame';
     const bare = s.phase === 'rods';
     const xs = [0, 2.345, 0, -2.345],
@@ -230,13 +239,23 @@ export function createScreenModel(kit: RenderKit) {
       rail.position.set(
         xs[i] + (i % 2 ? offset : 0),
         ys[i] + (i % 2 ? 0 : offset),
-        0,
+        s.phase === 'frame'
+          ? Math.sin(impulse('snap', i, 0.38) * Math.PI) * 0.025
+          : 0,
       );
       rail.rotation.z =
         (i % 2 ? Math.PI / 2 : 0) + (active ? s.frameTwist * 0.28 : 0);
     });
     corners.forEach((m, i) => {
-      m.visible = assembled || i < s.corners;
+      const active = s.phase === 'frame' && i === s.corners;
+      m.visible = assembled || i < s.corners || active;
+      m.material = kit.material(
+        active
+          ? Math.abs(s.frameFit) < 0.1 && Math.abs(s.frameTwist) < 0.1
+            ? '#cde3a1'
+            : '#e4b16b'
+          : '#747b7a',
+      );
     });
     cloth.visible = s.phase !== 'frame';
     // During the sleeve task the frame is visibly separate behind the loose cloth.
@@ -265,7 +284,19 @@ export function createScreenModel(kit: RenderKit) {
         Math.sin((y / 2.44 + 0.5) * Math.PI);
       const wave =
         Math.sin(x * 9 + s.elapsed * 1.2) * Math.cos(y * 13) * sag * 0.28;
-      pos.setZ(i, -envelope * sag + wave);
+      const pressure =
+        s.phase === 'rods'
+          ? s.rodPressure[0] * Math.max(0, y) +
+            s.rodPressure[2] * Math.max(0, -y) +
+            (s.rodPressure[1] * Math.max(0, x)) / 2 +
+            (s.rodPressure[3] * Math.max(0, -x)) / 2
+          : 0;
+      pos.setZ(
+        i,
+        -envelope * sag +
+          wave +
+          Math.sin(x * 17 + y * 14) * pressure * 0.028 * envelope,
+      );
     }
     pos.needsUpdate = true;
     clothGeometry.computeVertexNormals();
@@ -278,6 +309,10 @@ export function createScreenModel(kit: RenderKit) {
         y = horizontal ? (side === 0 ? 1.195 : -1.195) : -1.175 - exposed / 2;
       pole.scale.y = Math.max(0.001, 1 - progress);
       pole.position.set(x, y, 0.014);
+      pole.rotation.z =
+        (horizontal ? Math.PI / 2 : 0) +
+        s.rodAlignment[side] * 0.085 +
+        Math.sin(s.elapsed * 26) * s.rodPressure[side] * 0.018;
       pole.visible = s.phase === 'rods' && progress < 0.999;
       sleeves[side].position.set(
         horizontal ? 0 : side === 1 ? 2.23 : -2.23,
@@ -288,10 +323,16 @@ export function createScreenModel(kit: RenderKit) {
       coils[side].forEach((coil, n) => {
         const pulling =
           s.spring.active && s.spring.side === side && n === s.clips[side];
+        const recoil = n === s.clips[side] ? impulse('pop', side, 0.48) : 0;
         coil.visible =
           ['tension', 'drill', 'lift', 'level', 'result'].includes(s.phase) &&
-          (n < s.clips[side] || pulling);
-        coil.scale.y = pulling ? Math.max(0.25, s.spring.power) : 1;
+          (n < s.clips[side] || pulling || recoil > 0);
+        coil.scale.y = pulling
+          ? Math.max(0.25, s.spring.power)
+          : recoil
+            ? 0.25 + Math.abs(Math.cos((1 - recoil) * 18)) * recoil * 0.75
+            : 1;
+        coil.rotation.x = recoil * Math.sin((1 - recoil) * 24) * 0.8;
       });
     });
     rings.forEach((ring, i) => {

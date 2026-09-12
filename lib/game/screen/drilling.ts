@@ -118,8 +118,18 @@ function balanceStep(s: GameState, dt: number, input: Input[]) {
     s.balance * (held ? 0.42 : 0.3) +
     (!held ? 0.018 : 0) +
     (s.drillRunning ? Math.sin(s.phaseTime * 29) * 0.13 : 0);
+  // Roma spots the lean from the side. A matching call improves the actual
+  // holder/climber's correction; it never braces remotely while Nikita fetches.
+  const spotting =
+    s.players === 3 &&
+    Math.abs(s.balance) > 0.14 &&
+    input[2].x === Math.sign(correction) &&
+    input[2].x === -Math.sign(s.balance);
+  if (s.players === 3 && input[2].x) s.workers[2].animation = 'guide';
   s.balance +=
-    (disturbance * load + correction * 1.2) * dt * (s.chairs === 2 ? 1.65 : 1);
+    (disturbance * load + correction * (spotting ? 1.45 : 1.2)) *
+    dt *
+    (s.chairs === 2 ? 1.65 : 1);
   if (Math.abs(s.balance) > 1) {
     fall(s);
     return false;

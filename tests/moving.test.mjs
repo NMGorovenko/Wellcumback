@@ -24,7 +24,25 @@ import { movingHint, say } from '../lib/game/moving/messages.ts';
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const run = (s, seconds, keys = []) => {
   for (let t = 0; t < seconds - 1e-9; t += 0.025)
-    movingTick(s, Math.min(0.025, seconds - t), new Set(keys));
+    movingTick(
+      s,
+      Math.min(0.025, seconds - t),
+      new Set(typeof keys === 'function' ? keys(s) : keys),
+    );
+};
+const laptopControls = (s) => {
+  const intent = movingIntent(s, 0);
+  if (intent.kind !== 'laptop' || intent.release) return [];
+  return [PLAYER_BINDINGS[0][intent.control ?? 'action']];
+};
+const finishLaptop = (s) => {
+  for (let n = 0; n < 1200 && s.alert.active; n++)
+    movingTick(s, 0.025, new Set(laptopControls(s)));
+  assert.equal(
+    s.alert.active,
+    false,
+    'real advertised operations complete the incident',
+  );
 };
 const start = (players = 2) => {
   const s = freshMoving(players);
@@ -61,12 +79,14 @@ const pulse = (s, key) => {
   run(s, 0.025);
 };
 
-void test('finishing a mandatory laptop hold requires release before a nearby item pickup', () => {
+void test('finishing the laptop repair action requires release before a nearby item pickup', () => {
   const s = start(2);
   s.alert.nextAt = 0;
+  s.alert.count = 1; // Connection incident ends with the ordinary action key.
   run(s, 20);
   assert.equal(s.actors[0].activity, 'laptop');
-  run(s, 6, ['KeyE']);
+  finishLaptop(s);
+  run(s, 0.3, ['KeyE']);
   assert.equal(s.alert.active, false);
   assert.equal(
     s.actors[0].heldItem,
@@ -102,7 +122,7 @@ class Driver {
       bindings = PLAYER_BINDINGS[index],
       keys = [];
     const action = () => (s.previousAction[index] ? [] : [bindings.action]);
-    if (actor.activity === 'laptop') return [bindings.action];
+    if (actor.activity === 'laptop') return laptopControls(s);
     if (['alert-walk', 'toilet-walk', 'toilet'].includes(actor.activity))
       return [];
     if (actor.activity === 'rest') return actor.stamina >= 84 ? action() : [];
@@ -395,7 +415,7 @@ void test('fatigue is gradual, Nastya tires faster, idle recovery is slow and co
   run(s, 0.5, ['KeyS']);
   assert.ok(tired.y > y, 'exhaustion never removes movement');
 });
-void test('alert drops the held item, walks normally to laptop, requires working hold and costs stamina', () => {
+void test('alert drops the held item, walks normally to laptop, requires both operations and costs stamina', () => {
   const s = start();
   Object.assign(s.actors[0], { heldItem: 12 });
   Object.assign(s.items[12], { status: 'held', carrier: 0 });
@@ -417,7 +437,7 @@ void test('alert drops the held item, walks normally to laptop, requires working
     'cannot ignore mandatory alert by walking away',
   );
   const energy = s.actors[0].stamina;
-  run(s, 5, ['KeyE']);
+  finishLaptop(s);
   assert.equal(s.alert.active, false);
   assert.ok(s.actors[0].stamina < energy);
   assert.ok(s.alert.nextAt - s.elapsed > 80);
@@ -481,7 +501,7 @@ void test('solo Nastya keeps packing during a mandatory laptop hold and the next
     s.items.filter((i) => i.status === 'packed').length > 3,
     'assistant did not freeze with Yarik',
   );
-  run(s, 8, ['KeyE']);
+  run(s, 8, laptopControls);
   assert.equal(s.alert.active, false);
   const next = s.alert.nextAt;
   s.toilet.nextAt = Infinity;
@@ -545,7 +565,7 @@ void test('zero stamina still completes mandatory laptop work and docks within a
   assert.equal(s.actors[0].activity, 'laptop');
   assert.ok(dist(s.actors[0], movingStations.laptop) <= 6);
   s.actors[0].stamina = 0;
-  run(s, 8, ['KeyE']);
+  run(s, 8, laptopControls);
   assert.equal(s.alert.active, false);
   assert.ok(
     s.actors[0].stamina < 0.4,

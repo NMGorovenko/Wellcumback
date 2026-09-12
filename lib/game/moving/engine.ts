@@ -117,7 +117,15 @@ export function freshMoving(players = 1): MovingState {
     teamwork: 0,
     bumps: 0,
     delivered: 0,
-    alert: { active: false, count: 0, progress: 0, nextAt: 42 },
+    alert: {
+      active: false,
+      count: 0,
+      progress: 0,
+      nextAt: 42,
+      operation: 0,
+      awaitingRelease: false,
+      inputMismatch: false,
+    },
     toilet: { active: false, count: 0, progress: 0, nextAt: 105 },
     dutyGraceUntil: 0,
     previousAction: [false, false],
@@ -154,8 +162,7 @@ function act(s: MovingState, actor: MovingActor) {
     const bag = bagById(s, intent.target)!;
     actor.taskTarget = { kind: 'bag', id: bag.id, x: bag.x, y: bag.y };
     actor.facing = Math.atan2(bag.x - actor.x, bag.y - actor.y);
-  } else if (intent.kind === 'blocked')
-    movingHint(s, 'Возьми другую сумку: в эту вещь не помещается.');
+  } else if (intent.kind === 'blocked') movingHint(s, intent.label);
   else if (intent.kind === 'zip') actor.zipping = intent.target;
   else if (intent.kind === 'reopen') {
     const bag = bagById(s, intent.target)!;
@@ -254,7 +261,7 @@ function progressWork(
       stopWork(actor);
       movingHint(
         s,
-        `${item.label} внутри. Сумка ${bag.id + 1}: ${bag.weight}/${bag.capacity} кг.`,
+        `${item.label}, ${item.weight} кг — внутри. В сумке ${bag.id + 1} осталось ${bag.capacity - bag.weight} кг места.`,
         movingCrew[actor.id].name,
       );
     }

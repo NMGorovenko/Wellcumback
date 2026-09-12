@@ -74,7 +74,11 @@ export type MovingState = {
   teamwork: number;
   bumps: number;
   delivered: number;
-  alert: MovingDuty;
+  alert: MovingDuty & {
+    operation: number;
+    awaitingRelease: boolean;
+    inputMismatch: boolean;
+  };
   toilet: MovingDuty;
   dutyGraceUntil: number;
   previousAction: boolean[];
@@ -97,6 +101,8 @@ export type MovingIntent = {
   target: number | null;
   label: string;
   hold?: boolean;
+  control?: 'action' | 'secondary';
+  release?: boolean;
 };
 export type MovingInput = {
   x: number;

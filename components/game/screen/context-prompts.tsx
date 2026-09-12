@@ -10,10 +10,12 @@ export function ContextPrompts({
   state,
   pads,
   cueRefs,
+  localPlayer,
 }: {
   state: GameState;
   pads: Pick<PadFrame, 'assignments'>;
   cueRefs?: RefObject<(HTMLDivElement | null)[]>;
+  localPlayer?: number;
 }) {
   if (state.phase === 'result' || state.paused) return null;
   const drill = state.phase === 'drill' ? screenDrillStatus(state) : null;
@@ -28,7 +30,10 @@ export function ContextPrompts({
           className={`context-worker${player === null ? ' is-helper' : ''}`}
         >
           <div className="context-worker-name">
-            <strong>{NAMES[worker]}</strong>
+            <strong>
+              {NAMES[worker]}
+              {localPlayer === player ? ' · ты' : ''}
+            </strong>
             <span>
               {drill
                 ? worker === 0
@@ -43,7 +48,11 @@ export function ContextPrompts({
           </div>
           <div className="context-cues">
             {prompts.map((prompt) => {
-              if (player === null) return null;
+              if (
+                player === null ||
+                (localPlayer !== undefined && player !== localPlayer)
+              )
+                return null;
               const { control, text, mode, direction, emphasis, satisfied } =
                 prompt;
               const balance =
@@ -60,7 +69,15 @@ export function ContextPrompts({
                     {drillBalanceText(worker)}
                   </span>
                 );
-              const { label, held } = screenPromptInput(
+              const { label } = screenPromptInput(
+                pads,
+                localPlayer === undefined ? player : 0,
+                prompt,
+                state.heldKeys,
+              );
+              // A remote slot uses this computer's first control profile for
+              // labels, but authoritative held keys still belong to that slot.
+              const { held } = screenPromptInput(
                 pads,
                 player,
                 prompt,
@@ -92,9 +109,14 @@ export function ContextPrompts({
             })}
             {player !== null && !prompts.length && (
               <span className="context-ai">
-                {state.drillMode === 'fallen'
+                {state.phase === 'drill' && state.drillMode === 'fallen'
                   ? 'Поднимаемся после падения…'
-                  : 'Ждёт напарника'}
+                  : state.phase === 'lift' && state.latched[worker]
+                    ? 'Край зацеплен ✓'
+                    : state.phase === 'tension' &&
+                        state.tool.status === 'flight'
+                      ? 'Передаём отвёртку'
+                      : 'Ждёт напарника'}
               </span>
             )}
           </div>

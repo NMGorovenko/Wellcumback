@@ -69,7 +69,9 @@ export function screenDrillStatus(s: GameState) {
 export function drillBalanceText(worker: number, direction?: 'left' | 'right') {
   return !direction
     ? 'Ровно · не жми'
-    : worker === 0
-      ? 'Выпрями стулья'
-      : 'Держи равновесие';
+    : worker === 2
+      ? 'Подскажи наклон'
+      : worker === 0
+        ? 'Выпрями стулья'
+        : 'Держи равновесие';
 }

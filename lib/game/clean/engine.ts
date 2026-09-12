@@ -1,4 +1,10 @@
 import {
+  cleanSupportTask,
+  freshSupport,
+  supportBenefits,
+  type CleanSupport,
+} from './support.ts';
+import {
   bounds,
   stations,
   obstacles,
@@ -114,6 +120,7 @@ export type CleanState = {
   dirt: number[];
   rinse: number[];
   activity: Activity[];
+  support: CleanSupport;
   teamwork: number;
   penalties: number;
   cooldown: number;
@@ -174,7 +181,7 @@ export function freshClean(players = 1): CleanState {
     phase: 'brief',
     phaseTime: 0,
     players: clamp(Math.floor(players) || 1, 1, 3),
-    actorCount: 1,
+    actorCount: clamp(Math.floor(players) || 1, 1, 3),
     x: [stations[7].x, crewSpawn.x, crewSpawn.x + crewSpawn.spacing],
     y: [stations[7].y, crewSpawn.y, crewSpawn.y],
     elapsed: 0,
@@ -247,6 +254,7 @@ export function freshClean(players = 1): CleanState {
     dirt: [0, 0, 0],
     rinse: [0, 0, 0],
     activity: ['guard', 'idle', 'idle'],
+    support: freshSupport(),
     teamwork: 0,
     penalties: 0,
     cooldown: 0,
@@ -345,7 +353,7 @@ export function cleanAction(s: CleanState) {
       'Обычное дежурство. Походи немного. Организм уже готовит внеплановый доклад.',
     );
   else if (s.phase === 'find' && near(s, 0, stations[0])) {
-    award(s, 120 + s.rhythm.hits * 15);
+    award(s, 120 + Math.min(s.rhythm.hits, 12) * 15);
     accident(s, true);
   }
 }
@@ -365,7 +373,7 @@ function rhythmPress(s: CleanState, key: 'KeyQ' | 'KeyE') {
     r.expected = key === 'KeyQ' ? 'KeyE' : 'KeyQ';
     r.clock = Math.max(0, r.clock - r.period);
     s.urge = Math.max(s.baselineUrge, s.urge - 0.075);
-    award(s, 8);
+    if (r.hits <= 12) award(s, 8);
   } else {
     r.misses++;
     r.combo = 0;
@@ -488,6 +496,7 @@ function navigate(
   return distance(point, target) < radius;
 }
 function startMachine(s: CleanState) {
+  if (s.support.progress.laundry === 1) s.balance = 0.05;
   s.pants = 'loaded';
   s.pantsLoaded = true;
   s.machineClean = 0;
@@ -610,7 +619,8 @@ function machineStep(
   valves: number,
 ) {
   if (!s.pantsLoaded || s.spin >= 1) return;
-  s.machine += dt;
+  // A stable supported drum finishes sooner even after the valve is closed.
+  s.machine += dt * (braces > 0 && s.balance < 0.5 ? 1.18 : 1);
   s.spin = clamp(s.machine / 34);
   s.valve = clamp(s.valve + (valves * dt) / 2);
   s.balance = clamp(
@@ -639,10 +649,13 @@ function work(s: CleanState, i: number, dt: number) {
   }
   if (near(s, i, stations[5]) && s.dirt[i] > 0.001) {
     s.activity[i] = 'rinse';
-    s.rinse[i] = clamp(s.rinse[i] + dt / 1.5);
+    s.rinse[i] = clamp(
+      s.rinse[i] + dt / (s.support.progress.bucket === 1 ? 1.1 : 1.5),
+    );
     if (s.rinse[i] >= 1) {
       s.dirt[i] = 0;
       s.rinse[i] = 0;
+      s.message = `${cleanCrew[i].name}: швабра чистая. Можно возвращаться к следам.`;
     }
     return 'rinse';
   }
@@ -654,7 +667,10 @@ function work(s: CleanState, i: number, dt: number) {
     spent = Math.min(budget, (1 - s.machineClean) * 2.6);
     s.machineClean = clamp(s.machineClean + spent / 2.6);
     s.activity[i] = 'mop';
-    if (s.machineClean === 1) award(s, 240);
+    if (s.machineClean === 1) {
+      award(s, 240);
+      s.message = 'Корпус стиралки чистый. Осталось проверить пол.';
+    }
   } else {
     const targets = s.spots
       .filter((p) => p.progress < 1 && near(s, i, p, 57))
@@ -668,13 +684,15 @@ function work(s: CleanState, i: number, dt: number) {
       spent += amount;
       if (target.progress > 1 - 1e-8) {
         target.progress = 1;
-        award(s, target.kind === 'footprint' ? 12 : 65);
+        // Cleaning more self-created dirt must never mint more points.
       }
       if (budget <= 1e-8) break;
     }
     if (spent) s.activity[i] = 'mop';
   }
   s.dirt[i] = clamp(s.dirt[i] + spent * 0.44, 0, 0.98);
+  if (spent && s.dirt[i] >= 0.98 - 1e-8)
+    s.message = `${cleanCrew[i].name}: швабра полная. К ведру — прополоскать до конца.`;
   return spent ? 'mop' : '';
 }
 /** Soft body separation plus a sideways yield keeps two people from blocking the same doorway forever. */
@@ -737,14 +755,13 @@ function separateActors(s: CleanState, dt: number) {
       }
 }
 
+/** The floor pays once, regardless of detours/extra leaks. Only useful speed earns a bonus. */
 function finish(s: CleanState) {
   award(
     s,
     Math.max(
       0,
-      Math.round(
-        s.timer * 5 + Math.min(s.teamwork, 60) * 5 + 350 - s.penalties * 12,
-      ),
+      Math.round(Math.min(s.timer, 220) * 5 + 800 + 350 - s.penalties * 12),
     ),
   );
   phase(
@@ -761,12 +778,12 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
   if (s.rhythm.feedbackTime === 0) s.rhythm.feedback = 'waiting';
   const holding = [false, false, false],
     from = position(s, 0);
-  const humans = s.phase === 'clean' ? s.players : 1;
+  const humans = s.players;
   for (let i = 0; i < humans; i++) {
     s.activity[i] = 'idle';
     const [l, r, u, d, action] = cleanBindings[i];
     holding[i] = keys.has(action) || (i === 0 && keys.has('Space'));
-    if (s.phase === 'accident') {
+    if (s.phase === 'accident' && i === 0) {
       s.activity[i] = 'strain';
       continue;
     }
@@ -780,18 +797,20 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
             : -1;
     const stationTarget =
       stationIndex === -1 ? undefined : stations[stationIndex];
+    const supportTask = i > 0 ? cleanSupportTask(s, i) : undefined;
     const stationaryAction =
-      i === 0 &&
       holding[i] &&
-      !!stationTarget &&
-      near(s, i, stationTarget, stationIndex === 3 ? 70 : 62);
+      ((i === 0 &&
+        !!stationTarget &&
+        near(s, i, stationTarget, stationIndex === 3 ? 70 : 62)) ||
+        (!!supportTask && near(s, i, supportTask.target, supportTask.radius)));
     const dx = stationaryAction ? 0 : Number(keys.has(r)) - Number(keys.has(l)),
       dy = stationaryAction ? 0 : Number(keys.has(d)) - Number(keys.has(u));
     const actor = position(s, i),
       speed =
-        s.phase === 'find'
+        i === 0 && s.phase === 'find'
           ? 166 * (1 - s.urge * 0.28)
-          : s.spillActive
+          : i === 0 && s.spillActive
             ? 143
             : 166;
     const wet = s.spots.some(
@@ -865,7 +884,9 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
   } else if (s.phase === 'toilet') {
     if (holding[0] && near(s, 0, stations[1], 62)) {
       s.activity[0] = 'relief';
-      s.relief = clamp(s.relief + dt / 3);
+      s.relief = clamp(
+        s.relief + dt / (s.support.progress.privacy === 1 ? 2.3 : 3),
+      );
       s.urge = Math.max(0, 1 - s.relief);
       if (s.relief === 1) {
         s.spillActive = false;
@@ -881,7 +902,9 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
   } else if (s.phase === 'shower') {
     if (holding[0] && near(s, 0, stations[2], 62)) {
       s.activity[0] = 'shower';
-      s.shower = clamp(s.shower + dt / 3.5);
+      s.shower = clamp(
+        s.shower + dt / (s.support.progress.kit === 1 ? 2.5 : 3.5),
+      );
       if (s.shower === 1) {
         s.washed = true;
         s.soiled = false;
@@ -898,14 +921,41 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
   } else if (s.phase === 'laundry') {
     if (holding[0] && near(s, 0, stations[3])) {
       s.activity[0] = 'load';
-      s.laundryProgress = clamp(s.laundryProgress + dt / 2.5);
+      s.laundryProgress = clamp(
+        s.laundryProgress + dt / (s.support.progress.laundry === 1 ? 1.7 : 2.5),
+      );
       if (s.laundryProgress === 1) startMachine(s);
     }
   }
   let braces = 0;
+  if (s.phase !== 'clean') {
+    for (let i = 1; i < humans; i++) {
+      if (!holding[i]) continue;
+      const task = cleanSupportTask(s, i);
+      if (!task || !near(s, i, task.target, task.radius)) continue;
+      if (task.id === 'brace') {
+        braces++;
+        s.activity[i] = 'brace';
+      } else if (task.id === 'valve') {
+        s.valve = clamp(s.valve + dt / task.seconds);
+        s.activity[i] = 'valve';
+        if (s.valve === 1)
+          s.message = `${cleanCrew[i].name} перекрыл воду. Новых протечек не будет.`;
+      } else {
+        const progress = s.support.progress;
+        if (task.id === 'kitPickup') s.support.kitOwner = i;
+        progress[task.id] = clamp(progress[task.id] + dt / task.seconds);
+        s.activity[i] = 'gear';
+        if (progress[task.id] === 1) {
+          s.support.completed++;
+          s.message = `${cleanCrew[i].name}: ${supportBenefits[task.id]}`;
+        }
+      }
+    }
+  }
   if (s.phase === 'spin' || s.phase === 'response') {
     if (holding[0] && near(s, 0, stations[3])) {
-      braces = 1;
+      braces++;
       s.activity[0] = 'brace';
     }
     updateWitnesses(s, dt);
@@ -956,6 +1006,14 @@ export function cleanTick(s: CleanState, dt: number, keys: Set<string>) {
     step(s, delta, keys);
     remaining -= delta;
   }
+}
+/** A single fixed floor reward at completion; the bar measures actual removed dirt. */
+export function cleanFloorProgress(s: CleanState) {
+  const total = s.spots.reduce((sum, spot) => sum + spot.weight, 0);
+  return total
+    ? s.spots.reduce((sum, spot) => sum + spot.weight * spot.progress, 0) /
+        total
+    : 1;
 }
 export function getDrops(s: CleanState) {
   return s.spots.filter((p) => p.kind !== 'footprint');

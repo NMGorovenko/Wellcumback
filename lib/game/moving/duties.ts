@@ -1,10 +1,15 @@
 import { movingStations } from './layout.ts';
+import {
+  LAPTOP_SECONDS,
+  LAPTOP_OPERATION_SECONDS,
+  movingIncident,
+} from './incidents.ts';
+export { LAPTOP_SECONDS } from './incidents.ts';
 import { clearMovingRoute, movingNavigate } from './navigation.ts';
 import { distance, forceDrop } from './physics.ts';
 import { say } from './messages.ts';
 import type { MovingInput, MovingState } from './types.ts';
 
-export const LAPTOP_SECONDS = 4.8;
 export const TOILET_SECONDS = 8;
 export const movingWorkRate = (stamina: number) =>
   0.65 + 0.35 * Math.min(1, Math.max(0, stamina) / 35);
@@ -24,6 +29,11 @@ function begin(s: MovingState, kind: 'alert' | 'toilet') {
   duty.active = true;
   duty.count++;
   duty.progress = 0;
+  if (kind === 'alert') {
+    s.alert.operation = 0;
+    s.alert.awaitingRelease = true;
+    s.alert.inputMismatch = false;
+  }
   actor.zipping = null;
   actor.packingBag = null;
   actor.activityProgress = 0;
@@ -36,7 +46,7 @@ function begin(s: MovingState, kind: 'alert' | 'toilet') {
   };
   forceDrop(s, actor);
   clearMovingRoute(actor);
-  say(s, kind === 'alert' ? 'alert' : 'toilet');
+  say(s, kind === 'alert' ? movingIncident(duty.count).announcement : 'toilet');
 }
 /** Deadlines schedule only one mandatory job at a time. The next alert is
  * measured from completion, leaving a real interval for packing and resting. */
@@ -69,12 +79,36 @@ export function movingDutyInput(
     actor.facing = station.facing;
   }
   if (kind === 'alert') {
-    actor.working = human.action;
-    if (human.action)
-      duty.progress = Math.min(
-        1,
-        duty.progress + (dt * movingWorkRate(actor.stamina)) / LAPTOP_SECONDS,
-      );
+    const alert = s.alert;
+    if (alert.awaitingRelease) {
+      actor.working = false;
+      alert.inputMismatch = false;
+      if (!human.action && !human.alternate) alert.awaitingRelease = false;
+    } else {
+      const operation = movingIncident(alert.count).operations[
+        Math.min(1, alert.operation)
+      ];
+      const correct =
+        operation.control === 'action' ? human.action : human.alternate;
+      const wrong =
+        operation.control === 'action' ? human.alternate : human.action;
+      alert.inputMismatch = wrong;
+      actor.working = correct && !wrong;
+      if (actor.working) {
+        const boundary =
+          alert.operation === 0
+            ? LAPTOP_OPERATION_SECONDS[0] / LAPTOP_SECONDS
+            : 1;
+        duty.progress = Math.min(
+          boundary,
+          duty.progress + (dt * movingWorkRate(actor.stamina)) / LAPTOP_SECONDS,
+        );
+        if (duty.progress >= boundary) {
+          alert.operation++;
+          alert.awaitingRelease = boundary < 1;
+        }
+      }
+    }
   } else duty.progress = Math.min(1, duty.progress + dt / TOILET_SECONDS);
   actor.activityProgress = duty.progress;
   if (duty.progress >= 1) {
@@ -85,7 +119,7 @@ export function movingDutyInput(
     actor.activityProgress = 0;
     actor.taskTarget = null;
     if (kind === 'toilet') actor.stamina = Math.min(100, actor.stamina + 8);
-    say(s, kind === 'alert' ? 'fixed' : 'relief');
+    say(s, kind === 'alert' ? movingIncident(duty.count).fixed : 'relief');
   }
   return neutral();
 }

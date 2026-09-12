@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import type { CleanState } from '@/lib/game/clean/engine';
 import { barracksOverview } from '@/lib/game/clean/camera';
 import { bounds } from '@/lib/game/clean/layout';
+import { cleanSupportTask } from '@/lib/game/clean/support';
 import { planRoute, stations } from '@/lib/game/clean/engine';
 import { RenderKit } from '../world/render-kit';
 import { placeActionCues, type ActionCueRefs } from '../world/action-cues';
@@ -13,6 +14,7 @@ import {
   createCleaner,
   createNpc,
   createSoldier,
+  createSupporter,
 } from './actors-v3';
 import { createTraceField, floorWorld } from './props-v3';
 
@@ -97,6 +99,13 @@ export default function CleanScene({
     const soldier = createSoldier(kit),
       npcs = [0, 1, 2].map((i) => createNpc(kit, i));
     const crew = [0, 1, 2].map((i) => createCleaner(kit, i));
+    const supporters = [1, 2].map((i) => createSupporter(kit, i));
+    supporters.forEach((actor, i) => {
+      actor.previous.copy(
+        floorWorld(game.current.x[i + 1], game.current.y[i + 1]),
+      );
+      actor.rig.root.position.copy(actor.previous);
+    });
     const routeMaterial = new THREE.MeshStandardMaterial({
       color: '#d6c576',
       emissive: '#766a35',
@@ -189,7 +198,9 @@ export default function CleanScene({
       soldier.strain.visible =
         !cleaning && (s.phase === 'find' || s.phase === 'accident');
       soldier.relief.visible = !cleaning && heroAction === 'relief';
-      room.toilet.privacy.visible = !cleaning && heroAction === 'relief';
+      room.toilet.privacy.visible =
+        !cleaning &&
+        (heroAction === 'relief' || s.support.progress.privacy === 1);
       if (!cleaning) {
         floorWorld(s.x[0], s.y[0], target);
         const dx = target.x - previousHero.x,
@@ -391,6 +402,53 @@ export default function CleanScene({
           npc.rig.reach('right', hand);
         }
       });
+      supporters.forEach((actor, slot) => {
+        const i = slot + 1;
+        actor.rig.root.visible = !cleaning && i < s.players;
+        if (!actor.rig.root.visible) return;
+        const activity = s.activity[i];
+        floorWorld(s.x[i], s.y[i], target);
+        const dx = target.x - actor.previous.x,
+          dz = target.z - actor.previous.z;
+        let heading = actor.rig.root.rotation.y;
+        if (dx * dx + dz * dz > 0.000001) heading = Math.atan2(dx, dz);
+        const task = cleanSupportTask(s, i);
+        if (
+          activity !== 'walk' &&
+          task &&
+          ['gear', 'brace', 'valve'].includes(activity)
+        ) {
+          floorWorld(task.target.x, task.target.y, point).sub(target);
+          heading = Math.atan2(point.x, point.z);
+        }
+        actor.previous.copy(target);
+        actor.rig.root.position.lerp(target, easing);
+        actor.rig.root.rotation.y = angleToward(
+          actor.rig.root.rotation.y,
+          heading,
+          rotationEase,
+        );
+        actor.rig.update(time + i * 0.29, actorPose(activity));
+        actor.kitBag.visible =
+          s.support.kitOwner === i &&
+          s.support.progress.kitPickup >= 1 &&
+          s.support.progress.kit < 1 &&
+          !s.washed;
+        if (actor.kitBag.visible) {
+          hand.set(0.28, 0.96, 0.24);
+          actor.rig.root.localToWorld(hand);
+          actor.rig.reach('right', hand);
+        }
+        if (activity === 'brace') {
+          floorWorld(stations[3].x, stations[3].y, hand);
+          hand.y = 0.92;
+          hand.z = washerHome.z + 0.48;
+          actor.rig.reach('left', hand);
+          hand.x += 0.16;
+          actor.rig.reach('right', hand);
+        } else if (activity === 'valve')
+          actor.rig.reach('right', room.valve.position);
+      });
       crew.forEach((actor, i) => {
         const visible = cleaning && i < s.actorCount;
         actor.rig.root.visible = visible;
@@ -581,7 +639,15 @@ export default function CleanScene({
       camera.position.lerp(desiredCamera, cameraEase);
       look.lerp(desiredLook, cameraEase);
       camera.lookAt(look);
-      placeActionCues(cues.current, cleaning ? crew.map(actor=>actor.rig.head) : [soldier.rig.head], camera, element, !s.paused && mode.current !== 'faces');
+      placeActionCues(
+        cues.current,
+        cleaning
+          ? crew.map((actor) => actor.rig.head)
+          : [soldier.rig.head, ...supporters.map((actor) => actor.rig.head)],
+        camera,
+        element,
+        !s.paused && mode.current !== 'faces',
+      );
       renderer.render(scene, camera);
     };
     animation = requestAnimationFrame(draw);

@@ -39,6 +39,7 @@ type Props = {
 };
 const poses: Record<WorkerAction, Pose> = {
   idle: 'idle',
+  guide: 'talk',
   walk: 'walk',
   hold: 'work',
   feed: 'work',
@@ -296,7 +297,12 @@ export default function Scene({
             z = -1.8;
           }
           rotation = Math.PI;
-          pose = s.phase === 'result' ? 'celebrate' : i < 2 ? 'carry' : 'idle';
+          pose =
+            s.phase === 'result'
+              ? 'celebrate'
+              : i < 2
+                ? 'carry'
+                : poses[worker.animation];
         } else if (drillPhase) {
           const staged = stage.workers[i];
           x = staged.x;

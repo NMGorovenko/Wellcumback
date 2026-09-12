@@ -6,6 +6,7 @@ import {
   movingTick,
   movingCarryPoint,
   movingPlanRoute,
+  movingIntent,
 } from '../lib/game/moving/engine.ts';
 import {
   movingCanStand,
@@ -15,6 +16,12 @@ import {
   BAG_RADIUS,
 } from '../lib/game/moving/physics.ts';
 import { movingStations } from '../lib/game/moving/layout.ts';
+const laptopKeys = (s) => {
+  const cue = movingIntent(s, 0);
+  return cue.kind !== 'laptop' || cue.release
+    ? []
+    : [cue.control === 'secondary' ? 'ShiftLeft' : 'KeyE'];
+};
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function carrying(x = 435, y = 289, facing = Math.PI) {
   const s = freshMoving(2);
@@ -51,7 +58,7 @@ void test('the alert cannot put luggage on the laptop station and strand its own
   assert.equal(s.bags[0].status, 'closed');
   assert.notDeepEqual({ x: s.bags[0].x, y: s.bags[0].y }, { x: 435, y: 240 });
   assert.ok(movingCanStand(s, movingStations.laptop));
-  for (let n = 0; n < 600; n++) movingTick(s, 0.025, new Set(['KeyE']));
+  for (let n = 0; n < 600; n++) movingTick(s, 0.025, new Set(laptopKeys(s)));
   assert.equal(s.alert.active, false);
   assert.equal(s.alert.progress, 1);
   assert.equal(
@@ -70,7 +77,7 @@ void test('ordinary secondary drops preserve future laptop and toilet access too
     assert.ok(movingPlanRoute(s, s.actors[0], target, 6).length);
   }
   s.alert.nextAt = 0;
-  for (let n = 0; n < 600; n++) movingTick(s, 0.025, new Set(['KeyE']));
+  for (let n = 0; n < 600; n++) movingTick(s, 0.025, new Set(laptopKeys(s)));
   assert.equal(s.alert.active, false);
 });
 void test('sampled valid carrying positions all retain a route to the laptop after a forced drop', () => {
