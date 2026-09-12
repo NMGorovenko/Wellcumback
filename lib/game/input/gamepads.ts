@@ -1,3 +1,7 @@
+import { PLAYER_BINDINGS } from './bindings.ts';
+import { getControlSettings } from './settings-store.ts';
+import { physicalKeyLabel, type CanonicalKey } from './settings.ts';
+export { PLAYER_BINDINGS } from './bindings.ts';
 /** Standard Gamepad layout: https://www.w3.org/TR/gamepad/#remapping
  * Device identity selects prompt labels only; the browser owns button remapping. */
 export type PadButton = { pressed: boolean; value: number };
@@ -45,32 +49,6 @@ export type PadNavigation = {
   confirm: boolean;
   back: boolean;
 };
-export const PLAYER_BINDINGS = [
-  {
-    left: 'KeyA',
-    right: 'KeyD',
-    up: 'KeyW',
-    down: 'KeyS',
-    action: 'KeyE',
-    secondary: 'ShiftLeft',
-  },
-  {
-    left: 'ArrowLeft',
-    right: 'ArrowRight',
-    up: 'ArrowUp',
-    down: 'ArrowDown',
-    action: 'Enter',
-    secondary: 'ShiftRight',
-  },
-  {
-    left: 'KeyJ',
-    right: 'KeyL',
-    up: 'KeyI',
-    down: 'KeyK',
-    action: 'KeyO',
-    secondary: 'KeyU',
-  },
-] as const;
 export const createPadInput = (): PadInputState => ({ pads: new Map() });
 export const createPadNavigation = (): PadNavigationState => ({
   direction: null,
@@ -327,16 +305,8 @@ export type InputControl =
   | 'throw'
   | 'pause';
 export function keyPrompt(code: string): string {
-  const labels: Record<string, string> = {
-    ArrowLeft: '←',
-    ArrowRight: '→',
-    ArrowUp: '↑',
-    ArrowDown: '↓',
-    ShiftLeft: 'левый Shift',
-    ShiftRight: 'правый Shift',
-    Escape: 'Esc',
-  };
-  return labels[code] ?? code.replace(/^Key/, '');
+  const physical = getControlSettings().keys[code as CanonicalKey] ?? code;
+  return physicalKeyLabel(physical);
 }
 export function keyboardPrompt(player: number, control: InputControl): string {
   const keys = PLAYER_BINDINGS[player];

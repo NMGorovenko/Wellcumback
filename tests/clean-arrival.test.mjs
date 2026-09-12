@@ -2,14 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { freshClean, cleanTick, canStand } from '../lib/game/clean/engine.ts';
 
+import {
+  mapSize,
+  rooms,
+  doorways,
+  crewSpawn,
+} from '../lib/game/clean/layout.ts';
+const corridor = {
+  x: mapSize.width / 2,
+  y: (rooms[0].y + rooms[0].h + doorways[0].y) / 2,
+};
+
 function cleanupWithFootprint(start, target) {
   const s = freshClean(1);
   Object.assign(s, {
     phase: 'clean',
     actorCount: 1,
     timer: 160,
-    x: [start.x, 715, 755],
-    y: [start.y, 505, 505],
+    x: [start.x, crewSpawn.x, crewSpawn.x + crewSpawn.spacing],
+    y: [start.y, crewSpawn.y, crewSpawn.y],
     spin: 1,
     valve: 1,
     machineClean: 1,
@@ -32,9 +43,12 @@ function cleanupWithFootprint(start, target) {
 }
 
 void test('solo cleanup waits for Roma; inactive friends cannot move, mop or score', () => {
-  const s = cleanupWithFootprint({ x: 880, y: 500 }, { x: 875, y: 510 });
-  s.x[1] = 875;
-  s.y[1] = 510;
+  const s = cleanupWithFootprint(corridor, {
+    x: corridor.x - 5,
+    y: corridor.y + 10,
+  });
+  s.x[1] = corridor.x - 5;
+  s.y[1] = corridor.y + 10;
   const before = { x: [...s.x], y: [...s.y], dirt: [...s.dirt] };
   for (let i = 0; i < 160; i++)
     cleanTick(s, 0.025, new Set(['Enter', 'ArrowLeft', 'KeyO', 'KeyL']));
@@ -55,9 +69,9 @@ void test('Roma can finish fractional-position footprints from every direction w
     const angle = (i * Math.PI) / 12,
       dx = Math.cos(angle),
       dy = Math.sin(angle);
-    const target = { x: 600 - dx * 47.15, y: 450 - dy * 47.15 };
+    const target = { x: corridor.x - dx * 47.15, y: corridor.y - dy * 47.15 };
     const s = cleanupWithFootprint(
-      { x: 600 + dx * 12.85, y: 450 + dy * 12.85 },
+      { x: corridor.x + dx * 12.85, y: corridor.y + dy * 12.85 },
       target,
     );
     for (

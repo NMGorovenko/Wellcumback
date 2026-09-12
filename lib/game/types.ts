@@ -1,4 +1,4 @@
-export type StoryId = 'screen' | 'clean';
+export type StoryId = 'screen' | 'clean' | 'moving';
 export type Result = {
   story: StoryId;
   score: number;

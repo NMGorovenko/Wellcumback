@@ -109,6 +109,31 @@
       "path": "references/feedback/screen-chair-collision.png",
       "bytes": 3257225,
       "sha256": "d609db3edd6e4c8b56e963d26739ac85b5e7c16d223f44507dcaad2cba91a0d7"
+    },
+    {
+      "path": "references/moving/room-from-balcony.jpg",
+      "bytes": 603342,
+      "sha256": "fd90f73b65c8c37b494d28a28fe21db3c2d43013aa25d35e7ccf579bfe078e40"
+    },
+    {
+      "path": "references/moving/room-balcony-wide.jpg",
+      "bytes": 546379,
+      "sha256": "69cc25a826d6d691545777c5a651ec6b3b26f50a84f9eb118ed9269cbdf16ce7"
+    },
+    {
+      "path": "references/moving/kitchen-and-bags.jpg",
+      "bytes": 503735,
+      "sha256": "eacc9bba6cc9d40b36b6c67c9d1fda152e155c265c807fec098500d061b0f715"
+    },
+    {
+      "path": "references/moving/room-from-entry.jpg",
+      "bytes": 512134,
+      "sha256": "76214ce0d7c649daef48b1269c45d8ef593fc0c757f21f5fdaf752aff3c752ef"
+    },
+    {
+      "path": "references/moving/original-comment.png",
+      "bytes": 19425,
+      "sha256": "92fd4c87df55eed88d24934f61272a7599033bfff5ec5d540144a2a5bdc69f7d"
     }
   ]
 }

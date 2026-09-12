@@ -286,3 +286,51 @@
     grid-column: 1/-1;
   }
 }
+
+.clean-camera-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border-radius: 6px;
+  border: 1px solid #c0cdbf77;
+  background: #22312ae8;
+  color: #eef1de;
+  font-size: 13px;
+  cursor: pointer;
+}
+.clean-camera-toggle:hover,
+.clean-camera-toggle:focus-visible {
+  background: #435744;
+  outline: 2px solid #d3deb6;
+  outline-offset: 3px;
+}
+.clean-game-layout .footer-message p {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #f4f0de;
+}
+.clean-game-layout .footer-message > span {
+  color: #c5d1ac;
+}
+@media (max-width: 760px) {
+  .clean-camera-toggle {
+    top: 12px;
+    right: 12px;
+  }
+  .clean-game-layout .world-heading {
+    max-width: calc(100% - 140px);
+  }
+}
+
+@media (max-width: 760px) {
+  .clean-game-layout .game-footer {
+    grid-row: 2;
+  }
+  .clean-game-layout .game-sidebar {
+    grid-row: 3;
+  }
+}

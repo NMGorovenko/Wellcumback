@@ -1,8 +1,16 @@
+import {
+  mapSize,
+  MAP_UNITS_PER_METRE,
+} from '../../../lib/game/clean/layout.ts';
 import * as THREE from 'three';
 import type { RenderKit } from '../world/render-kit';
 
 export const floorWorld = (x: number, y: number, out = new THREE.Vector3()) =>
-  out.set((x - 600) / 70, 0, (y - 400) / 70);
+  out.set(
+    (x - mapSize.width / 2) / MAP_UNITS_PER_METRE,
+    0,
+    (y - mapSize.height / 2) / MAP_UNITS_PER_METRE,
+  );
 const UP = new THREE.Vector3(0, 1, 0);
 
 /** Stained trousers remain a recognisable garment both in the hands and in the drum. */
@@ -349,9 +357,11 @@ export function createTraceField(kit: RenderKit, capacity = 768) {
           const theta = rotation + i * 2.399,
             spread = foot ? 0 : radius * 0.43;
           dummy.position.set(
-            (spot.x - 600) / 70 + Math.sin(theta) * spread,
+            (spot.x - mapSize.width / 2) / MAP_UNITS_PER_METRE +
+              Math.sin(theta) * spread,
             0.014 + i * 0.001,
-            (spot.y - 400) / 70 + Math.cos(theta) * spread,
+            (spot.y - mapSize.height / 2) / MAP_UNITS_PER_METRE +
+              Math.cos(theta) * spread,
           );
           if (foot) {
             const step = i === 0 ? 0.035 : -0.04;

@@ -1,0 +1,46 @@
+.network-dialog {
+  max-height: 88dvh;
+  overflow-y: auto;
+}
+.network-label {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #d0dbbc;
+}
+.network-dialog textarea {
+  width: 100%;
+  min-height: 66px;
+  max-height: 120px;
+  resize: vertical;
+  background: #172a22;
+  border: 1px solid #8ba37970;
+  border-radius: 5px;
+  padding: 9px;
+  color: #d6e2cb;
+  font: 11px/1.5 monospace;
+  overflow-wrap: anywhere;
+}
+.network-dialog textarea[readonly] {
+  min-height: 55px;
+}
+.network-message {
+  color: #ffd39c;
+  background: #6d482030;
+  padding: 10px;
+  border-radius: 5px;
+}
+.city-network {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 11px;
+  color: #c7d8b7;
+}
+.city-network button {
+  border: 1px solid #78976a70;
+  border-radius: 4px;
+  background: #344b33;
+  color: #e4ead6;
+  padding: 7px;
+  font-size: 11px;
+}

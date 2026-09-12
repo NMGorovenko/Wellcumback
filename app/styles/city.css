@@ -1,0 +1,277 @@
+.shell.city-mode {
+  max-width: 1800px;
+}
+.city-world {
+  position: relative;
+  min-height: 540px;
+  height: calc(100dvh - 175px);
+  max-height: 950px;
+  border: 1px solid #728c8470;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #afc7ce;
+}
+.city-canvas {
+  position: absolute;
+  inset: 0;
+}
+.city-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.city-hub {
+  margin-top: 16px;
+}
+.city-heading {
+  position: absolute;
+  top: 26px;
+  left: 28px;
+  color: #263936;
+  pointer-events: none;
+}
+.city-heading > span {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.city-heading h1 {
+  font-size: clamp(22px, 2.4vw, 35px);
+  letter-spacing: -1px;
+  margin: 10px 0 8px;
+}
+.city-heading p {
+  font-size: 12px;
+  margin: 0;
+}
+.city-actions {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 7px;
+}
+.city-actions button {
+  color: #f2efdf;
+  border: 1px solid #fff4;
+  background: #213b35e0;
+  border-radius: 5px;
+  padding: 8px 9px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.city-speed {
+  position: absolute;
+  right: 25px;
+  bottom: 66px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #213c36;
+}
+.city-speed strong {
+  font-size: 32px;
+  font-variant-numeric: tabular-nums;
+}
+.city-speed span {
+  font-size: 11px;
+}
+.city-speed b {
+  position: absolute;
+  right: 0;
+  bottom: 40px;
+  font-size: 12px;
+  white-space: nowrap;
+  transform: rotate(-7deg);
+  color: #973722;
+}
+.city-arrival {
+  position: absolute;
+  bottom: 65px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #243e36ed;
+  border: 1px solid #d9e49a88;
+  box-shadow: 0 4px 18px #18302a40;
+  border-radius: 8px;
+  padding: 12px 16px;
+  max-width: calc(100% - 35px);
+}
+.city-arrival > div {
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+}
+.city-arrival strong {
+  font-size: 13px;
+}
+.city-arrival span {
+  font-size: 10px;
+  color: #c7d5b8;
+}
+.city-arrival button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: #d1e39c;
+  color: #253a2f;
+  padding: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.city-arrival button:disabled {
+  opacity: 0.65;
+}
+.city-arrival kbd,
+.city-drive-hints kbd {
+  background: #f3f0d9;
+  color: #213c30;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border-bottom: 2px solid #819575;
+}
+.city-drive-hints {
+  position: absolute;
+  bottom: 70px;
+  left: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.city-drive-hints > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #2a4338;
+  font-size: 11px;
+}
+.city-radio {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 18px;
+  font-size: 13px;
+  color: #eaf0da;
+  background: #213930df;
+  padding: 10px 14px;
+  border-radius: 5px;
+  width: fit-content;
+  max-width: calc(100% - 48px);
+}
+.city-pause {
+  position: absolute;
+  inset: 0;
+  background: #18302866;
+  display: grid;
+  place-items: center;
+}
+.city-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 4px;
+  gap: 16px;
+}
+.city-bottom nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.city-bottom button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #b8c9b9;
+  background: transparent;
+  font-size: 11px;
+  padding: 8px;
+}
+.city-bottom button[aria-pressed='true'] {
+  color: #e9edcf;
+  border-color: #a7b98250;
+  background: #41593a80;
+}
+.city-bottom nav button > span {
+  height: 7px;
+  width: 7px;
+  border-radius: 50%;
+}
+.city-players {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.city-players > span {
+  font-size: 8px;
+  letter-spacing: 0.6px;
+  color: #a2b196;
+  margin-right: 5px;
+}
+.city-players button {
+  min-width: 28px;
+  justify-content: center;
+}
+@media (max-width: 760px) {
+  .city-world {
+    min-height: 580px;
+    height: calc(100dvh - 225px);
+  }
+  .city-heading {
+    left: 18px;
+    top: 65px;
+  }
+  .city-heading p {
+    max-width: 240px;
+    line-height: 1.5;
+  }
+  .city-actions {
+    top: 14px;
+    right: 14px;
+  }
+  .city-bottom {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .city-arrival {
+    bottom: 94px;
+    gap: 8px;
+    padding: 10px;
+  }
+  .city-arrival > svg {
+    display: none;
+  }
+  .city-drive-hints {
+    bottom: 88px;
+    left: 18px;
+    gap: 8px;
+  }
+  .city-speed {
+    bottom: 143px;
+    right: 18px;
+  }
+  .city-radio {
+    left: 14px;
+    right: 14px;
+    max-width: calc(100% - 28px);
+    bottom: 14px;
+    font-size: 12px;
+  }
+  .city-arrival button {
+    white-space: normal;
+    min-width: 110px;
+  }
+  .city-arrival > div {
+    min-width: 105px;
+  }
+}

@@ -5,7 +5,10 @@ import {
   furniture,
   obstacles,
   stations,
-} from '../../../lib/game/clean/engine.ts';
+  mapSize,
+  rooms,
+  doorways,
+} from '../../../lib/game/clean/layout.ts';
 import type { RenderKit } from '../world/render-kit';
 import { makeLabel } from '../world/labels.ts';
 import {
@@ -51,7 +54,10 @@ function tiledFloor(kit: RenderKit) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(3.35, 2.2);
+  texture.repeat.set(
+    (bounds.maxX - bounds.minX) / 322,
+    (bounds.maxY - bounds.minY) / 314,
+  );
   texture.anisotropy = 4;
   kit.textures.add(texture);
   const material = new THREE.MeshStandardMaterial({
@@ -61,7 +67,11 @@ function tiledFloor(kit: RenderKit) {
   const width = (bounds.maxX - bounds.minX) / 70 + 0.5,
     depth = (bounds.maxY - bounds.minY) / 70 + 0.5;
   const mesh = kit.mesh(new THREE.BoxGeometry(width, 0.14, depth), material);
-  mesh.position.set(0, -0.09, (bounds.minY + bounds.maxY - 800) / 140);
+  mesh.position.set(
+    0,
+    -0.09,
+    (bounds.minY + bounds.maxY - mapSize.height) / 140,
+  );
 }
 
 /** Different floor finishes make each real room readable in the cutaway. */
@@ -361,7 +371,7 @@ function gearCupboard(
       0.035,
       hinge,
     );
-    for (let i = 0; i < 4; i++)
+    for (let i = 0; i < 6; i++)
       kit.box(
         width * 0.29,
         0.014,
@@ -449,15 +459,13 @@ function batchStaticFixtures(kit: RenderKit, dynamic: THREE.Object3D[]) {
 /** All blocking silhouettes are derived from the same rectangles as movement. */
 export function createBarracks(kit: RenderKit) {
   tiledFloor(kit);
-  roomFloor(kit, 60, 60, 1080, 220, '#a39a73', true);
-  roomFloor(kit, 60, 550, 225, 200, '#c8c9b7');
-  roomFloor(kit, 305, 550, 200, 200, '#c3d0c7');
-  roomFloor(kit, 523, 550, 312, 200, '#b8b59b');
-  roomFloor(kit, 853, 550, 287, 200, '#cbd0bf');
+  rooms.forEach((room) =>
+    roomFloor(kit, room.x, room.y, room.w, room.h, room.color, room.wood),
+  );
   // Light tile stripe follows the corridor, as on the duty-post reference.
-  const corridor = floorWorld(600, 401);
+  const corridor = floorWorld(mapSize.width / 2, 620);
   kit.box(
-    1080 / 70,
+    (bounds.maxX - bounds.minX) / 70,
     0.007,
     0.6,
     '#d6d4bd',
@@ -467,10 +475,10 @@ export function createBarracks(kit: RenderKit) {
     kit.scene,
     0,
   );
-  const xmin = (bounds.minX - 600) / 70 - 0.25,
-    xmax = (bounds.maxX - 600) / 70 + 0.25;
-  const zmin = (bounds.minY - 400) / 70 - 0.25,
-    zmax = (bounds.maxY - 400) / 70 + 0.25;
+  const xmin = (bounds.minX - mapSize.width / 2) / 70 - 0.25,
+    xmax = (bounds.maxX - mapSize.width / 2) / 70 + 0.25;
+  const zmin = (bounds.minY - mapSize.height / 2) / 70 - 0.25,
+    zmax = (bounds.maxY - mapSize.height / 2) / 70 + 0.25;
   kit.box(xmax - xmin + 0.15, 1.2, 0.16, '#c1b472', 0, 0.6, zmin);
   kit.box(xmax - xmin + 0.15, 1.95, 0.16, '#e7dfbd', 0, 2.15, zmin);
   kit.box(xmax - xmin, 0.045, 0.2, '#e2cc8c', 0, 1.22, zmin + 0.02);
@@ -478,8 +486,8 @@ export function createBarracks(kit: RenderKit) {
   for (const x of [xmin, xmax])
     kit.box(0.16, 0.36, zmax - zmin, '#cab776', x, 0.18, (zmin + zmax) / 2);
   kit.box(xmax - xmin, 0.16, 0.15, '#b7a56e', 0, 0.075, zmax);
-  for (let i = 0; i < 4; i++) {
-    const x = -5.8 + i * 3.85;
+  for (let i = 0; i < 6; i++) {
+    const x = xmin + 1.45 + (i * (xmax - xmin - 2.9)) / 5;
     kit.box(2.0, 1.38, 0.065, '#6f8476', x, 2.16, zmin + 0.105);
     kit.box(1.85, 1.23, 0.045, '#b5cbc1', x, 2.16, zmin + 0.15);
     kit.box(0.05, 1.25, 0.08, '#e2e4d1', x, 2.16, zmin + 0.19);
@@ -508,7 +516,7 @@ export function createBarracks(kit: RenderKit) {
     if (solid.kind === 'bed')
       bed(kit, solid.x, solid.y, solid.w, solid.h, bedIndex++);
     else if (solid.kind === 'wall') {
-      const height = solid.y < 300 ? 0.88 : solid.h < 30 ? 1.05 : 1.14;
+      const height = solid.y < 500 ? 0.88 : solid.h < 30 ? 1.05 : 1.14;
       kit.box(
         solid.w / 70,
         height,
@@ -567,20 +575,17 @@ export function createBarracks(kit: RenderKit) {
           );
     }
   }
-  const roomSigns = [
-    doorway(kit, 130, 285, 543, 'ТУАЛЕТ'),
-    doorway(kit, 330, 460, 543, 'ДУШЕВАЯ'),
-    doorway(kit, 610, 795, 543, 'ХОЗКОМНАТА'),
-    doorway(kit, 920, 1050, 543, 'ПРАЧЕЧНАЯ'),
-  ];
+  const roomSigns = doorways.map((door) =>
+    doorway(kit, door.left, door.right, door.y, door.label),
+  );
   const sleeping = makeLabel(kit, 'СПАЛЬНОЕ ПОМЕЩЕНИЕ', '#f3e8c3', 3.4);
-  sleeping.position.copy(floorWorld(550, 250));
+  sleeping.position.copy(floorWorld(740, 420));
   sleeping.position.y = 1.5;
   kit.scene.add(sleeping);
   roomSigns.push(sleeping);
-  const boardWall = floorWorld(830, 288);
+  const boardWall = floorWorld(1290, 458);
   kit.box(2.4, 2.65, 0.16, '#e7dfbd', boardWall.x, 1.325, boardWall.z);
-  noticeBoard(kit, 'ВНУТРЕННИЙ РАСПОРЯДОК', 830, 292, 2.2, 1.25, 1.88);
+  noticeBoard(kit, 'ВНУТРЕННИЙ РАСПОРЯДОК', 1290, 462, 2.2, 1.25, 1.88);
   const deskRect = furniture.find((solid) => solid.kind === 'desk')!;
   const desk = floorWorld(
     deskRect.x + deskRect.w / 2,
@@ -675,7 +680,15 @@ export function createBarracks(kit: RenderKit) {
   );
   cord.scale.y = 2.2;
   // A board rises directly from the wooden post; paper instructions are baked into one texture.
-  noticeBoard(kit, 'ДЕЖУРНЫЙ ПО РОТЕ', 1030, 307, 1.62, 1.15, 1.9);
+  noticeBoard(
+    kit,
+    'ДЕЖУРНЫЙ ПО РОТЕ',
+    stations[0].x,
+    deskRect.y + 2,
+    1.62,
+    1.15,
+    1.9,
+  );
   const dutyTitle = makeLabel(kit, 'СЛУЖУ РОССИИ', '#f1d18b', 1.15);
   dutyTitle.position.set(desk.x, 0.64, desk.z + 0.31);
   kit.scene.add(dutyTitle);
@@ -701,7 +714,14 @@ export function createBarracks(kit: RenderKit) {
   washer.root.updateWorldMatrix(true, true);
   washer.root.localToWorld(washer.laundryTarget.set(0, 0.555, 0.49));
   const shower = createShower(kit, floorWorld(stations[2].x, stations[2].y));
-  const toilet = createToilet(kit, floorWorld(stations[1].x, 721));
+  const toiletRect = furniture.find((solid) => solid.kind === 'toilet')!;
+  const toilet = createToilet(
+    kit,
+    floorWorld(
+      toiletRect.x + toiletRect.w / 2,
+      toiletRect.y + toiletRect.h / 2,
+    ),
+  );
   const gearRect = furniture.find((solid) => solid.kind === 'gear')!;
   const gear = gearCupboard(
     kit,

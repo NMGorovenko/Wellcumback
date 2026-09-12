@@ -1,0 +1,133 @@
+/* Small contextual key badges live next to the working hands/character. */
+.world-action-cues {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+}
+.world-action-cues .context-worker {
+  position: absolute;
+  visibility: hidden;
+  max-width: 190px;
+  display: grid;
+  gap: 4px;
+  filter: drop-shadow(0 2px 3px #0008);
+}
+.context-worker-name {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 6px;
+  color: #f2f4e3;
+  width: fit-content;
+  background: #18251edb;
+  border-radius: 4px;
+}
+.context-worker-name strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+.context-worker-name > span {
+  font-size: 10px;
+  color: #bacab9;
+}
+.context-cues {
+  display: grid;
+  gap: 4px;
+}
+.context-cue {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #f5f3e7;
+  background: #17231ee8;
+  padding: 5px 7px;
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.25;
+  border: 1px solid #c5d8bc55;
+}
+.context-cue > span {
+  display: grid;
+  gap: 1px;
+}
+.context-cue small {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #bac9b1;
+}
+.context-cue kbd {
+  flex-shrink: 0;
+  min-width: 24px;
+  min-height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 3px 5px;
+  border: 1px solid #fff9;
+  border-bottom-width: 3px;
+  background: #f0f0dd;
+  color: #1e3027;
+  border-radius: 5px;
+  font-size: 12px;
+  transition: background 100ms;
+}
+.context-cue.is-held kbd {
+  background: #b4e799;
+  border-color: #dcf9ce;
+  transform: translateY(1px);
+}
+.context-cue.is-release {
+  border-color: #eeb987;
+}
+.context-cue.is-release.is-held kbd {
+  background: #e9bb93;
+}
+.context-cue[data-emphasis='danger'],
+.context-cue[data-emphasis='correct'] {
+  border-color: #ffbe80;
+}
+.context-cue[data-emphasis='danger'] {
+  background: #6b3025ec;
+}
+.context-ai {
+  color: #cfdbcb;
+  font-size: 10px;
+  background: #17231edb;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+.context-worker.is-helper {
+  max-width: 125px;
+}
+
+.context-cue.is-needed kbd {
+  background: #ffcf83;
+  border-color: #ffe1a4;
+}
+.context-cue.is-needed small {
+  color: #ffdbab;
+}
+@media (max-width: 760px) {
+  .world-action-cues .context-worker {
+    max-width: 155px;
+  }
+  .context-worker-name > span {
+    display: none;
+  }
+  .context-cue {
+    font-size: 11px;
+  }
+}
+
+.context-cue > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.context-cue kbd {
+  max-width: 76px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}

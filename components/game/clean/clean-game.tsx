@@ -1,7 +1,11 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { ControlSettings } from '@/components/game/input/control-settings';
+import { useControlSettings } from '@/hooks/use-control-settings';
 import {
   ArrowLeft,
+  Camera,
+  Settings2,
   ArrowRight,
   Pause,
   Play,
@@ -15,22 +19,18 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import {
+  cleanCrew,
   freshClean,
   cleanTick,
   cleanAction,
-  cleanPrompt,
-  cleanCrew,
 } from '@/lib/game/clean/engine';
 import type { Result } from '@/lib/game/types';
-import {
-  gamepadHint,
-  inputPrompt,
-  type PadFrame,
-} from '@/lib/game/input/gamepads';
+import { gamepadHint, type PadFrame } from '@/lib/game/input/gamepads';
 import { useGameInspection } from '@/hooks/use-game-inspection';
 import { useGameLoop } from '@/hooks/use-game-loop';
 import { useCleanAudio } from '@/hooks/use-clean-audio';
 import { EpisodeDialog } from '../episode-dialog';
+import { CleanActionPrompts } from './action-prompts';
 import {
   cleanEpisodes,
   createCleanEpisode,
@@ -61,8 +61,10 @@ export default function CleanGame({
   const game = useRef(freshClean(players)),
     keys = useRef(new Set<string>()),
     saved = useRef(false);
+  const { settings } = useControlSettings();
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [view, setView] = useState(() => freshClean(players)),
-    [cameraMode, setCameraMode] = useState<CleanCameraMode>('auto');
+    [cameraMode, setCameraMode] = useState<CleanCameraMode>('wide');
   const [pads, setPads] = useState<
     Pick<PadFrame, 'assignments' | 'unsupported'>
   >({
@@ -72,6 +74,9 @@ export default function CleanGame({
   const [pauseChoice, setPauseChoice] = useState(0);
   const [episodeOpen, setEpisodeOpen] = useState(false);
   const [episodeChoice, setEpisodeChoice] = useState(0);
+  const cueRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const cueKeys = useRef<ReadonlySet<string>>(new Set());
+  const [heldKeys, setHeldKeys] = useState<ReadonlySet<string>>(new Set());
   const active = view.phase !== 'brief' && view.phase !== 'result';
   useGameInspection(game, keys);
   useCleanAudio(sound, view);
@@ -86,6 +91,12 @@ export default function CleanGame({
     setView({ ...game.current });
   };
   const pause = () => setPause(!game.current.paused);
+  const openControls = () => {
+    setPause(true);
+    setControlsOpen(true);
+  };
+  const toggleCamera = () =>
+    setCameraMode((mode) => (mode === 'wide' ? 'faces' : 'wide'));
   const openEpisodes = () => {
     if (game.current.phase !== 'result') game.current.paused = true;
     keys.current.clear();
@@ -102,10 +113,16 @@ export default function CleanGame({
   useGameLoop({
     game,
     keys,
-    tick: cleanTick,
+    tick: (state, dt, merged) => {
+      cueKeys.current = merged;
+      cleanTick(state, dt, merged);
+    },
     action,
     pause,
-    snapshot: setView,
+    snapshot: (state) => {
+      setView(state);
+      setHeldKeys(cueKeys.current);
+    },
     onGamepads: setPads,
     padMenu: {
       enabled: view.paused || !active,
@@ -115,13 +132,17 @@ export default function CleanGame({
           setEpisodeChoice(
             (v) => (v + delta + cleanEpisodes.length) % cleanEpisodes.length,
           );
-        else setPauseChoice((v) => (v + delta + 3) % 3);
+        else setPauseChoice((v) => (v + delta + 5) % 5);
       },
       onConfirm: () => {
         if (episodeOpen) jumpToEpisode(cleanEpisodes[episodeChoice].id);
         else if (view.paused) {
           if (pauseChoice === 0) setPause(false);
           else if (pauseChoice === 1) openEpisodes();
+          else if (pauseChoice === 2) {
+            toggleCamera();
+            setPause(false);
+          } else if (pauseChoice === 3) openControls();
           else onExit();
         } else if (view.phase === 'brief') action();
         else (onNext ?? onExit)();
@@ -177,7 +198,26 @@ export default function CleanGame({
       aria-label="Операция Чистый проход"
     >
       <div className="game-world">
-        <CleanScene game={game} cameraMode={cameraMode} />
+        <CleanScene game={game} cameraMode={cameraMode} cueRefs={cueRefs} />
+        {settings.showWorldPrompts && (
+          <CleanActionPrompts
+            state={view}
+            pads={pads}
+            cueRefs={cueRefs}
+            heldKeys={heldKeys}
+          />
+        )}
+        <button
+          className="clean-camera-toggle"
+          type="button"
+          onClick={toggleCamera}
+          aria-pressed={cameraMode === 'faces'}
+          aria-label={
+            cameraMode === 'faces' ? 'Показать всю казарму' : 'Приблизить лицо'
+          }
+        >
+          <Camera size={16} /> {cameraMode === 'faces' ? 'Вся казарма' : 'Лицо'}
+        </button>
         <div className="world-heading">
           <span>02 / ДРУГАЯ РОТА</span>
           <strong>Операция «Чистый проход»</strong>
@@ -207,6 +247,13 @@ export default function CleanGame({
             aria-label="Выбрать эпизод"
           >
             <SkipForward size={17} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Настройки управления"
+            onClick={openControls}
+          >
+            <Settings2 size={17} />
           </button>
           {view.phase !== 'result' && (
             <button className="icon-button" onClick={pause} aria-label="Пауза">
@@ -269,7 +316,7 @@ export default function CleanGame({
               </div>
             </dl>
             <button className="play-button" onClick={onNext ?? onExit}>
-              {onNext ? 'Теперь вешаем экран' : 'К историям'}{' '}
+              {onNext ? 'В машину · дальше по городу' : 'К историям'}{' '}
               <ArrowRight size={16} />
             </button>
             {onNext && (
@@ -281,11 +328,6 @@ export default function CleanGame({
         ) : (
           <>
             <CleanStatus game={view} pads={pads} />
-            <p className="context-prompt">
-              {cleanPrompt(view)
-                .replace(/\bE\b/g, inputPrompt(pads, 0, 'action'))
-                .replace(/\bQ\b/g, inputPrompt(pads, 0, 'throw'))}
-            </p>
           </>
         )}
         <details className="clean-help">
@@ -301,23 +343,6 @@ export default function CleanGame({
             втроём один геймпад после переодевания переходит Никите, клавиатура
             остаётся у Ромы. Отпусти кнопки при смене ролей.
           </p>
-          <div className="camera-switch" aria-label="Камера">
-            {(
-              [
-                ['auto', 'Авто'],
-                ['wide', 'Обзор'],
-                ['faces', 'Ближе'],
-              ] as const
-            ).map(([mode, label]) => (
-              <button
-                key={mode}
-                aria-pressed={cameraMode === mode}
-                onClick={() => setCameraMode(mode)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           <details className="touch-controls">
             <summary>Кнопки на экране</summary>
             <div className="touch-row">
@@ -336,25 +361,6 @@ export default function CleanGame({
           <span>РАДИООБМЕН</span>
           <p>{view.message}</p>
         </div>
-        {active && (
-          <div className="keyboard-controls">
-            {Array.from(
-              { length: view.phase === 'clean' ? players : 1 },
-              (_, i) => (
-                <span key={i}>
-                  <b>{view.phase === 'clean' ? cleanCrew[i].name : 'Солдат'}</b>{' '}
-                  · <kbd>{inputPrompt(pads, i, 'move')}</kbd> ·{' '}
-                  <kbd>{inputPrompt(pads, i, 'action')}</kbd> держи для действия
-                </span>
-              ),
-            )}
-            {['find', 'toilet'].includes(view.phase) && (
-              <span>
-                <kbd>{inputPrompt(pads, 0, 'throw')}</kbd> сдержаться
-              </span>
-            )}
-          </div>
-        )}
       </footer>
       <EpisodeDialog
         open={episodeOpen}
@@ -365,7 +371,12 @@ export default function CleanGame({
         onClose={() => setEpisodeOpen(false)}
       />
       <Dialog
-        open={!episodeOpen && view.paused && view.phase !== 'result'}
+        open={
+          !episodeOpen &&
+          !controlsOpen &&
+          view.paused &&
+          view.phase !== 'result'
+        }
         onOpenChange={setPause}
       >
         <DialogContent className="help-dialog">
@@ -388,12 +399,35 @@ export default function CleanGame({
           </button>
           <button
             className={`secondary-button${pauseChoice === 2 ? ' pad-selected' : ''}`}
+            onClick={() => {
+              toggleCamera();
+              setPause(false);
+            }}
+          >
+            <Camera size={17} />{' '}
+            {cameraMode === 'faces' ? 'Вернуть общий вид' : 'Рассмотреть лицо'}
+          </button>
+          <button
+            className={`secondary-button${pauseChoice === 3 ? ' pad-selected' : ''}`}
+            onClick={openControls}
+          >
+            <Settings2 size={17} /> Настройки управления
+          </button>
+          <button
+            className={`secondary-button${pauseChoice === 4 ? ' pad-selected' : ''}`}
             onClick={onExit}
           >
             К выбору историй
           </button>
         </DialogContent>
       </Dialog>
+      <ControlSettings
+        open={controlsOpen}
+        onOpenChange={setControlsOpen}
+        players={players}
+        playerNames={cleanCrew.map((person) => person.name)}
+        pads={pads}
+      />
     </section>
   );
 }

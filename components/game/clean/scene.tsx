@@ -2,8 +2,11 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import type { CleanState } from '@/lib/game/clean/engine';
+import { barracksOverview } from '@/lib/game/clean/camera';
+import { bounds } from '@/lib/game/clean/layout';
 import { planRoute, stations } from '@/lib/game/clean/engine';
 import { RenderKit } from '../world/render-kit';
+import { placeActionCues, type ActionCueRefs } from '../world/action-cues';
 import { createBarracks } from './environment-v3';
 import {
   actorPose,
@@ -13,7 +16,7 @@ import {
 } from './actors-v3';
 import { createTraceField, floorWorld } from './props-v3';
 
-export type CleanCameraMode = 'auto' | 'wide' | 'faces';
+export type CleanCameraMode = 'wide' | 'faces';
 const TAU = Math.PI * 2;
 const angleToward = (current: number, target: number, amount: number) =>
   current +
@@ -24,22 +27,26 @@ const isCleanup = (phase: CleanState['phase']) =>
 /** One continuous 3D barracks, one simulation: story actors hand over to the cleanup crew. */
 export default function CleanScene({
   game,
-  cameraMode = 'auto',
+  cameraMode = 'wide',
+  cueRefs,
 }: {
   game: RefObject<CleanState>;
   cameraMode?: CleanCameraMode;
+  cueRefs?: ActionCueRefs;
 }) {
   const host = useRef<HTMLDivElement>(null),
     mode = useRef(cameraMode);
+  const cues = useRef(cueRefs);
   useEffect(() => {
     mode.current = cameraMode;
-  }, [cameraMode]);
+    cues.current = cueRefs;
+  }, [cameraMode, cueRefs]);
   useEffect(() => {
     const element = host.current;
     if (!element) return;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#a5b1a0');
-    scene.fog = new THREE.Fog('#a5b1a0', 28, 52);
+    // An indoor overview must remain crisp even across the enlarged floorplan.
     const kit = new RenderKit(scene);
     let renderer: THREE.WebGLRenderer;
     try {
@@ -74,11 +81,11 @@ export default function CleanScene({
     key.position.set(-4, 11, 7);
     key.castShadow = true;
     key.shadow.mapSize.set(1536, 1536);
-    key.shadow.camera.left = -11;
-    key.shadow.camera.right = 11;
-    key.shadow.camera.top = 9;
-    key.shadow.camera.bottom = -9;
-    key.shadow.camera.far = 35;
+    key.shadow.camera.left = -(bounds.maxX - bounds.minX) / 140 - 2;
+    key.shadow.camera.right = (bounds.maxX - bounds.minX) / 140 + 2;
+    key.shadow.camera.top = (bounds.maxY - bounds.minY) / 140 + 3;
+    key.shadow.camera.bottom = -(bounds.maxY - bounds.minY) / 140 - 3;
+    key.shadow.camera.far = 50;
     key.shadow.normalBias = 0.035;
     key.shadow.bias = -0.00008;
     scene.add(key, new THREE.HemisphereLight('#d4e6dc', '#6a7358', 2.0));
@@ -119,6 +126,7 @@ export default function CleanScene({
       routeClock = 1,
       previousPhase = game.current.phase,
       previousElapsed = -1,
+      cameraInitialized = false,
       drawTime = 0;
     let routePath: { x: number; y: number }[] = [],
       lastStation = -1;
@@ -361,7 +369,7 @@ export default function CleanScene({
             ? s.phase === 'accident' ||
               (s.phase === 'toilet' && s.phaseTime < 8)
             : state.action === 'react';
-        npc.say(speaking ? state.line : '');
+        npc.say(speaking && mode.current === 'faces' ? state.line : '');
         npc.shock.visible = state.action === 'react' && !state.line;
         npc.name.visible = false;
         if (state.action === 'react') {
@@ -529,8 +537,7 @@ export default function CleanScene({
       room.markers[3].position.z = washerHome.z + 0.78;
       // Map labels help in overview; in close-ups they would cover faces.
       room.roomSigns.forEach((sign) => {
-        sign.visible =
-          mode.current === 'wide' || cleaning || s.phase === 'brief';
+        sign.visible = mode.current === 'wide';
       });
       room.labels.forEach((label, i) => {
         label.visible =
@@ -560,54 +567,21 @@ export default function CleanScene({
             ),
             rotationEase,
           );
-      } else if (mode.current === 'wide' || cleaning || s.phase === 'brief') {
-        desiredLook.set(0, 0.45, 0.12);
-        desiredCamera.set(0.6, narrow ? 17.2 : 11.9, narrow ? 18.5 : 13.0);
-      } else if (heroAction === 'relief') {
-        desiredLook.copy(room.toilet.root.position);
-        desiredLook.y = 0.94;
-        desiredCamera.copy(desiredLook).add(offset.set(2.05, 2.15, -3.35));
-      } else if (heroAction === 'shower') {
-        desiredLook.copy(room.shower.root.position);
-        desiredLook.y = 1.05;
-        desiredCamera.copy(desiredLook).add(offset.set(2.1, 2.4, -3.45));
-      } else if (
-        heroAction === 'load' ||
-        s.phase === 'spin' ||
-        (s.phase === 'response' && s.responseStage !== 'gear')
-      ) {
-        desiredLook.copy(washerHome);
-        desiredLook.y = 0.91;
-        desiredLook.z += 0.24;
-        desiredCamera
-          .copy(desiredLook)
-          .add(offset.set(-2.8, 2.8, narrow ? 5.4 : 4.35));
-      } else if (s.phase === 'response' && s.responseStage === 'gear') {
-        desiredLook
-          .copy(npcs[1].rig.root.position)
-          .add(npcs[2].rig.root.position)
-          .multiplyScalar(0.5);
-        desiredLook.y = 1.0;
-        desiredCamera
-          .copy(desiredLook)
-          .add(offset.set(1.55, 3.75, narrow ? 6.5 : 5.5));
       } else {
-        desiredLook.copy(soldier.rig.root.position);
-        desiredLook.y = 1.0;
-        desiredCamera
-          .copy(desiredLook)
-          .add(
-            offset.set(
-              1.2,
-              s.phase === 'accident' ? 2.3 : 3.0,
-              narrow ? 6.4 : 5.2,
-            ),
-          );
+        const overview = barracksOverview(camera.aspect, camera.fov);
+        desiredLook.copy(overview.look);
+        desiredCamera.copy(overview.position);
+        if (camera.far !== overview.far) {
+          camera.far = overview.far;
+          camera.updateProjectionMatrix();
+        }
       }
-      const cameraEase = 1 - Math.exp(-dt * (phaseChanged ? 2.7 : 4.2));
+      const cameraEase = cameraInitialized ? 1 - Math.exp(-dt * 4.2) : 1;
+      cameraInitialized = true;
       camera.position.lerp(desiredCamera, cameraEase);
       look.lerp(desiredLook, cameraEase);
       camera.lookAt(look);
+      placeActionCues(cues.current, cleaning ? crew.map(actor=>actor.rig.head) : [soldier.rig.head], camera, element, !s.paused && mode.current !== 'faces');
       renderer.render(scene, camera);
     };
     animation = requestAnimationFrame(draw);

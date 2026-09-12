@@ -1,10 +1,20 @@
 import type { GameState } from './engine.ts';
-import type { InputControl } from '../input/gamepads.ts';
+import {
+  gamepadPrompt,
+  keyboardPrompt,
+  keyPrompt,
+  PLAYER_BINDINGS,
+  type InputControl,
+  type PadFrame,
+} from '../input/gamepads.ts';
 
 export type ScreenPrompt = {
   control: InputControl;
   text: string;
   mode?: 'hold' | 'release' | 'tap';
+  direction?: 'left' | 'right';
+  emphasis?: 'safe' | 'correct' | 'danger';
+  satisfied?: boolean;
 };
 export type WorkerPrompt = {
   worker: number;
@@ -12,6 +22,69 @@ export type WorkerPrompt = {
   role: string;
   prompts: ScreenPrompt[];
 };
+/** Positive balance drifts right. A/left is the real negative-x engine input;
+ * both horizontal keys cancel, and a direction alone never braces the chair. */
+export function chairBalanceCue(s: GameState) {
+  const magnitude = Math.abs(s.balance);
+  const direction: 'left' | 'right' | null =
+    magnitude <= 0.14 ? null : s.balance > 0 ? 'left' : 'right';
+  const held = s.braceHeld;
+  const x =
+    Number(s.heldKeys.includes('KeyD')) - Number(s.heldKeys.includes('KeyA'));
+  const correcting =
+    held &&
+    (direction === null ? x === 0 : x === (direction === 'left' ? -1 : 1));
+  const emphasis: NonNullable<ScreenPrompt['emphasis']> =
+    !held || magnitude >= 0.72 ? 'danger' : direction ? 'correct' : 'safe';
+  const text = !held
+    ? 'Стулья отпущены!'
+    : direction === 'left'
+      ? 'Клонит вправо — тяни влево'
+      : direction === 'right'
+        ? 'Клонит влево — тяни вправо'
+        : 'Ровно — отпусти направление';
+  return { direction, held, correcting, emphasis, text };
+}
+
+/** Shared by footer and projected in-world badges. Resolve the exact key/stick
+ * direction here so a warning never highlights an unrelated player's arrows. */
+export function screenPromptInput(
+  pads: Pick<PadFrame, 'assignments'>,
+  player: number,
+  prompt: ScreenPrompt,
+  heldKeys: readonly string[],
+) {
+  const binding = PLAYER_BINDINGS[player];
+  const { control, direction } = prompt;
+  if (direction) {
+    const opposite = direction === 'left' ? 'right' : 'left';
+    const pad = pads.assignments.some((p) => p.player === player);
+    return {
+      label: pad
+        ? `стик ${direction === 'left' ? '←' : '→'}`
+        : keyPrompt(binding[direction]),
+      held:
+        heldKeys.includes(binding[direction]) &&
+        !heldKeys.includes(binding[opposite]),
+    };
+  }
+  const code =
+    control === 'action' || control === 'secondary'
+      ? binding[control]
+      : control === 'throw'
+        ? 'KeyQ'
+        : '';
+  const held =
+    control === 'horizontal'
+      ? heldKeys.includes(binding.left) || heldKeys.includes(binding.right)
+      : heldKeys.includes(code) ||
+        (player === 0 && control === 'action' && heldKeys.includes('Space'));
+  return {
+    label:
+      gamepadPrompt(pads, player, control) || keyboardPrompt(player, control),
+    held,
+  };
+}
 /** Movie-style cues describe the next action, not every possible binding. The
  * controls remain fixed; solo's drill beat directs Yarik while Nikita assists. */
 export function screenPrompts(s: GameState): WorkerPrompt[] {
@@ -35,7 +108,8 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
       control: InputControl,
       text: string,
       mode?: ScreenPrompt['mode'],
-    ) => row.prompts.push({ control, text, mode });
+      details?: Pick<ScreenPrompt, 'direction' | 'emphasis' | 'satisfied'>,
+    ) => row.prompts.push({ control, text, mode, ...details });
     if (player === null) return row;
     if (s.phase === 'frame') {
       if (worker === 0) {
@@ -93,16 +167,36 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
       } else if (s.drillMode === 'fallen') {
         // Recovery plays out before any new action can begin.
       } else if (worker === 0) {
+        const balance = chairBalanceCue(s);
         cue(
           'action',
-          s.drillMode === 'handoff'
-            ? s.drillGear === 'none'
-              ? 'подать дрель'
-              : 'подать пылесос'
-            : 'ДЕРЖАТЬ стулья',
+          !balance.held
+            ? 'стулья отпущены!'
+            : s.drillMode === 'handoff'
+              ? s.drillGear === 'none'
+                ? 'держать + подать дрель'
+                : 'держать + подать пылесос'
+              : 'держать стулья',
           'hold',
+          {
+            emphasis: balance.held ? 'safe' : 'danger',
+            satisfied: balance.held,
+          },
         );
-        cue('horizontal', 'ловить баланс');
+        cue(
+          'horizontal',
+          balance.direction
+            ? balance.direction === 'left'
+              ? 'клонит вправо — тяни влево'
+              : 'клонит влево — тяни вправо'
+            : 'стулья ровно',
+          balance.direction ? 'hold' : 'release',
+          {
+            direction: balance.direction ?? undefined,
+            emphasis: balance.emphasis,
+            satisfied: balance.correcting,
+          },
+        );
       } else if (worker === 1) {
         if (s.drillMode === 'climb' || s.drillMode === 'descend')
           cue(

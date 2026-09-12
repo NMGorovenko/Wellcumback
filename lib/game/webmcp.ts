@@ -24,11 +24,11 @@ export function registerGameTools(
   const tool: Tool = {
     name: 'start_game_story',
     description:
-      'Start one of the two playable stories with 1–3 local players. Opens the game; does not complete it or award points.',
+      'Start one of the playable stories with 1–3 local players. Opens the game; does not complete it or award points.',
     inputSchema: {
       type: 'object',
       properties: {
-        story: { type: 'string', enum: ['screen', 'clean'] },
+        story: { type: 'string', enum: ['screen', 'clean', 'moving'] },
         players: { type: 'integer', minimum: 1, maximum: 3 },
       },
       required: ['story', 'players'],
@@ -40,13 +40,13 @@ export function registerGameTools(
         throw new Error('Expected story and players.');
       const { story, players } = input as Record<string, unknown>;
       if (
-        (story !== 'screen' && story !== 'clean') ||
+        (story !== 'screen' && story !== 'clean' && story !== 'moving') ||
         typeof players !== 'number' ||
         !Number.isInteger(players) ||
         players < 1 ||
         players > 3
       )
-        throw new Error('Choose screen or clean and 1–3 players.');
+        throw new Error('Choose screen, clean or moving and 1–3 players.');
       start(story, players);
       return { started: true, story, players };
     },

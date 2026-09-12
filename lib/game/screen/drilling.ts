@@ -71,14 +71,22 @@ function balanceStep(s: GameState, dt: number, input: Input[]) {
     : held
       ? input[ASSISTANT].x
       : 0;
+  // Load grows as Yarik leaves the floor. Passing tools is calmer than drilling,
+  // so the first directional cue gives a human time to react. Correction stays
+  // fully responsive at every height; holding alone still cannot arrest a lean.
+  const load =
+    s.drillMode === 'climb' || s.drillMode === 'descend'
+      ? 0.16 + 0.84 * s.climb
+      : s.drillMode === 'handoff'
+        ? 0.55
+        : 1;
+  const disturbance =
+    Math.sin(s.phaseTime * 1.9) * 0.2 +
+    s.balance * (held ? 0.42 : 1.1) +
+    (!held ? 0.44 : 0) +
+    (s.drillRunning ? Math.sin(s.phaseTime * 29) * 0.13 : 0);
   s.balance +=
-    (Math.sin(s.phaseTime * 1.9) * 0.24 +
-      s.balance * (held ? 0.52 : 1.1) +
-      correction * 0.95 +
-      (!held ? 0.44 : 0) +
-      (s.drillRunning ? Math.sin(s.phaseTime * 29) * 0.13 : 0)) *
-    dt *
-    (s.chairs === 2 ? 1.65 : 1);
+    (disturbance * load + correction * 1.2) * dt * (s.chairs === 2 ? 1.65 : 1);
   if (s.players === 3 && input[2].held) s.balance *= Math.exp(-dt * 1.3);
   s.workers[ASSISTANT].animation = held ? 'hold' : 'idle';
   if (Math.abs(s.balance) > 1) {
@@ -134,7 +142,7 @@ export function drillStep(s: GameState, dt: number, input: Input[]) {
       putToolsDown(s);
       s.message = solo
         ? 'Держи E — Ярик забирается. Никита страхует сам.'
-        : 'Никита держит E и балансирует A/D. Ярик держит Enter и забирается.';
+        : 'Никита: E держать. Клонит вправо — A, влево — D. Ровно — отпусти A/D. Ярик: Enter — наверх.';
     }
     return;
   }
@@ -146,7 +154,7 @@ export function drillStep(s: GameState, dt: number, input: Input[]) {
       s.drillMode = 'handoff';
       s.message = solo
         ? 'Держи E — прими дрель, потом пылесос. Никита подаёт по очереди.'
-        : 'Никита держит E — подаёт. Ярик держит Enter — принимает. Сначала дрель, потом пылесос.';
+        : 'Никита: E держать и следить за стрелкой баланса. Ярик: Enter — принять дрель, потом пылесос.';
     }
     return;
   }

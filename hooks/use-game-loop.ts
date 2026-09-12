@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, type RefObject } from 'react';
 import {
+  PLAYER_BINDINGS,
   createPadInput,
   createPadNavigation,
   mapGamepads,
@@ -12,6 +13,16 @@ import {
   type PadDirection,
   type PadFrame,
 } from '@/lib/game/input/gamepads';
+
+import {
+  canonicalKeyForPhysical,
+  mapPhysicalKeys,
+} from '@/lib/game/input/settings';
+import {
+  getControlSettings,
+  initializeControlSettings,
+  isControlInputBlocked,
+} from '@/lib/game/input/settings-store';
 
 export type GamepadMenu = {
   enabled: boolean;
@@ -34,6 +45,7 @@ export function useGameLoop<
   snapshot,
   padMenu,
   onGamepads,
+  tickWhileBlocked = false,
 }: {
   game: RefObject<T>;
   keys: RefObject<Set<string>>;
@@ -43,6 +55,8 @@ export function useGameLoop<
   snapshot: (state: T) => void;
   padMenu?: GamepadMenu;
   onGamepads?: (status: PadStatus) => void;
+  /** City transport keeps sending neutral heartbeats while a dialog blocks controls. */
+  tickWhileBlocked?: boolean;
 }) {
   const callbacks = useRef({
     tick,
@@ -51,12 +65,25 @@ export function useGameLoop<
     snapshot,
     padMenu,
     onGamepads,
+    tickWhileBlocked,
   });
   useEffect(() => {
-    callbacks.current = { tick, action, pause, snapshot, padMenu, onGamepads };
-  }, [tick, action, pause, snapshot, padMenu, onGamepads]);
+    callbacks.current = {
+      tick,
+      action,
+      pause,
+      snapshot,
+      padMenu,
+      onGamepads,
+      tickWhileBlocked,
+    };
+  }, [tick, action, pause, snapshot, padMenu, onGamepads, tickWhileBlocked]);
   useEffect(() => {
+    initializeControlSettings();
     const sourceKeys = keys.current;
+    const physicalKeys = new Set<string>();
+    let previousBindings = getControlSettings().keys,
+      previousBlocked = isControlInputBlocked();
     const padState = createPadInput(),
       navigation = createPadNavigation();
     let last = performance.now(),
@@ -67,17 +94,30 @@ export function useGameLoop<
     let previousPaused = game.current.paused,
       previousMenu = !!callbacks.current.padMenu?.enabled,
       statusKey = '';
-    const keyDirections: Record<string, PadDirection> = {
-      ArrowUp: 'up',
-      KeyW: 'up',
-      ArrowDown: 'down',
-      KeyS: 'down',
-      ArrowLeft: 'left',
-      KeyA: 'left',
-      ArrowRight: 'right',
-      KeyD: 'right',
+    const keyDirections = Object.fromEntries(
+      PLAYER_BINDINGS.flatMap((binding) => [
+        [binding.up, 'up'],
+        [binding.down, 'down'],
+        [binding.left, 'left'],
+        [binding.right, 'right'],
+      ]),
+    ) as Record<string, PadDirection>;
+    const resetInput = () => {
+      physicalKeys.clear();
+      keys.current.clear();
+      resetPadInput(padState);
+      navigation.direction = null;
+      navigation.repeatAt = 0;
+      primaryPadHeld = false;
     };
     const down = (event: KeyboardEvent) => {
+      if (
+        isControlInputBlocked() ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey
+      )
+        return;
       if (
         event.target instanceof HTMLElement &&
         event.target.closest(
@@ -85,15 +125,22 @@ export function useGameLoop<
         )
       )
         return;
+      const code = canonicalKeyForPhysical(getControlSettings(), event.code);
       const menu = callbacks.current.padMenu;
       if (menu?.enabled) {
-        if (keyDirections[event.code]) {
+        if (code && keyDirections[code]) {
           event.preventDefault();
-          menu.onMove(keyDirections[event.code]);
-        } else if (['KeyE', 'Space', 'Enter'].includes(event.code)) {
+          menu.onMove(keyDirections[code]);
+        } else if (
+          code &&
+          PLAYER_BINDINGS.some((binding) => binding.action === code)
+        ) {
           event.preventDefault();
           if (!event.repeat) menu.onConfirm();
-        } else if (['Digit1', 'Digit2', 'Digit3'].includes(event.code)) {
+        } else if (
+          !code &&
+          ['Digit1', 'Digit2', 'Digit3'].includes(event.code)
+        ) {
           event.preventDefault();
           if (!event.repeat)
             menu.onDirectChoice?.(Number(event.code.slice(-1)) - 1);
@@ -103,38 +150,31 @@ export function useGameLoop<
         }
         return;
       }
-      if (
-        [
-          'Space',
-          'Enter',
-          'ArrowUp',
-          'ArrowDown',
-          'ArrowLeft',
-          'ArrowRight',
-        ].includes(event.code)
-      )
-        event.preventDefault();
       if (event.code === 'Escape' && !event.repeat) {
         callbacks.current.pause();
-        resetPadInput(padState);
+        resetInput();
         return;
       }
+      if (!code) return;
+      event.preventDefault();
+      // After a modal, remap or blur, a held physical key must be released before
+      // it can act again; browser key-repeat is not a fresh press.
+      if (event.repeat && !physicalKeys.has(event.code)) return;
       const actionAlreadyHeld =
-        keys.current.has('KeyE') || keys.current.has('Space') || primaryPadHeld;
-      keys.current.add(event.code);
-      if (
-        !event.repeat &&
-        !actionAlreadyHeld &&
-        ['KeyE', 'Space'].includes(event.code)
-      )
+        mapPhysicalKeys(getControlSettings(), physicalKeys).has('KeyE') ||
+        keys.current.has('KeyE') ||
+        keys.current.has('Space') ||
+        primaryPadHeld;
+      physicalKeys.add(event.code);
+      if (!event.repeat && !actionAlreadyHeld && code === 'KeyE')
         callbacks.current.action();
     };
-    const up = (event: KeyboardEvent) => keys.current.delete(event.code);
+    const up = (event: KeyboardEvent) => {
+      physicalKeys.delete(event.code);
+    };
     const blur = () => {
       focused = false;
-      keys.current.clear();
-      resetPadInput(padState);
-      primaryPadHeld = false;
+      resetInput();
       if (!game.current.paused) callbacks.current.pause();
       callbacks.current.snapshot({ ...game.current });
     };
@@ -150,17 +190,20 @@ export function useGameLoop<
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       const menu = callbacks.current.padMenu,
-        menuEnabled = !!menu?.enabled;
+        menuEnabled = !!menu?.enabled,
+        blocked = isControlInputBlocked(),
+        settings = getControlSettings();
       if (
         previousPaused !== game.current.paused ||
-        previousMenu !== menuEnabled
-      ) {
-        resetPadInput(padState);
-        navigation.direction = null;
-        navigation.repeatAt = 0;
-        keys.current.clear();
-        primaryPadHeld = false;
-      }
+        previousMenu !== menuEnabled ||
+        previousBlocked !== blocked ||
+        previousBindings !== settings.keys
+      )
+        resetInput();
+      if (blocked && !previousBlocked && !game.current.paused)
+        callbacks.current.pause();
+      previousBlocked = blocked;
+      previousBindings = settings.keys;
       const pads = mapGamepads(
         padState,
         document.hidden || !focused ? [] : readGamepads(),
@@ -182,8 +225,13 @@ export function useGameLoop<
           unsupported: pads.unsupported,
         });
       }
-      let merged = mergeInputKeys(keys.current, pads.keys);
-      if (menuEnabled && menu) {
+      const keyboard = mapPhysicalKeys(settings, physicalKeys);
+      const localKeys = mergeInputKeys(keys.current, keyboard);
+      let merged = mergeInputKeys(localKeys, pads.keys);
+      if (blocked) {
+        merged = new Set();
+        primaryPadHeld = false;
+      } else if (menuEnabled && menu) {
         const nav = navigateGamepad(navigation, pads, now / 1000);
         if (nav.back) menu.onBack();
         else if (nav.confirm) menu.onConfirm();
@@ -199,13 +247,14 @@ export function useGameLoop<
         primaryPadHeld = pads.keys.has('KeyE');
         if (
           pads.primaryActionPressed &&
-          !keys.current.has('KeyE') &&
-          !keys.current.has('Space') &&
+          !localKeys.has('KeyE') &&
+          !localKeys.has('Space') &&
           !game.current.paused
         )
           callbacks.current.action();
       }
-      callbacks.current.tick(game.current, dt, merged);
+      if (!blocked || callbacks.current.tickWhileBlocked)
+        callbacks.current.tick(game.current, dt, merged);
       previousPaused = game.current.paused;
       previousMenu = menuEnabled;
       elapsed += dt;
@@ -224,6 +273,7 @@ export function useGameLoop<
     return () => {
       cancelAnimationFrame(frame);
       sourceKeys.clear();
+      physicalKeys.clear();
       resetPadInput(padState);
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);

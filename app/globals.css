@@ -4,6 +4,11 @@
 @import './styles/game.css';
 @import './styles/clean.css';
 @import './styles/screen.css';
+@import './styles/action-cues.css';
+@import './styles/control-settings.css';
+@import './styles/city.css';
+@import './styles/network.css';
+@import './styles/moving.css';
 @import './styles/hub.css';
 @custom-variant dark (&:is(.dark *));
 @theme inline {
@@ -156,5 +161,51 @@ button:active:not(:disabled) {
 @media (prefers-reduced-motion: reduce) {
   button {
     transition: none;
+  }
+}
+
+.fullscreen-button {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  color: #e2e9d6;
+  background: #354338;
+  border: 1px solid #879d7060;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.fullscreen-button:hover {
+  background: #465b3e;
+}
+.fullscreen-button kbd {
+  color: #bfcca7;
+  font-size: 10px;
+  border: 1px solid #81947170;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.shell.window-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  max-width: none;
+  overflow: auto;
+  background: var(--background);
+}
+@media (max-width: 760px) {
+  .fullscreen-button {
+    padding: 5px 7px;
+  }
+  .fullscreen-button kbd {
+    display: none;
+  }
+}
+@media (max-width: 420px) {
+  .fullscreen-button > span {
+    display: none;
   }
 }

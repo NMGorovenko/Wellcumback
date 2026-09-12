@@ -11,6 +11,8 @@ import {
   type PadFrame,
 } from '@/lib/game/input/gamepads';
 
+import { isControlInputBlocked } from '@/lib/game/input/settings-store';
+
 /** Lobby-only polling. Inside a running game use useGameLoop.padMenu instead,
  * so only one owner dispatches controller actions for the current surface. */
 export function useGamepadNavigation({
@@ -36,7 +38,8 @@ export function useGamepadNavigation({
       navigation = createPadNavigation();
     let frame = 0,
       statusKey = '',
-      focused = document.hasFocus();
+      focused = document.hasFocus(),
+      previousBlocked = isControlInputBlocked();
     const blur = () => {
       focused = false;
       resetPadInput(state);
@@ -47,6 +50,13 @@ export function useGamepadNavigation({
       resetPadInput(state);
     };
     const update = (now: number) => {
+      const blocked = isControlInputBlocked();
+      if (blocked !== previousBlocked) {
+        resetPadInput(state);
+        navigation.direction = null;
+        navigation.repeatAt = 0;
+      }
+      previousBlocked = blocked;
       const pads = mapGamepads(
         state,
         document.hidden || !focused ? [] : readGamepads(),
@@ -62,7 +72,9 @@ export function useGamepadNavigation({
         statusKey = key;
         callbacks.current.onGamepads?.(pads);
       }
-      const nav = navigateGamepad(navigation, pads, now / 1000);
+      const nav = blocked
+        ? { back: false, confirm: false, direction: null }
+        : navigateGamepad(navigation, pads, now / 1000);
       if (nav.back) callbacks.current.onBack();
       else if (nav.confirm) callbacks.current.onConfirm();
       else if (nav.direction) callbacks.current.onMove(nav.direction);

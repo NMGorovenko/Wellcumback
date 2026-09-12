@@ -546,7 +546,7 @@ export function ScreenPhasePanel({
             className="hud-primary"
             onClick={onNext ?? onExit}
           >
-            {onNext ? 'Теперь байка из роты' : 'К другим историям'}{' '}
+            {onNext ? 'В машину · дальше по городу' : 'К другим историям'}{' '}
             <ArrowRight size={16} />
           </button>
           {onNext && (

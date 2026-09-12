@@ -5,7 +5,10 @@ import {
   ArrowRight,
   Check,
   Gamepad2,
+  Map,
+  Radio,
   Maximize,
+  Minimize,
   Play,
   Trophy,
   Users,
@@ -21,20 +24,32 @@ import {
 } from '@/components/ui/dialog';
 import Scene from '@/components/game/screen/scene';
 import CleanScene from '@/components/game/clean/scene';
+import CityHub from '@/components/game/city/city-hub';
+import { freshCity } from '@/lib/game/city/engine';
+import MovingGame from '@/components/game/moving/moving-game';
+import MovingScene from '@/components/game/moving/scene';
+import { freshMoving } from '@/lib/game/moving/engine';
+import { ControlSettings } from '@/components/game/input/control-settings';
+import { NetworkDialog } from '@/components/game/network/network-dialog';
+import { useNetworkSession } from '@/hooks/use-network-session';
+import { disconnectNetwork } from '@/lib/game/network/session';
 import ScreenGame from '@/components/game/screen/screen-game';
 import CleanGame from '@/components/game/clean/clean-game';
+import { useGameFullscreen } from '@/hooks/use-game-fullscreen';
+import { useDialogInput } from '@/hooks/use-dialog-input';
 import { useGameResults } from '@/hooks/use-game-results';
 import { registerGameTools } from '@/lib/game/webmcp';
 import { useGamepadNavigation } from '@/hooks/use-gamepad-navigation';
-import { gamepadHint, type PadFrame } from '@/lib/game/input/gamepads';
+import { type PadFrame } from '@/lib/game/input/gamepads';
 import { freshClean } from '@/lib/game/clean/engine';
 import { people } from '@/lib/game/presets';
 
-type Story = 'screen' | 'clean';
+type Story = 'screen' | 'clean' | 'moving';
 const episodes = [
   {
     id: 'screen' as const,
     number: '01',
+    tabTitle: 'Экран на полстены',
     kicker: 'КВАРТИРНЫЙ ВОПРОС',
     title: 'Да тут на полчаса.',
     line: 'Огромный экран. Одна отвёртка. Три специалиста.',
@@ -43,21 +58,38 @@ const episodes = [
   {
     id: 'clean' as const,
     number: '02',
+    tabTitle: 'Чистый проход',
     kicker: 'БАЙКА ИЗ ДРУГОЙ РОТЫ',
     title: 'Без лишних вопросов.',
     line: 'Одна неловкая смена. Очень большая уборка.',
     duration: 'Три акта',
   },
+  {
+    id: 'moving' as const,
+    number: '03',
+    tabTitle: 'Переезд Ярика',
+    kicker: 'ПЕРЕЕЗД ЯРИКА',
+    title: 'Это ещё не всё.',
+    line: 'Жёлтые сумки, тяжёлые коробки и ещё одна последняя вещь.',
+    duration: 'Ранняя глава · в разработке',
+  },
 ];
 function Preview({ story }: { story: Story }) {
   const barracks = useRef(freshClean(3));
-  return story === 'screen' ? (
+  const moving = useRef(freshMoving(3));
+  return story === 'moving' ? (
+    <MovingScene game={moving} />
+  ) : story === 'screen' ? (
     <Scene preview />
   ) : (
     <CleanScene game={barracks} cameraMode="wide" />
   );
 }
 export default function Home() {
+  const city = useRef(freshCity());
+  const [hubMode, setHubMode] = useState<'city' | 'stories'>('city');
+  const [networkOpen, setNetworkOpen] = useState(false);
+  const network = useNetworkSession();
   const [players, setPlayers] = useState(2),
     [sound, setSound] = useState(true),
     [active, setActive] = useState<Story | null>(null);
@@ -71,20 +103,29 @@ export default function Home() {
     Pick<PadFrame, 'assignments' | 'unsupported'>
   >({ assignments: [], unsupported: [] });
   const [results, finish] = useGameResults();
+  const fullscreen = useGameFullscreen();
+  useDialogInput(panel === 'people' || panel === 'scores', () =>
+    setPanel(null),
+  );
   const episode = episodes[selected];
   const play = (story: Story) => {
+    if (network.role) disconnectNetwork();
     if (!transition)
       setTransition({
         target: story,
         label: episodes.find((e) => e.id === story)!.kicker,
       });
   };
-  const exit = () =>
-    setTransition({ target: null, label: 'ВЕЧЕР ПРОДОЛЖАЕТСЯ' });
+  const exit = () => {
+    city.current.paused = false;
+    city.current.interaction = null;
+    setHubMode('city');
+    setTransition({ target: null, label: 'ЕЩЁ ОДНА ИСТОРИЯ · ПОЕХАЛИ' });
+  };
   const changeEpisode = (direction: number) =>
     setSelected((n) => (n + direction + episodes.length) % episodes.length);
   useGamepadNavigation({
-    enabled: !active && !transition,
+    enabled: !active && !transition && hubMode === 'stories' && !networkOpen,
     onMove: (direction) => {
       if (panel) return;
       if (direction === 'left' || direction === 'right')
@@ -123,12 +164,18 @@ export default function Home() {
   );
   const total = results.reduce((sum, r) => sum + r.score, 0);
   return (
-    <main className={`shell${active ? ' game-active' : ' hub'}`}>
+    <main
+      className={`shell${active ? ' game-active' : ' hub'}${!active && hubMode === 'city' ? ' city-mode' : ''}${fullscreen.mode === 'window' ? ' window-fullscreen' : ''}`}
+    >
       <header className="topbar">
         <button
           className="hub-brand"
           onClick={() => {
             if (active) exit();
+            else {
+              city.current.paused = false;
+              setHubMode('city');
+            }
           }}
           aria-label="К выбору историй"
         >
@@ -154,6 +201,13 @@ export default function Home() {
               </button>
               <button
                 className="icon-button"
+                onClick={() => setNetworkOpen(true)}
+                aria-label="Сетевая поездка"
+              >
+                <Radio size={18} />
+              </button>
+              <button
+                className="icon-button"
                 onClick={() => setPanel('controls')}
                 aria-label="Клавиатура и геймпады"
               >
@@ -169,15 +223,33 @@ export default function Home() {
             {sound ? <Volume2 size={18} /> : <VolumeX size={18} />}
           </button>
           <button
-            className="icon-button"
-            aria-label="На весь экран"
-            onClick={() => {
-              if (document.fullscreenElement) void document.exitFullscreen?.();
-              else
-                document.documentElement.requestFullscreen?.().catch(() => {});
-            }}
+            className="fullscreen-button"
+            aria-label={
+              fullscreen.active
+                ? 'Выйти из полноэкранного режима'
+                : 'На весь экран'
+            }
+            aria-pressed={fullscreen.active}
+            title={
+              fullscreen.mode === 'window'
+                ? 'Игра развёрнута в окне. Esc — свернуть'
+                : 'Полноэкранный режим · F'
+            }
+            onClick={fullscreen.toggle}
           >
-            <Maximize size={17} />
+            {fullscreen.active ? (
+              <Minimize size={17} />
+            ) : (
+              <Maximize size={17} />
+            )}
+            <span>
+              {fullscreen.mode === 'window'
+                ? 'На всё окно'
+                : fullscreen.active
+                  ? 'Свернуть'
+                  : 'На весь экран'}
+            </span>
+            <kbd>F</kbd>
           </button>
         </div>
       </header>
@@ -188,7 +260,7 @@ export default function Home() {
           sound={sound}
           onExit={exit}
           onFinish={finish}
-          onNext={() => play('clean')}
+          onNext={exit}
         />
       ) : active === 'clean' ? (
         <CleanGame
@@ -197,10 +269,37 @@ export default function Home() {
           sound={sound}
           onExit={exit}
           onFinish={finish}
-          onNext={() => play('screen')}
+          onNext={exit}
+        />
+      ) : active === 'moving' ? (
+        <MovingGame
+          key={`moving-${players}`}
+          players={players}
+          sound={sound}
+          onExit={exit}
+          onFinish={finish}
+          onNext={exit}
+        />
+      ) : hubMode === 'city' ? (
+        <CityHub
+          onGamepads={setPads}
+          game={city}
+          onPlay={play}
+          onStories={() => setHubMode('stories')}
+          players={players}
+          onPlayers={setPlayers}
         />
       ) : (
         <>
+          <button
+            className="hud-text-button"
+            onClick={() => {
+              city.current.paused = false;
+              setHubMode('city');
+            }}
+          >
+            <Map size={15} /> На карту города
+          </button>
           <section className="hub-stage" aria-label="Выбор истории">
             <div className="hub-preview" key={episode.id}>
               <Preview story={episode.id} />
@@ -257,7 +356,7 @@ export default function Home() {
                   onClick={() => setSelected(i)}
                 >
                   <span>{e.number}</span>
-                  {i === 0 ? 'Экран на полстены' : 'Чистый проход'}
+                  {e.tabTitle}
                 </button>
               ))}
             </div>
@@ -268,12 +367,12 @@ export default function Home() {
             >
               <ArrowRight size={18} />
             </button>
-            <span className="coming-story">03 · Mustang — история впереди</span>
+            <span className="coming-story">Mustang ждёт на карте города</span>
           </nav>
         </>
       )}
       <Dialog
-        open={panel !== null}
+        open={panel !== null && panel !== 'controls'}
         onOpenChange={(open) => {
           if (!open) setPanel(null);
         }}
@@ -324,9 +423,8 @@ export default function Home() {
                     .map((r, i) => (
                       <div key={r.date + i}>
                         <span>
-                          {r.story === 'screen'
-                            ? 'Экран на полстены'
-                            : 'Чистый проход'}
+                          {episodes.find((episode) => episode.id === r.story)
+                            ?.title || 'История'}
                           <small>
                             {r.players} чел. · {r.seconds} сек.
                           </small>
@@ -342,47 +440,28 @@ export default function Home() {
               )}
             </>
           )}
-          {panel === 'controls' && (
-            <div className="hub-input-help">
-              <p className="quiet">{gamepadHint(pads)}</p>
-              <p>
-                <kbd>WASD</kbd> + <kbd>E</kbd> — первый игрок
-                <br />
-                <kbd>Стрелки</kbd> + <kbd>Enter</kbd> — второй игрок
-                <br />
-                <kbd>IJKL</kbd> + <kbd>O</kbd> — третий игрок
-              </p>
-              <p>
-                <kbd>Стик / крестовина</kbd> — движение
-                <br />
-                <kbd>A / ×</kbd> — действие
-                <br />
-                <kbd>RB / R1</kbd> — бросок / сдержаться
-                <br />
-                <kbd>LT / L2</kbd> — пылесос
-                <br />
-                <kbd>B / ○</kbd> или <kbd>Start</kbd> — пауза
-              </p>
-              <p className="quiet">
-                Экран: Никита слева, Ярик справа, Рома помогает третьим. При
-                уборке: Рома, Никита, Ярик. В соло убирается Рома; при сверлении
-                ты управляешь Яриком, а Никита страхует сам. Пылесос: левый
-                Shift в соло, правый Shift у Ярика вдвоём. Нужные кнопки
-                появляются прямо во время игры.
-              </p>
-              <p className="quiet">
-                Нажмите кнопку на подключённом геймпаде. Один геймпад в
-                совместной игре — у второго игрока, клавиатура — у первого. Если
-                геймпадов несколько, они занимают места по порядку.
-              </p>
-            </div>
-          )}
+
           <button className="secondary-button" onClick={() => setPanel(null)}>
             <X size={15} />
             Понятно
           </button>
         </DialogContent>
       </Dialog>
+      <ControlSettings
+        open={panel === 'controls'}
+        onOpenChange={(open) => setPanel(open ? 'controls' : null)}
+        players={players}
+        pads={pads}
+      />
+      <NetworkDialog
+        open={networkOpen}
+        onOpenChange={setNetworkOpen}
+        onDrive={() => {
+          setActive(null);
+          setHubMode('city');
+          city.current.paused = false;
+        }}
+      />
       {transition && (
         <output className="story-transition">
           <span>НУ, С ВОЗВРАЩЕНИЕМ!</span>

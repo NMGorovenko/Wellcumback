@@ -17,6 +17,7 @@ import { RenderKit } from '../world/render-kit';
 import { createRig, type Pose } from '../world/rig';
 import { createApartment } from '../world/apartment';
 import { makeLabel } from '../world/labels';
+import { placeActionCues, type ActionCueRefs } from '../world/action-cues';
 import {
   createScreenModel,
   FLOOR_SCALE,
@@ -31,6 +32,7 @@ type Props = {
   stateRef?: RefObject<GameState>;
   preview?: boolean;
   cameraMode?: CameraMode;
+  cueRefs?: ActionCueRefs;
 };
 const poses: Record<WorkerAction, Pose> = {
   idle: 'idle',
@@ -51,13 +53,14 @@ export default function Scene({
   stateRef,
   preview = !stateRef,
   cameraMode = 'auto',
+  cueRefs,
 }: Props) {
   const host = useRef<HTMLDivElement>(null),
-    options = useRef({ stateRef, preview, cameraMode });
+    options = useRef({ stateRef, preview, cameraMode, cueRefs });
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    options.current = { stateRef, preview, cameraMode };
-  }, [stateRef, preview, cameraMode]);
+    options.current = { stateRef, preview, cameraMode, cueRefs };
+  }, [stateRef, preview, cameraMode, cueRefs]);
   useEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -412,7 +415,8 @@ export default function Scene({
             );
           }
         }
-        nameplates[i].visible = !isPreview && opt.cameraMode !== 'faces';
+        nameplates[i].visible =
+          !opt.cueRefs && !isPreview && opt.cameraMode !== 'faces';
       });
       apartment.stools.forEach((stool, i) => {
         if (drillPhase) {
@@ -590,6 +594,13 @@ export default function Scene({
       camera.position.lerp(targetPosition, 1 - Math.exp(-dt * 3));
       lookAt.lerp(wantedLook, 1 - Math.exp(-dt * 3));
       camera.lookAt(lookAt);
+      placeActionCues(
+        opt.cueRefs,
+        rigs.map((rig) => rig.head),
+        camera,
+        renderer.domElement,
+        !s.paused && !isPreview && opt.cameraMode !== 'faces',
+      );
       renderer.render(world, camera);
       raf = requestAnimationFrame(render);
     }

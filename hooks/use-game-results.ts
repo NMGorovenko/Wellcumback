@@ -17,7 +17,7 @@ function read(): Result[] {
         if (!value || typeof value !== 'object') return false;
         const r = value as Partial<Result>;
         return (
-          (r.story === 'screen' || r.story === 'clean') &&
+          (r.story === 'screen' || r.story === 'clean' || r.story === 'moving') &&
           typeof r.score === 'number' &&
           Number.isFinite(r.score) &&
           r.score >= 0 &&

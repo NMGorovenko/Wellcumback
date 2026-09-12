@@ -7,6 +7,7 @@ import {
   cleanTick,
   canStand,
 } from '../lib/game/clean/engine.ts';
+import { crewSpawn, doorways, obstacles } from '../lib/game/clean/layout.ts';
 import { RenderKit } from '../components/game/world/render-kit.ts';
 import {
   createCleaner,
@@ -18,10 +19,10 @@ for (const players of [1, 2, 3]) {
     const s = freshClean(players);
     s.phase = 'response';
     s.responseStage = 'gear';
-    s.npcs[1].x = 710;
-    s.npcs[1].y = 505;
-    s.npcs[2].x = 760;
-    s.npcs[2].y = 505;
+    s.npcs[1].x = crewSpawn.x - 25;
+    s.npcs[1].y = crewSpawn.y;
+    s.npcs[2].x = crewSpawn.x + 25;
+    s.npcs[2].y = crewSpawn.y;
     s.pantsLoaded = true;
     cleanTick(s, 0.025, new Set());
     assert.equal(s.phase, 'clean');
@@ -99,20 +100,16 @@ void test('cleaner slots load the right portraits; the anonymous incident soldie
 });
 
 void test('rooms have solid front partitions and walkable door openings', () => {
-  for (const wall of [
-    [90, 543],
-    [480, 543],
-    [815, 543],
-    [1110, 543],
-    [500, 288],
-  ])
-    assert.equal(canStand(...wall), false, `partition ${wall.join(', ')}`);
-  for (const door of [
-    [220, 543],
-    [400, 543],
-    [700, 543],
-    [980, 543],
-    [680, 288],
-  ])
-    assert.equal(canStand(...door), true, `door ${door.join(', ')}`);
+  for (const wall of obstacles.filter((solid) => solid.kind === 'wall'))
+    assert.equal(
+      canStand(wall.x + wall.w / 2, wall.y + wall.h / 2),
+      false,
+      wall.label,
+    );
+  for (const door of doorways)
+    assert.equal(
+      canStand((door.left + door.right) / 2, door.y),
+      true,
+      door.label,
+    );
 });

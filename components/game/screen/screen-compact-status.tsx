@@ -6,6 +6,7 @@ import {
   throwTargetPower,
   type GameState,
 } from '@/lib/game/screen/engine';
+import { chairBalanceCue } from '@/lib/game/screen/prompts';
 import { ACTION_LABELS, NAMES, SIDES } from './screen-hud-data';
 import { Fill, Meter } from './screen-hud-primitives';
 
@@ -149,7 +150,8 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
         </>
       );
     }
-    case 'drill':
+    case 'drill': {
+      const balance = chairBalanceCue(view);
       return (
         <>
           <div className="hud-compact-title">
@@ -186,16 +188,6 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
             <Fill label="Без паники. Встаём." value={view.fallProgress} />
           ) : (
             <>
-              <Meter
-                label={
-                  view.braceHeld ? 'Никита держит' : 'Никита! Держи стулья!'
-                }
-                value={view.balance}
-                min={-1}
-                max={1}
-                target={[-0.5, 0.5]}
-                danger={Math.abs(view.balance) > 0.7}
-              />
               <Fill
                 label={view.drillHeat > 0.75 ? 'Остуди дрель' : 'Нагрев'}
                 value={view.drillHeat}
@@ -222,8 +214,19 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
               )}
             </>
           )}
+          {view.drillMode !== 'position' && view.drillMode !== 'fallen' && (
+            <Meter
+              label={view.players === 1 ? 'Никита страхует сам' : balance.text}
+              value={view.balance}
+              min={-1}
+              max={1}
+              target={[-.14, .14]}
+              danger={balance.emphasis === 'danger'}
+            />
+          )}
         </>
       );
+    }
     case 'lift':
       return (
         <>

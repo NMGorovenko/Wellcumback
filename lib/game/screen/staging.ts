@@ -78,7 +78,7 @@ export function drillStaging(s: DrillStagingState): DrillStage {
     park * (1 - smooth((fall - 0.72) / 0.28)),
   );
   const lean =
-    s.drillMode === 'position' || fallen ? 0 : clamp(s.balance, -1, 1) * 0.045;
+    s.drillMode === 'position' || fallen ? 0 : -clamp(s.balance, -1, 1) * 0.045;
   const sine = Math.sin(lean),
     cosine = Math.cos(lean);
   const climbPose = (p: number): StagedWorker => {

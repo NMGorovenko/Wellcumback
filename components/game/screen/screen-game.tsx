@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { ControlSettings } from '@/components/game/input/control-settings';
+import { useControlSettings } from '@/hooks/use-control-settings';
 import {
   ArrowLeft,
   Camera,
-  CircleHelp,
+  Settings2,
   Pause,
   Play,
   RotateCcw,
@@ -18,7 +20,11 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { gamepadHint, type PadFrame } from '@/lib/game/input/gamepads';
+import {
+  gamepadHint,
+  keyboardPrompt,
+  type PadFrame,
+} from '@/lib/game/input/gamepads';
 import { useGameInspection } from '@/hooks/use-game-inspection';
 import { useGameLoop } from '@/hooks/use-game-loop';
 import { useScreenMotors } from '@/hooks/use-screen-motors';
@@ -41,14 +47,7 @@ import {
 } from '@/lib/game/screen/episodes';
 import { ContextPrompts } from './context-prompts';
 import Scene, { type CameraMode } from './scene';
-import {
-  NAMES,
-  MOVE_LABELS,
-  ACTION_LABELS,
-  clock,
-  actNumber,
-  progress,
-} from './screen-hud-data';
+import { NAMES, clock, actNumber, progress } from './screen-hud-data';
 import { ScreenPhasePanel } from './screen-phase-panel';
 import { ScreenCompactStatus } from './screen-compact-status';
 type GameProps = {
@@ -72,9 +71,12 @@ export default function ScreenGame({
   onFinish,
   onNext,
 }: GameProps) {
+  const { settings } = useControlSettings();
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [view, setView] = useState(() => initialGame(players));
   const game = useRef<GameState>(view);
   const keys = useRef(new Set<string>());
+  const cueRefs = useRef<(HTMLDivElement | null)[]>([]);
   useGameInspection(game, keys);
   const [briefOpen, setBriefOpen] = useState(true);
   const [cameraMode, setCameraMode] = useState<CameraMode>('auto');
@@ -149,7 +151,7 @@ export default function ScreenGame({
         else if (briefOpen) begin();
         else if (view.phase === 'result') (onNext ?? onExit)();
         else
-          [() => setPause(false), openBrief, openEpisodes, restart, onExit][
+          [() => setPause(false), openControls, openEpisodes, restart, onExit][
             pauseChoice
           ]();
       },
@@ -232,14 +234,14 @@ export default function ScreenGame({
     players,
     onFinish,
   ]);
+  function openControls() {
+    setPause(true);
+    setControlsOpen(true);
+  }
   function begin() {
     unlockAudio();
     setBriefOpen(false);
     setPause(false);
-  }
-  function openBrief() {
-    setPause(true);
-    setBriefOpen(true);
   }
   function restart() {
     game.current = initialGame(players);
@@ -312,9 +314,15 @@ export default function ScreenGame({
   );
 
   return (
-    <section className="game-layout" aria-label="Экран на полстены — игра">
+    <section
+      className="game-layout screen-game-layout"
+      aria-label="Экран на полстены — игра"
+    >
       <div className="game-world">
-        <Scene stateRef={game} cameraMode={cameraMode} />
+        <Scene stateRef={game} cameraMode={cameraMode} cueRefs={cueRefs} />
+        {settings.showWorldPrompts && (
+          <ContextPrompts state={view} pads={pads} cueRefs={cueRefs} />
+        )}
         <div key={view.phase} className="scene-cut" aria-hidden="true">
           <span>{titles[view.phase]}</span>
         </div>
@@ -348,10 +356,10 @@ export default function ScreenGame({
             <button
               type="button"
               className="hud-icon"
-              aria-label="Управление и задача"
-              onClick={openBrief}
+              aria-label="Настройки управления"
+              onClick={openControls}
             >
-              <CircleHelp size={16} />
+              <Settings2 size={16} />
             </button>
             {view.phase !== 'result' && (
               <button
@@ -434,7 +442,6 @@ export default function ScreenGame({
           </div>
         )}
       </aside>
-      <ContextPrompts state={view} pads={pads} />
       <EpisodeDialog
         open={episodeOpen}
         options={screenEpisodes}
@@ -472,25 +479,25 @@ export default function ScreenGame({
             {NAMES.slice(0, players).map((name, index) => (
               <div key={name}>
                 <strong>{name}</strong>
-                <kbd>{MOVE_LABELS[index]}</kbd>
+                <kbd>{keyboardPrompt(index, 'move')}</kbd>
                 <span>движение / настройка</span>
-                <kbd>{ACTION_LABELS[index]}</kbd>
+                <kbd>{keyboardPrompt(index, 'action')}</kbd>
                 <span>действие</span>
               </div>
             ))}
           </div>
           <div className="brief-rule">
-            <kbd>Q</kbd>
+            <kbd>{keyboardPrompt(0, 'throw')}</kbd>
             <p>
-              <b>Отвёртка одна.</b> Владелец держит Q и отпускает в зелёной
-              зоне. Получатель ловит своей клавишей действия. Промазал — подбери
-              с пола.
+              <b>Отвёртка одна.</b> Владелец держит кнопку броска и отпускает в
+              зелёной зоне. Получатель ловит своей клавишей действия. Промазал —
+              подбери с пола.
             </p>
           </div>
           <p className="brief-note">
             {players === 1
-              ? 'Один набор WASD + E. На полу управляешь Никитой, Ярик помогает напротив. У стены E направляет Ярика, Никита страхует и подаёт. Переключать героев не нужно. При сверлении держи ещё левый Shift — пылесос.'
-              : 'Никита слева: WASD + E. Ярик справа: стрелки + Enter. На стульях Ярик сверлит Enter и пылесосит правым Shift; Никита держит E и балансирует A/D. Подсказки внизу показывают следующий шаг.'}
+              ? `Один набор ${keyboardPrompt(0, 'move')} + ${keyboardPrompt(0, 'action')}. На полу управляешь Никитой, Ярик помогает напротив. У стены управляешь Яриком, Никита страхует и подаёт. Переключать героев не нужно. При сверлении держи ещё ${keyboardPrompt(0, 'secondary')} — пылесос.`
+              : `Никита слева, Ярик справа. На стульях Ярик сверлит ${keyboardPrompt(1, 'action')} и пылесосит ${keyboardPrompt(1, 'secondary')}; Никита держит ${keyboardPrompt(0, 'action')} и балансирует ${keyboardPrompt(0, 'horizontal')}. Кнопки рядом с персонажами показывают следующий шаг.`}
           </p>
           <button
             type="button"
@@ -517,7 +524,11 @@ export default function ScreenGame({
       </Dialog>
       <Dialog
         open={
-          view.paused && !briefOpen && !episodeOpen && view.phase !== 'result'
+          view.paused &&
+          !briefOpen &&
+          !episodeOpen &&
+          !controlsOpen &&
+          view.phase !== 'result'
         }
         onOpenChange={(open) => setPause(open)}
       >
@@ -536,9 +547,9 @@ export default function ScreenGame({
           <button
             type="button"
             className={`hud-secondary${pauseChoice === 1 ? ' pad-selected' : ''}`}
-            onClick={openBrief}
+            onClick={openControls}
           >
-            <CircleHelp size={15} /> Напомнить управление
+            <Settings2 size={15} /> Настройки управления
           </button>
           <button
             type="button"
@@ -563,6 +574,13 @@ export default function ScreenGame({
           </button>
         </DialogContent>
       </Dialog>
+      <ControlSettings
+        open={controlsOpen}
+        onOpenChange={setControlsOpen}
+        players={players}
+        playerNames={NAMES}
+        pads={pads}
+      />
     </section>
   );
 }

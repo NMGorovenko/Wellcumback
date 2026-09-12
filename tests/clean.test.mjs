@@ -11,6 +11,7 @@ import {
   getFootprints,
   dutyReprimand,
 } from '../lib/game/clean/engine.ts';
+import { crewSpawn, doorways } from '../lib/game/clean/layout.ts';
 const bindings = [
   ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyE'],
   ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter'],
@@ -146,8 +147,18 @@ void test('asking at the desk triggers the actual accident; traces follow moveme
   assert.ok(getDrops(s).some((p) => p.kind === 'spill'));
   assert.ok(getDrops(s).some((p) => p.kind === 'trail'));
   assert.ok(getFootprints(s).length > 12);
-  assert.ok(getFootprints(s).some((p) => p.x < 300));
-  assert.ok(getFootprints(s).some((p) => p.x > 800));
+  assert.ok(
+    getFootprints(s).some(
+      (p) => Math.hypot(p.x - stations[1].x, p.y - stations[1].y) < 70,
+    ),
+    'footprints reach the toilet interaction area',
+  );
+  assert.ok(
+    getFootprints(s).some(
+      (p) => Math.hypot(p.x - stations[0].x, p.y - stations[0].y) < 100,
+    ),
+    'footprints begin near the duty desk',
+  );
   assert.equal(s.soiled, false);
   assert.equal(s.spillActive, false);
   assert.equal(s.relief, 1);
@@ -315,8 +326,8 @@ void test('three colliding cleaners separate without entering walls or furniture
   const s = freshClean(3);
   s.phase = 'clean';
   s.actorCount = 3;
-  s.x = [821, 821, 821];
-  s.y = [580, 580, 580];
+  s.x = Array(3).fill(crewSpawn.x);
+  s.y = Array(3).fill(crewSpawn.y);
   run(s, 0.2);
   for (let i = 0; i < 3; i++) {
     assert.ok(canStand(s.x[i], s.y[i]));
@@ -329,8 +340,12 @@ void test('cleaners walking head-on through the toilet doorway yield sideways an
   const s = freshClean(2);
   s.phase = 'clean';
   s.actorCount = 2;
-  s.x = [240, 240, 755];
-  s.y = [510, 600, 505];
+  s.x = [
+    (doorways[0].left + doorways[0].right) / 2,
+    (doorways[0].left + doorways[0].right) / 2,
+    crewSpawn.x,
+  ];
+  s.y = [doorways[0].y - 45, doorways[0].y + 45, crewSpawn.y];
   run(s, 2, ['KeyS', 'ArrowUp']);
   assert.ok(
     s.y[0] > s.y[1],

@@ -1,87 +1,6 @@
 /* Screen-story HUD. Layout/scene geometry belongs to shared game.css. */
-.context-prompts {
-  grid-column: 1 / -1;
-  display: flex;
-  background: #1b2324;
-  border-top: 1px solid #52605b;
-  color: #e4e9e2;
-}
-.context-worker {
-  flex: 1;
-  min-width: 0;
-  padding: 12px 20px 15px;
-  border-inline-end: 1px solid #81918a26;
-}
-.context-worker:last-child {
-  border: 0;
-}
-.context-worker-name {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  margin-bottom: 8px;
-}
-.context-worker-name strong {
-  font-size: 13px;
-  color: #dbdebd;
-  font-weight: 600;
-}
-.context-worker:nth-child(2) .context-worker-name strong {
-  color: #b9d7e6;
-}
-.context-worker-name > span {
-  font-size: 10px;
-  color: #8fa09a;
-}
-.context-cues {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px 18px;
-  align-items: center;
-  min-height: 32px;
-}
-.context-cue {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  line-height: 1.3;
-}
-.context-cue > span {
-  display: grid;
-  gap: 2px;
-}
-.context-cue small {
-  font-size: 8px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: #94a695;
-}
-.context-cue kbd {
-  transition:
-    background 100ms,
-    border-color 100ms;
-}
-.context-cue.is-held kbd {
-  background: #bed994;
-  color: #1b2b21;
-  border-color: #e4f8c6;
-  transform: translateY(1px);
-}
-.context-cue.is-release small {
-  color: #e8b28b;
-}
-.context-cue.is-release.is-held kbd {
-  border-color: #ffcaa4;
-  background: #a86b48;
-  color: white;
-}
-.context-ai {
-  font-size: 10px;
-  color: #8fa09a;
-}
-.context-worker.is-helper {
-  flex: 0.7;
+.screen-game-layout {
+  grid-template-rows: minmax(490px, calc(100dvh - 130px));
 }
 .practice-badge {
   width: fit-content;
@@ -126,30 +45,9 @@
 .episode-option:hover {
   background: #3e5037;
 }
-@media (max-width: 1000px) {
-  .context-worker {
-    padding: 10px 12px;
-  }
-  .context-cues {
-    gap: 8px 12px;
-  }
-  .context-cue {
-    font-size: 10px;
-  }
-}
 @media (max-width: 760px) {
-  .context-prompts {
-    grid-row: 2;
-  }
-  .context-cues {
-    display: grid;
-  }
-  .context-worker-name {
-    display: grid;
-    gap: 3px;
-  }
-  .context-worker.is-helper {
-    display: none;
+  .screen-game-layout {
+    grid-template-rows: 65dvh auto;
   }
 }
 .hud-top {

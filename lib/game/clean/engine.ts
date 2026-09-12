@@ -1,3 +1,14 @@
+import {
+  bounds,
+  stations,
+  obstacles,
+  furniture,
+  crewSpawn,
+  npcSpawns,
+  witnessLookPoints,
+  washerLeaks,
+} from './layout.ts';
+export { bounds, stations, obstacles, furniture, mapSize } from './layout.ts';
 /** Barracks v3: deterministic story, physical traces, shared cleanup and controller-friendly Q/E rhythm. */
 export type CleanPhase =
   | 'brief'
@@ -126,49 +137,6 @@ export const cleanCrew = [
   { id: 'yaroslav', name: 'Ярик' },
 ] as const;
 export const dutyReprimand = 'Ты охуел, боец?! Иди, блять, сри в туалете!';
-export const mapSize = { width: 1200, height: 800 };
-export const bounds = { minX: 60, maxX: 1140, minY: 60, maxY: 750 };
-export const stations = [
-  { id: 'desk', x: 1030, y: 365, label: 'ДНЕВАЛЬНЫЙ' },
-  { id: 'toilet', x: 170, y: 670, label: 'ТУАЛЕТ' },
-  { id: 'shower', x: 420, y: 675, label: 'ДУШ' },
-  { id: 'washer', x: 1040, y: 670, label: 'СТИРАЛКА' },
-  { id: 'valve', x: 900, y: 650, label: 'ВЕНТИЛЬ' },
-  { id: 'bucket', x: 650, y: 675, label: 'ВЕДРО' },
-  { id: 'gear', x: 735, y: 490, label: 'ХИМЗАЩИТА' },
-  { id: 'duty', x: 135, y: 355, label: 'ДЕЖУРСТВО' },
-] as const;
-export const obstacles = [
-  ...Array.from({ length: 7 }, (_, i) => ({
-    x: 105 + i * 145,
-    y: 95,
-    w: 100,
-    h: 135,
-    label: 'КРОВАТЬ',
-    kind: 'bed',
-  })),
-  { x: 450, y: 315, w: 180, h: 65, label: 'СКАМЬЯ', kind: 'bench' },
-  { x: 285, y: 550, w: 20, h: 200, label: 'СТЕНА ТУАЛЕТА', kind: 'wall' },
-  { x: 505, y: 550, w: 18, h: 200, label: 'СТЕНА ДУША', kind: 'wall' },
-  { x: 835, y: 550, w: 18, h: 200, label: 'СТЕНА ПРАЧЕЧНОЙ', kind: 'wall' },
-  // Door openings remain real walkable gaps; rendered walls use these same colliders.
-  { x: 60, y: 535, w: 70, h: 16, label: 'ВХОД В ТУАЛЕТ', kind: 'wall' },
-  { x: 305, y: 535, w: 25, h: 16, label: 'ВХОД В ДУШ', kind: 'wall' },
-  { x: 460, y: 535, w: 45, h: 16, label: 'ВХОД В ДУШ', kind: 'wall' },
-  { x: 523, y: 535, w: 87, h: 16, label: 'ВХОД В ХОЗКОМНАТУ', kind: 'wall' },
-  { x: 795, y: 535, w: 40, h: 16, label: 'ВХОД В ХОЗКОМНАТУ', kind: 'wall' },
-  { x: 853, y: 535, w: 67, h: 16, label: 'ВХОД В ПРАЧЕЧНУЮ', kind: 'wall' },
-  { x: 1050, y: 535, w: 90, h: 16, label: 'ВХОД В ПРАЧЕЧНУЮ', kind: 'wall' },
-  { x: 60, y: 280, w: 220, h: 16, label: 'СПАЛЬНОЕ ПОМЕЩЕНИЕ', kind: 'wall' },
-  { x: 350, y: 280, w: 280, h: 16, label: 'СПАЛЬНОЕ ПОМЕЩЕНИЕ', kind: 'wall' },
-  { x: 750, y: 280, w: 180, h: 16, label: 'СПАЛЬНОЕ ПОМЕЩЕНИЕ', kind: 'wall' },
-];
-export const furniture = [
-  { x: 985, y: 305, w: 90, h: 45, label: 'ТУМБА', kind: 'desk' },
-  { x: 1000, y: 625, w: 80, h: 60, label: 'СТИРАЛКА', kind: 'washer' },
-  { x: 680, y: 435, w: 110, h: 28, label: 'ШКАФ ХИМЗАЩИТЫ', kind: 'gear' },
-  { x: 148, y: 700, w: 44, h: 42, label: 'УНИТАЗ', kind: 'toilet' },
-];
 export const cleanBindings = [
   ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyE'],
   ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter'],
@@ -207,8 +175,8 @@ export function freshClean(players = 1): CleanState {
     phaseTime: 0,
     players: clamp(Math.floor(players) || 1, 1, 3),
     actorCount: 1,
-    x: [135, 715, 755],
-    y: [355, 505, 505],
+    x: [stations[7].x, crewSpawn.x, crewSpawn.x + crewSpawn.spacing],
+    y: [stations[7].y, crewSpawn.y, crewSpawn.y],
     elapsed: 0,
     timer: 0,
     score: 0,
@@ -252,8 +220,7 @@ export function freshClean(players = 1): CleanState {
     npcs: [
       {
         id: 'duty',
-        x: 1030,
-        y: 285,
+        ...npcSpawns[0],
         action: 'guard',
         line: '',
         suited: false,
@@ -261,8 +228,7 @@ export function freshClean(players = 1): CleanState {
       },
       {
         id: 'witness1',
-        x: 560,
-        y: 255,
+        ...npcSpawns[1],
         action: 'idle',
         line: '',
         suited: false,
@@ -270,8 +236,7 @@ export function freshClean(players = 1): CleanState {
       },
       {
         id: 'witness2',
-        x: 740,
-        y: 255,
+        ...npcSpawns[2],
         action: 'idle',
         line: '',
         suited: false,
@@ -419,8 +384,8 @@ function move(point: Point, dx: number, dy: number, dt: number, speed = 166) {
   if (canStand(point.x, y)) point.y = y;
 }
 const GRID = 20,
-  COLS = 55,
-  ROWS = 35;
+  COLS = Math.floor((bounds.maxX - bounds.minX) / GRID) + 1,
+  ROWS = Math.floor((bounds.maxY - bounds.minY) / GRID) + 1;
 const cell = (id: number): Point => ({
   x: bounds.minX + (id % COLS) * GRID,
   y: bounds.minY + Math.floor(id / COLS) * GRID,
@@ -540,11 +505,11 @@ function startMachine(s: CleanState) {
 function startCleanup(s: CleanState) {
   s.responseStage = 'ready';
   s.actorCount = s.players;
-  s.timer = 160;
+  s.timer = 220;
   // A narrative handoff: the anonymous soldier leaves the playable role; the cleanup crew exits the gear cabinet.
   for (let i = 0; i < 3; i++) {
-    s.x[i] = stations[6].x + (i - 1) * 34;
-    s.y[i] = 505;
+    s.x[i] = crewSpawn.x + (i - 1) * crewSpawn.spacing;
+    s.y[i] = crewSpawn.y;
     s.activity[i] = 'idle';
   }
   phase(
@@ -565,13 +530,7 @@ function updateWitnesses(s: CleanState, dt: number) {
   if (s.responseStage === 'approach') {
     const arrived = witnesses.map((npc, i) => {
       npc.action = 'walk';
-      return navigate(
-        npc,
-        npc.navigation,
-        { x: 950 + i * 100, y: 595 },
-        dt,
-        40,
-      );
+      return navigate(npc, npc.navigation, witnessLookPoints[i], dt, 40);
     });
     if (arrived.every(Boolean)) {
       s.responseStage = 'react';
@@ -598,7 +557,7 @@ function updateWitnesses(s: CleanState, dt: number) {
       const arrived = navigate(
         npc,
         npc.navigation,
-        { x: stations[6].x + (i ? 25 : -25), y: 505 },
+        { x: crewSpawn.x + (i ? 25 : -25), y: crewSpawn.y },
         dt,
         28,
       );
@@ -663,15 +622,7 @@ function machineStep(
       ? s.leakClock + dt
       : Math.max(0, s.leakClock - dt);
   if (s.leakClock > 2.1 && s.leaks < 6) {
-    const places = [
-      { x: 955, y: 605 },
-      { x: 1095, y: 610 },
-      { x: 1040, y: 715 },
-      { x: 945, y: 710 },
-      { x: 920, y: 580 },
-      { x: 1100, y: 720 },
-    ];
-    addTrace(s, 'foam', places[s.leaks], 24, 0.75);
+    addTrace(s, 'foam', washerLeaks[s.leaks], 24, 0.75);
     s.leaks++;
     s.leakClock = 0;
   }
@@ -962,7 +913,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
       phase(
         s,
         'response',
-        'Сослуживцы пришли на звук. Теперь идут за химзащитой. Придётся отмывать и коридор, и машинку.',
+        'Сослуживцы идут на шум из прачечной. Скоро выяснят, что за режим стирки ты включил.',
       );
   }
   if (s.phase === 'clean') {
