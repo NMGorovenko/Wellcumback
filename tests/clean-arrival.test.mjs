@@ -4,75 +4,81 @@ import { freshClean, cleanTick, canStand } from '../lib/game/clean/engine.ts';
 
 function cleanupWithFootprint(start, target) {
   const s = freshClean(1);
-  s.phase = 'clean';
-  s.actorCount = 2;
-  s.timer = 160;
-  s.x = [607.4928622977809, start.x, 755];
-  s.y = [661.6050622977828, start.y, 505];
-  s.dirt[1] = 0.3747;
-  s.spin = 1;
-  s.valve = 1;
-  s.machineClean = 1;
-  s.pantsLoaded = true;
-  s.spots = [
-    {
-      id: 1,
-      ...target,
-      weight: 0.1,
-      size: 6,
-      progress: 0,
-      kind: 'footprint',
-      foam: false,
-      rotation: 0,
-      createdAt: 0,
-    },
-  ];
+  Object.assign(s, {
+    phase: 'clean',
+    actorCount: 1,
+    timer: 160,
+    x: [start.x, 715, 755],
+    y: [start.y, 505, 505],
+    spin: 1,
+    valve: 1,
+    machineClean: 1,
+    pantsLoaded: true,
+    spots: [
+      {
+        id: 1,
+        ...target,
+        weight: 0.1,
+        size: 6,
+        progress: 0,
+        kind: 'footprint',
+        foam: false,
+        rotation: 0,
+        createdAt: 0,
+      },
+    ],
+  });
   return s;
 }
 
-function finishWithoutHumanInput(s, dt) {
-  for (let elapsed = 0; elapsed < 2 && s.phase !== 'result'; elapsed += dt) {
-    const before = { x: s.x[1], y: s.y[1] };
-    cleanTick(s, dt, new Set());
-    assert.ok(
-      Math.hypot(s.x[1] - before.x, s.y[1] - before.y) <= 151 * dt + 1e-7,
-      'final waypoint is reached by ordinary bounded movement, not a teleport',
-    );
-    assert.ok(canStand(s.x[1], s.y[1]), 'helper remains outside furniture');
-  }
-  assert.equal(
-    s.spots[0].progress,
-    1,
-    'helper cleans the arbitrary-position footprint',
-  );
-  assert.equal(
-    s.phase,
-    'result',
-    'last footprint never strands solo completion',
-  );
-}
-
-void test('solo helper reaches the final 2.9 units of the exact browser-reported route', () => {
-  for (const dt of [0.025, 1 / 60, 0.01]) {
-    const s = cleanupWithFootprint(
-      { x: 882.9126469713698, y: 500.0000245531383 },
-      { x: 834.0421609316672, y: 495.1684011672984 },
-    );
-    s.navigation[1] = { goal: '83,50,49/30,33', path: [] };
-    assert.ok(Math.hypot(s.x[1] - s.spots[0].x, s.y[1] - s.spots[0].y) > 49);
-    finishWithoutHumanInput(s, dt);
-  }
+void test('solo cleanup waits for Roma; inactive friends cannot move, mop or score', () => {
+  const s = cleanupWithFootprint({ x: 880, y: 500 }, { x: 875, y: 510 });
+  s.x[1] = 875;
+  s.y[1] = 510;
+  const before = { x: [...s.x], y: [...s.y], dirt: [...s.dirt] };
+  for (let i = 0; i < 160; i++)
+    cleanTick(s, 0.025, new Set(['Enter', 'ArrowLeft', 'KeyO', 'KeyL']));
+  assert.deepEqual(s.x, before.x);
+  assert.deepEqual(s.y, before.y);
+  assert.deepEqual(s.dirt, before.dirt);
+  assert.equal(s.spots[0].progress, 0);
+  assert.equal(s.phase, 'clean');
+  assert.equal(s.score, 0);
+  cleanTick(s, 0.2, new Set(['KeyE']));
+  assert.equal(s.spots[0].progress, 1);
+  assert.equal(s.phase, 'result');
+  assert.equal(s.teamwork, 0);
 });
 
-void test('sub-three-unit final legs reach cleanup radius around fractional traces in every direction', () => {
+void test('Roma can finish fractional-position footprints from every direction with ordinary held controls', () => {
   for (let i = 0; i < 24; i++) {
     const angle = (i * Math.PI) / 12,
       dx = Math.cos(angle),
       dy = Math.sin(angle);
-    // The nearest walkable grid point is (880, 500), within the interaction
-    // radius, but the actor starts outside it and less than 3 units away.
-    const start = { x: 880 + dx * 2.85, y: 500 + dy * 2.85 };
-    const target = { x: 880 - dx * 47.15, y: 500 - dy * 47.15 };
-    finishWithoutHumanInput(cleanupWithFootprint(start, target), 0.025);
+    const target = { x: 600 - dx * 47.15, y: 450 - dy * 47.15 };
+    const s = cleanupWithFootprint(
+      { x: 600 + dx * 12.85, y: 450 + dy * 12.85 },
+      target,
+    );
+    for (
+      let step = 0;
+      step < 100 && Math.hypot(s.x[0] - target.x, s.y[0] - target.y) > 52;
+      step++
+    ) {
+      const keys = new Set();
+      if (Math.abs(target.x - s.x[0]) > 1)
+        keys.add(target.x > s.x[0] ? 'KeyD' : 'KeyA');
+      if (Math.abs(target.y - s.y[0]) > 1)
+        keys.add(target.y > s.y[0] ? 'KeyS' : 'KeyW');
+      const before = [s.x[0], s.y[0]];
+      cleanTick(s, 1 / 60, keys);
+      assert.ok(
+        Math.hypot(s.x[0] - before[0], s.y[0] - before[1]) <= 166 / 60 + 1e-7,
+      );
+      assert.ok(canStand(s.x[0], s.y[0]));
+    }
+    cleanTick(s, 0.2, new Set(['KeyE']));
+    assert.equal(s.spots[0].progress, 1, `fractional trace in direction ${i}`);
+    assert.equal(s.phase, 'result');
   }
 });

@@ -128,7 +128,7 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
               label={
                 tool.target < view.players
                   ? `${ACTION_LABELS[tool.target]} · лови`
-                  : 'Никита ловит'
+                  : 'Ярик ловит'
               }
               value={tool.flight}
             />
@@ -164,12 +164,32 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
               target={view.holes.length === 0 ? [-4.75, -4.05] : [4.05, 4.75]}
               hint="A / D"
             />
-          ) : view.drillMode === 'climb' ? (
-            <Fill label="Поднимаемся" value={view.climb} />
+          ) : view.drillMode === 'climb' || view.drillMode === 'descend' ? (
+            <Fill
+              label={
+                view.drillMode === 'climb'
+                  ? 'Ярик забирается'
+                  : 'Ярик спускается'
+              }
+              value={view.drillMode === 'climb' ? view.climb : 1 - view.climb}
+            />
+          ) : view.drillMode === 'handoff' ? (
+            <Fill
+              label={
+                view.drillGear === 'none'
+                  ? 'Передаём дрель'
+                  : 'Передаём пылесос'
+              }
+              value={view.handoffProgress}
+            />
+          ) : view.drillMode === 'fallen' ? (
+            <Fill label="Без паники. Встаём." value={view.fallProgress} />
           ) : (
             <>
               <Meter
-                label="Равновесие"
+                label={
+                  view.braceHeld ? 'Никита держит' : 'Никита! Держи стулья!'
+                }
                 value={view.balance}
                 min={-1}
                 max={1}
@@ -180,6 +200,16 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
                 label={view.drillHeat > 0.75 ? 'Остуди дрель' : 'Нагрев'}
                 value={view.drillHeat}
                 danger={view.drillHeat > 0.75}
+              />
+              <div className="hud-compact-alert">
+                {view.vacuumRunning
+                  ? 'Пылесос работает · пыль в контейнер'
+                  : 'Пылесос выключен'}
+              </div>
+              <Fill
+                label="Пыль на стене"
+                value={Math.min(1, view.wallDust[0] + view.wallDust[1])}
+                danger={view.wallDust[0] + view.wallDust[1] > 0.2}
               />
               {view.holes.length > 0 && (
                 <div className="hud-compact-alert">
@@ -211,7 +241,7 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
             min={-1.5}
             max={1.5}
             target={[-0.12, 0.12]}
-            hint={view.players > 1 ? '↑ / ↓' : 'Никита'}
+            hint={view.players > 1 ? '↑ / ↓' : 'Ярик'}
           />
           <Meter
             label="Сдвиг"

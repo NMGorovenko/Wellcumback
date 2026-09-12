@@ -346,11 +346,11 @@ export default function Home() {
             <div className="hub-input-help">
               <p className="quiet">{gamepadHint(pads)}</p>
               <p>
-                <kbd>WASD</kbd> + <kbd>E</kbd> — Ярослав
+                <kbd>WASD</kbd> + <kbd>E</kbd> — первый игрок
                 <br />
-                <kbd>Стрелки</kbd> + <kbd>Enter</kbd> — Никита
+                <kbd>Стрелки</kbd> + <kbd>Enter</kbd> — второй игрок
                 <br />
-                <kbd>IJKL</kbd> + <kbd>O</kbd> — Рома
+                <kbd>IJKL</kbd> + <kbd>O</kbd> — третий игрок
               </p>
               <p>
                 <kbd>Стик / крестовина</kbd> — движение
@@ -359,7 +359,16 @@ export default function Home() {
                 <br />
                 <kbd>RB / R1</kbd> — бросок / сдержаться
                 <br />
+                <kbd>LT / L2</kbd> — пылесос
+                <br />
                 <kbd>B / ○</kbd> или <kbd>Start</kbd> — пауза
+              </p>
+              <p className="quiet">
+                Экран: Никита слева, Ярик справа, Рома помогает третьим. При
+                уборке: Рома, Никита, Ярик. В соло убирается Рома; при сверлении
+                ты управляешь Яриком, а Никита страхует сам. Пылесос: левый
+                Shift в соло, правый Shift у Ярика вдвоём. Нужные кнопки
+                появляются прямо во время игры.
               </p>
               <p className="quiet">
                 Нажмите кнопку на подключённом геймпаде. Один геймпад в

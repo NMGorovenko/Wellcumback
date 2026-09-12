@@ -1,5 +1,5 @@
-import type { CleanState } from '@/lib/game/clean/engine';
-import { people } from '@/lib/game/presets';
+import { inputPrompt, type PadFrame } from '@/lib/game/input/gamepads';
+import { cleanCrew, type CleanState } from '@/lib/game/clean/engine';
 
 export function CleanMeter({
   label,
@@ -26,10 +26,20 @@ export function CleanMeter({
     </div>
   );
 }
-function RhythmCue({ game, pad }: { game: CleanState; pad: boolean }) {
+function RhythmCue({
+  game,
+  pads,
+}: {
+  game: CleanState;
+  pads: Pick<PadFrame, 'assignments'>;
+}) {
   const r = game.rhythm,
     total = r.period + r.window + 0.08;
-  const expected = r.expected === 'KeyQ' ? (pad ? 'RB' : 'Q') : pad ? 'A' : 'E';
+  const expected = inputPrompt(
+    pads,
+    0,
+    r.expected === 'KeyQ' ? 'throw' : 'action',
+  );
   const feedback = {
     waiting: 'Лови светлое окно',
     good: 'Держимся!',
@@ -66,10 +76,10 @@ function RhythmCue({ game, pad }: { game: CleanState; pad: boolean }) {
 }
 export default function CleanStatus({
   game,
-  pad,
+  pads,
 }: {
   game: CleanState;
-  pad: boolean;
+  pads: Pick<PadFrame, 'assignments'>;
 }) {
   const s = game,
     cleaned = s.spots.filter((p) => p.progress >= 1).length;
@@ -82,7 +92,7 @@ export default function CleanStatus({
           warning={s.urge > 0.7}
         />
       )}
-      {s.phase === 'find' && <RhythmCue game={s} pad={pad} />}
+      {s.phase === 'find' && <RhythmCue game={s} pads={pads} />}
       {s.phase === 'toilet' && s.relief === 0 && (
         <CleanMeter
           label={s.containment.suppressed ? 'Держим напор' : 'Силы сдержаться'}
@@ -109,11 +119,14 @@ export default function CleanStatus({
           />
         </>
       )}
+      {s.phase === 'accident' && s.npcs[0].line && (
+        <p className="clean-reaction">Дневальный: «{s.npcs[0].line}»</p>
+      )}
       {s.phase === 'response' && (
         <p className="clean-reaction">
           {s.responseStage === 'gear'
             ? '«Нам нужна химзащита».'
-            : '«Это какой режим стирки?»'}
+            : '«Это, блять, какой режим стирки?»'}
         </p>
       )}
       {s.phase === 'clean' && (
@@ -131,7 +144,7 @@ export default function CleanStatus({
             {Array.from({ length: s.actorCount }, (_, i) => (
               <CleanMeter
                 key={i}
-                label={i === 1 && s.players === 1 ? 'Напарник' : people[i].name}
+                label={cleanCrew[i].name}
                 value={s.dirt[i] / 0.98}
                 warning={s.dirt[i] > 0.75}
                 detail={

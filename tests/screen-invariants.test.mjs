@@ -114,6 +114,8 @@ void test('two chair loss of balance preserves finished hole and resets current 
   const s = freshGame(2);
   s.phase = 'drill';
   s.drillMode = 'drill';
+  s.drillGear = 'ready';
+  s.climb = 1;
   s.holes = [5.85];
   s.balance = 0.99;
   s.drill = 0.7;
@@ -121,13 +123,19 @@ void test('two chair loss of balance preserves finished hole and resets current 
   assert.equal(s.falls, 1);
   assert.equal(s.drill, 0);
   assert.deepEqual(s.holes, [5.85]);
+  assert.equal(s.drillMode, 'fallen');
+  assert.equal(s.workers[1].animation, 'fall');
+  step(s, 1.4);
   assert.equal(s.drillMode, 'position');
+  assert.equal(s.climb, 0);
   assert.ok(s.cooldown > 0);
 });
 void test('overheating cannot finish a hole by holding action forever', () => {
   const s = freshGame();
   s.phase = 'drill';
   s.drillMode = 'drill';
+  s.drillGear = 'ready';
+  s.climb = 1;
   step(s, 4.1, ['KeyE']);
   assert.ok(s.drillOverheats > 0);
   assert.equal(s.holes.length, 0);

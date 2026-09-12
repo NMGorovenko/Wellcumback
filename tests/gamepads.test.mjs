@@ -9,6 +9,12 @@ import {
   navigateGamepad,
   resetPadInput,
   gamepadHint,
+  identifyGamepad,
+  padButtonLabel,
+  keyboardPrompt,
+  gamepadPrompt,
+  inputPrompt,
+  PLAYER_BINDINGS,
 } from '../lib/game/input/gamepads.ts';
 function pad(
   index = 0,
@@ -73,7 +79,15 @@ void test('stick has engage/release hysteresis and rejects drifting or invalid i
 void test('one multiplayer pad controls player 2 while keyboard player 1 remains independent', () => {
   const s = armed(3);
   const f = mapGamepads(s, [pad(0, [0], [1, 0])], 3);
-  assert.deepEqual(f.assignments, [{ index: 0, player: 1, ready: true }]);
+  assert.deepEqual(f.assignments, [
+    {
+      index: 0,
+      player: 1,
+      ready: true,
+      brand: 'generic',
+      label: 'Геймпад',
+    },
+  ]);
   assert.deepEqual([...f.keys].sort(), ['ArrowRight', 'Enter']);
   assert.equal(f.primaryActionPressed, false);
   const keyboard = new Set(['KeyW', 'KeyE']),
@@ -201,4 +215,160 @@ void test('shared Q remains held if one of two controllers releases its shoulder
   );
   assert.equal(mapGamepads(s, [pad(0), pad(1, [5])], 2).keys.has('KeyQ'), true);
   assert.equal(mapGamepads(s, [pad(0), pad(1)], 2).keys.has('KeyQ'), false);
+});
+
+void test('DualSense and DualShock identity selects PlayStation labels for standard browser layouts', () => {
+  for (const id of [
+    'DualSense Wireless Controller',
+    'Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)',
+    '054c-0ce6-Wireless Controller',
+    '054c-0df2-DualSense Edge Wireless Controller',
+  ]) {
+    const s = createPadInput();
+    const device = (pressed = []) => pad(4, pressed, [0, 0], 'standard', id);
+    const neutral = mapGamepads(s, [device()]);
+    assert.equal(neutral.assignments[0].label, 'DualSense');
+    assert.equal(neutral.assignments[0].brand, 'playstation');
+    assert.equal(gamepadPrompt(neutral, 0, 'action'), '×');
+    assert.equal(gamepadPrompt(neutral, 0, 'secondary'), 'L2');
+    assert.equal(gamepadPrompt(neutral, 0, 'throw'), 'R1');
+    assert.equal(gamepadPrompt(neutral, 0, 'pause'), '○ / Options');
+    assert.deepEqual([...mapGamepads(s, [device([0, 5, 6])]).keys].sort(), [
+      'KeyE',
+      'KeyQ',
+      'ShiftLeft',
+    ]);
+  }
+  for (const id of [
+    'DualShock 4',
+    '054c-09cc-Wireless Controller',
+    'Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 05c4)',
+  ]) {
+    assert.deepEqual(identifyGamepad(id), {
+      brand: 'playstation',
+      label: 'DualShock',
+    });
+  }
+  assert.deepEqual(
+    Array.from({ length: 10 }, (_, button) =>
+      padButtonLabel('playstation', button),
+    ),
+    ['×', '○', '□', '△', 'L1', 'R1', 'L2', 'R2', 'Create / Share', 'Options'],
+  );
+});
+
+void test('Xbox and unknown standard controllers retain their actual or positional button labels', () => {
+  for (const id of [
+    'Xbox Wireless Controller',
+    'Xbox 360 Controller (XInput STANDARD GAMEPAD)',
+    '045e-0b13-Controller',
+    'Controller (STANDARD GAMEPAD Vendor: 045e Product: 02ea)',
+  ])
+    assert.deepEqual(identifyGamepad(id), { brand: 'xbox', label: 'Xbox' });
+  assert.deepEqual(
+    Array.from({ length: 10 }, (_, button) => padButtonLabel('xbox', button)),
+    ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', 'Menu'],
+  );
+  for (const id of ['Wireless Controller', '8BitDo Pro 2', 'Unknown USB pad'])
+    assert.deepEqual(identifyGamepad(id), {
+      brand: 'generic',
+      label: 'Геймпад',
+    });
+  assert.equal(padButtonLabel('generic', 0), 'нижняя кнопка');
+  assert.equal(padButtonLabel('generic', 6), 'левый триггер');
+});
+
+void test('context prompts follow player assignments across sparse indexes and multiplayer reassignment', () => {
+  const s = createPadInput();
+  const sony = pad(4, [], [0, 0], 'standard', 'DualSense Wireless Controller');
+  let f = mapGamepads(s, [null, sony], 3);
+  assert.equal(inputPrompt(f, 0, 'action'), 'E');
+  assert.equal(gamepadPrompt(f, 0, 'action'), null);
+  assert.equal(inputPrompt(f, 1, 'action'), 'Enter / ×');
+  assert.equal(inputPrompt(f, 1, 'secondary'), 'правый Shift / L2');
+  const xbox = pad(8, [], [0, 0], 'standard', 'Xbox Wireless Controller');
+  f = mapGamepads(s, [xbox, null, sony], 3);
+  assert.equal(inputPrompt(f, 0, 'action'), 'E / ×');
+  assert.equal(inputPrompt(f, 1, 'action'), 'Enter / A');
+  assert.equal(inputPrompt(f, 2, 'action'), 'O');
+  assert.equal(gamepadPrompt(f, 0, 'horizontal'), 'стик ←/→');
+  assert.equal(gamepadPrompt(f, 1, 'vertical'), 'стик ↑/↓');
+  assert.equal(keyboardPrompt(0, 'horizontal'), 'A/D');
+  assert.equal(keyboardPrompt(1, 'vertical'), '↑/↓');
+  assert.equal(keyboardPrompt(2, 'secondary'), 'U');
+  assert.equal(keyboardPrompt(2, 'move'), 'IJKL');
+  assert.equal(keyboardPrompt(2, 'throw'), 'Q');
+  assert.equal(keyboardPrompt(0, 'pause'), 'Esc');
+  assert.equal(keyboardPrompt(9, 'action'), '');
+  assert.ok(PLAYER_BINDINGS.every((keys) => keys.action !== keys.secondary));
+});
+
+void test('analog L2 works without pressed boolean and releases without threshold chatter', () => {
+  const s = armed();
+  const trigger = (value, pressed = false) => {
+    const device = pad();
+    device.buttons[6] = { value, pressed };
+    return mapGamepads(s, [device]);
+  };
+  assert.equal(trigger(0.49).keys.has('ShiftLeft'), false);
+  assert.equal(trigger(0.7).keys.has('ShiftLeft'), true);
+  assert.equal(trigger(0.4).keys.has('ShiftLeft'), true);
+  assert.equal(trigger(0.25).keys.has('ShiftLeft'), false);
+  assert.equal(trigger(0.4).keys.has('ShiftLeft'), false);
+  assert.equal(trigger(0, true).keys.has('ShiftLeft'), true);
+  assert.equal(trigger(0).keys.has('ShiftLeft'), false);
+  assert.equal(trigger(NaN).keys.size, 0);
+  assert.equal(trigger(Infinity).keys.size, 0);
+});
+
+void test('held or partially released L2 cannot arm after connect or pause until fully released', () => {
+  const s = createPadInput();
+  const trigger = (value) => {
+    const device = pad();
+    device.buttons[6] = { value, pressed: false };
+    return mapGamepads(s, [device]);
+  };
+  assert.equal(trigger(0.8).assignments[0].ready, false);
+  assert.equal(trigger(0.3).assignments[0].ready, false);
+  assert.equal(trigger(0).assignments[0].ready, true);
+  assert.equal(trigger(0.8).keys.has('ShiftLeft'), true);
+  resetPadInput(s);
+  assert.equal(trigger(0.8).keys.size, 0);
+  assert.equal(trigger(0.3).assignments[0].ready, false);
+  assert.equal(trigger(0).assignments[0].ready, true);
+  assert.equal(trigger(0.8).keys.has('ShiftLeft'), true);
+});
+
+void test('disconnect stops a held vacuum while preserving independently held keyboard keys', () => {
+  const s = armed();
+  const keyboard = new Set(['ShiftRight']);
+  const active = mapGamepads(s, [pad(0, [6])]);
+  assert.deepEqual([...mergeInputKeys(keyboard, active.keys)].sort(), [
+    'ShiftLeft',
+    'ShiftRight',
+  ]);
+  const gone = mapGamepads(s, [null]);
+  assert.equal(gone.keys.size, 0);
+  assert.deepEqual([...mergeInputKeys(keyboard, gone.keys)], ['ShiftRight']);
+  const returned = mapGamepads(s, [pad(0, [6])]);
+  assert.equal(returned.assignments[0].ready, false);
+  assert.equal(returned.keys.size, 0);
+});
+
+void test('a familiar DualSense ID never enables an unsupported raw mapping, including mixed devices', () => {
+  const s = createPadInput();
+  const f = mapGamepads(
+    s,
+    [
+      pad(0, [0, 6], [1, 1], '', 'DualSense Wireless Controller'),
+      pad(3, [], [0, 0], 'standard', 'Xbox Wireless Controller'),
+    ],
+    2,
+  );
+  assert.deepEqual(f.unsupported, [0]);
+  assert.equal(f.assignments.length, 1);
+  assert.equal(f.assignments[0].brand, 'xbox');
+  assert.equal(f.keys.size, 0);
+  assert.match(gamepadHint(f), /Xbox 4 → игрок 2/);
+  assert.match(gamepadHint(f), /Нестандартный геймпад/);
 });

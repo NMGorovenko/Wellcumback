@@ -1,7 +1,7 @@
 import type { GameState, Phase } from '@/lib/game/screen/engine';
 
-export const NAMES = ['Ярослав', 'Никита', 'Рома'];
-export const SHORT_NAMES = ['Ярик', 'Никита', 'Рома'];
+export const NAMES = ['Никита', 'Ярик', 'Рома'];
+export const SHORT_NAMES = ['Никита', 'Ярик', 'Рома'];
 export const SIDES = ['Дальняя', 'Правая', 'Ближняя', 'Левая'];
 export const SIDE_ARROWS = ['↑', '→', '↓', '←'];
 export const ACTION_LABELS = ['E', 'Enter', 'O'];

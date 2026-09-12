@@ -168,7 +168,10 @@ export function useGameLoop<
       );
       const nextStatus =
         pads.assignments
-          .map((pad) => `${pad.index}:${pad.player}:${pad.ready}`)
+          .map(
+            (pad) =>
+              `${pad.index}:${pad.player}:${pad.ready}:${pad.brand}:${pad.label}`,
+          )
           .join(',') +
         '/' +
         pads.unsupported.join(',');

@@ -58,6 +58,7 @@ export type Rhythm = {
   feedbackTime: number;
 };
 export type CleanState = {
+  practice?: boolean;
   phase: CleanPhase;
   phaseTime: number;
   players: number;
@@ -118,6 +119,13 @@ export type CleanState = {
     incidentAtDesk: boolean;
   };
 };
+/** Cleanup role slots are independent of the apartment cast order. */
+export const cleanCrew = [
+  { id: 'roma', name: 'Рома' },
+  { id: 'nikita', name: 'Никита' },
+  { id: 'yaroslav', name: 'Ярик' },
+] as const;
+export const dutyReprimand = 'Ты охуел, боец?! Иди, блять, сри в туалете!';
 export const mapSize = { width: 1200, height: 800 };
 export const bounds = { minX: 60, maxX: 1140, minY: 60, maxY: 750 };
 export const stations = [
@@ -143,7 +151,17 @@ export const obstacles = [
   { x: 285, y: 550, w: 20, h: 200, label: 'СТЕНА ТУАЛЕТА', kind: 'wall' },
   { x: 505, y: 550, w: 18, h: 200, label: 'СТЕНА ДУША', kind: 'wall' },
   { x: 835, y: 550, w: 18, h: 200, label: 'СТЕНА ПРАЧЕЧНОЙ', kind: 'wall' },
-  { x: 105, y: 535, w: 85, h: 16, label: 'ПЕРЕГОРОДКА КАБИНКИ', kind: 'wall' },
+  // Door openings remain real walkable gaps; rendered walls use these same colliders.
+  { x: 60, y: 535, w: 70, h: 16, label: 'ВХОД В ТУАЛЕТ', kind: 'wall' },
+  { x: 305, y: 535, w: 25, h: 16, label: 'ВХОД В ДУШ', kind: 'wall' },
+  { x: 460, y: 535, w: 45, h: 16, label: 'ВХОД В ДУШ', kind: 'wall' },
+  { x: 523, y: 535, w: 87, h: 16, label: 'ВХОД В ХОЗКОМНАТУ', kind: 'wall' },
+  { x: 795, y: 535, w: 40, h: 16, label: 'ВХОД В ХОЗКОМНАТУ', kind: 'wall' },
+  { x: 853, y: 535, w: 67, h: 16, label: 'ВХОД В ПРАЧЕЧНУЮ', kind: 'wall' },
+  { x: 1050, y: 535, w: 90, h: 16, label: 'ВХОД В ПРАЧЕЧНУЮ', kind: 'wall' },
+  { x: 60, y: 280, w: 220, h: 16, label: 'СПАЛЬНОЕ ПОМЕЩЕНИЕ', kind: 'wall' },
+  { x: 350, y: 280, w: 280, h: 16, label: 'СПАЛЬНОЕ ПОМЕЩЕНИЕ', kind: 'wall' },
+  { x: 750, y: 280, w: 180, h: 16, label: 'СПАЛЬНОЕ ПОМЕЩЕНИЕ', kind: 'wall' },
 ];
 export const furniture = [
   { x: 985, y: 305, w: 90, h: 45, label: 'ТУМБА', kind: 'desk' },
@@ -244,7 +262,7 @@ export function freshClean(players = 1): CleanState {
       {
         id: 'witness1',
         x: 560,
-        y: 270,
+        y: 255,
         action: 'idle',
         line: '',
         suited: false,
@@ -253,7 +271,7 @@ export function freshClean(players = 1): CleanState {
       {
         id: 'witness2',
         x: 740,
-        y: 270,
+        y: 255,
         action: 'idle',
         line: '',
         suited: false,
@@ -283,8 +301,15 @@ export function freshClean(players = 1): CleanState {
 }
 function phase(s: CleanState, value: CleanPhase, message: string) {
   s.phase = value;
+  if (value === 'shower') {
+    s.npcs[0].action = 'idle';
+    s.npcs[0].line = '';
+  }
   s.phaseTime = 0;
   s.message = message;
+}
+function award(s: CleanState, points: number) {
+  if (!s.practice) s.score += points;
 }
 function addTrace(
   s: CleanState,
@@ -344,6 +369,7 @@ function accident(s: CleanState, atDesk: boolean) {
       : 'Дотерпел. Дневальный заметил проблему и идёт разбираться. Оставайся на месте.',
   );
   s.npcs[0].action = 'walk';
+  s.npcs[0].line = 'Боец, ты что, обосрался?!';
 }
 export function cleanAction(s: CleanState) {
   if (s.paused || s.cooldown > 0 || s.phase === 'result') return;
@@ -354,7 +380,7 @@ export function cleanAction(s: CleanState) {
       'Обычное дежурство. Походи немного. Организм уже готовит внеплановый доклад.',
     );
   else if (s.phase === 'find' && near(s, 0, stations[0])) {
-    s.score += 120 + s.rhythm.hits * 15;
+    award(s, 120 + s.rhythm.hits * 15);
     accident(s, true);
   }
 }
@@ -374,7 +400,7 @@ function rhythmPress(s: CleanState, key: 'KeyQ' | 'KeyE') {
     r.expected = key === 'KeyQ' ? 'KeyE' : 'KeyQ';
     r.clock = Math.max(0, r.clock - r.period);
     s.urge = Math.max(s.baselineUrge, s.urge - 0.075);
-    s.score += 8;
+    award(s, 8);
   } else {
     r.misses++;
     r.combo = 0;
@@ -513,7 +539,7 @@ function startMachine(s: CleanState) {
 }
 function startCleanup(s: CleanState) {
   s.responseStage = 'ready';
-  s.actorCount = Math.max(2, s.players);
+  s.actorCount = s.players;
   s.timer = 160;
   // A narrative handoff: the anonymous soldier leaves the playable role; the cleanup crew exits the gear cabinet.
   for (let i = 0; i < 3; i++) {
@@ -524,7 +550,14 @@ function startCleanup(s: CleanState) {
   phase(
     s,
     'clean',
-    'Химзащиту надели. Один закрывает вентиль и держит машинку, остальные отмывают ВСЕ следы. Грязную швабру полоскай в ведре.',
+    s.players === 1
+      ? 'Рома надел химзащиту. Теперь ты за Рому: перекрой воду, отмой машинку и все следы. Грязную швабру полоскай в ведре.'
+      : `${cleanCrew
+          .slice(0, s.players)
+          .map((person) => person.name)
+          .join(
+            ', ',
+          )} надели химзащиту. Перекройте воду, отмойте машинку и все следы. Грязную швабру полоскайте в ведре.`,
   );
 }
 function updateWitnesses(s: CleanState, dt: number) {
@@ -670,7 +703,7 @@ function work(s: CleanState, i: number, dt: number) {
     spent = Math.min(budget, (1 - s.machineClean) * 2.6);
     s.machineClean = clamp(s.machineClean + spent / 2.6);
     s.activity[i] = 'mop';
-    if (s.machineClean === 1) s.score += 240;
+    if (s.machineClean === 1) award(s, 240);
   } else {
     const targets = s.spots
       .filter((p) => p.progress < 1 && near(s, i, p, 57))
@@ -684,7 +717,7 @@ function work(s: CleanState, i: number, dt: number) {
       spent += amount;
       if (target.progress > 1 - 1e-8) {
         target.progress = 1;
-        s.score += target.kind === 'footprint' ? 12 : 65;
+        award(s, target.kind === 'footprint' ? 12 : 65);
       }
       if (budget <= 1e-8) break;
     }
@@ -693,28 +726,6 @@ function work(s: CleanState, i: number, dt: number) {
   s.dirt[i] = clamp(s.dirt[i] + spent * 0.44, 0, 0.98);
   return spent ? 'mop' : '';
 }
-function helper(s: CleanState, dt: number) {
-  if (s.players !== 1 || s.phase !== 'clean') return false;
-  const target =
-    s.dirt[1] >= 0.98 - 1e-8
-      ? stations[5]
-      : s.valve < 1
-        ? stations[4]
-        : s.spin < 1 || s.machineClean < 1
-          ? stations[3]
-          : s.spots.find((p) => p.progress < 1);
-  if (!target) return false;
-  const actor = position(s, 1),
-    radius = 'id' in target && typeof target.id === 'string' ? 63 : 49;
-  const arrived = navigate(actor, s.navigation[1], target, dt, radius, 151, [
-    position(s, 0),
-  ]);
-  s.x[1] = actor.x;
-  s.y[1] = actor.y;
-  s.activity[1] = arrived ? 'idle' : 'walk';
-  return arrived;
-}
-
 /** Soft body separation plus a sideways yield keeps two people from blocking the same doorway forever. */
 function separateActors(s: CleanState, dt: number) {
   const place = (i: number, x: number, y: number) => {
@@ -776,10 +787,13 @@ function separateActors(s: CleanState, dt: number) {
 }
 
 function finish(s: CleanState) {
-  s.score += Math.max(
-    0,
-    Math.round(
-      s.timer * 5 + Math.min(s.teamwork, 60) * 5 + 350 - s.penalties * 12,
+  award(
+    s,
+    Math.max(
+      0,
+      Math.round(
+        s.timer * 5 + Math.min(s.teamwork, 60) * 5 + 350 - s.penalties * 12,
+      ),
     ),
   );
   phase(
@@ -887,12 +901,15 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
     const duty = s.npcs[0],
       arrived = navigate(duty, duty.navigation, position(s, 0), dt, 62, 180);
     duty.action = arrived ? 'react' : 'walk';
-    if (arrived) duty.line = 'Иди, блять, сри в туалете';
+    if (arrived) {
+      duty.line = dutyReprimand;
+      s.message = `Дневальный: «${dutyReprimand}»`;
+    }
     if (arrived && s.phaseTime >= 3.2)
       phase(
         s,
         'toilet',
-        'Дневальный: «Иди, блять, сри в туалете». Кабинка внизу слева. По дороге останутся следы.',
+        `Дневальный: «${dutyReprimand}» Кабинка внизу слева. По дороге останутся следы.`,
       );
   } else if (s.phase === 'toilet') {
     if (holding[0] && near(s, 0, stations[1], 62)) {
@@ -902,7 +919,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
       if (s.relief === 1) {
         s.spillActive = false;
         s.station = 2;
-        s.score += 160;
+        award(s, 160);
         phase(
           s,
           'shower',
@@ -919,7 +936,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
         s.soiled = false;
         s.pants = 'bagged';
         s.station = 3;
-        s.score += 180;
+        award(s, 180);
         phase(
           s,
           'laundry',
@@ -951,7 +968,6 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
   if (s.phase === 'clean') {
     s.timer = Math.max(0, s.timer - dt);
     let working = 0;
-    if (s.players === 1) holding[1] = helper(s, dt);
     for (let i = 0; i < s.actorCount; i++) {
       if (!holding[i]) {
         s.rinse[i] = 0;
@@ -1000,17 +1016,17 @@ export function cleanPrompt(s: CleanState, actor = 0) {
   if (s.phase === 'duty') return 'Обойди пост · скоро понадобится дневальный';
   if (s.phase === 'find')
     return near(s, 0, stations[0])
-      ? 'E / A · спросить дневального'
-      : `${s.rhythm.expected === 'KeyQ' ? 'Q / RB' : 'E / A'} в такт · двигайся к тумбе`;
+      ? 'E · спросить дневального'
+      : `${s.rhythm.expected === 'KeyQ' ? 'Q' : 'E'} в такт · двигайся к тумбе`;
   if (s.phase === 'accident')
     return 'Дневальный идёт. Организм уже никуда не идёт.';
   if (s.phase === 'toilet')
-    return 'К туалету · Q / RB временно сдержать; E / A в кабинке';
-  if (s.phase === 'shower') return 'Душ рядом с туалетом · держи E / A';
+    return 'К туалету · Q временно сдержать; E в кабинке';
+  if (s.phase === 'shower') return 'Душ рядом с туалетом · держи E';
   if (s.phase === 'laundry')
-    return 'Прачечная справа · держи E / A, чтобы загрузить штаны';
+    return 'Прачечная справа · держи E, чтобы загрузить штаны';
   if (s.phase === 'spin' || s.phase === 'response')
-    return 'Можно держать стиралку: E / A. Сослуживцы скоро вернутся.';
+    return 'Можно держать стиралку: E. Сослуживцы скоро вернутся.';
   if (s.phase === 'clean' && s.valve < 1)
     return 'Вентиль открыт · подойди и держи действие, чтобы перекрыть воду';
   if (s.phase === 'clean')

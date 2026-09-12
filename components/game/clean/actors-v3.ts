@@ -1,12 +1,18 @@
 import * as THREE from 'three';
-import { people } from '@/lib/game/presets';
+import { people } from '../../../lib/game/presets.ts';
+import { cleanCrew } from '../../../lib/game/clean/engine.ts';
 import type { RenderKit } from '../world/render-kit';
-import { createRig, type Pose } from '../world/rig';
-import { makeLabel } from '../world/labels';
-import { createPants, createTrouserLeak, positionRod } from './props-v3';
+import { createRig, type Pose } from '../world/rig.ts';
+import { makeLabel } from '../world/labels.ts';
+import { createPants, createTrouserLeak, positionRod } from './props-v3.ts';
+
+// Anonymous rigs never load a person's portrait. This story role is separate
+// from the named cleanup crew and disappears when Roma takes over.
+const anonymousSoldier = { ...people[0], name: 'Солдат', portrait: '' };
 
 export function createSoldier(kit: RenderKit) {
-  const rig = createRig(kit, people[2], kit.scene, { anonymous: true });
+  const rig = createRig(kit, anonymousSoldier, kit.scene, { anonymous: true });
+  rig.root.name = 'anonymous-soldier';
   const leak = createTrouserLeak(kit, rig.root);
   const bag = new THREE.Group();
   kit.scene.add(bag);
@@ -58,7 +64,7 @@ export function createSoldier(kit: RenderKit) {
 }
 
 export function createNpc(kit: RenderKit, index: number) {
-  const rig = createRig(kit, people[2], kit.scene, { anonymous: true });
+  const rig = createRig(kit, anonymousSoldier, kit.scene, { anonymous: true });
   rig.root.scale.setScalar(index === 0 ? 1.03 : index === 1 ? 0.97 : 1.0);
   const name = makeLabel(
     kit,
@@ -75,12 +81,75 @@ export function createNpc(kit: RenderKit, index: number) {
   rig.head.add(suited);
   kit.sphere(0.194, 0.23, 0.135, '#b6bca0', 0, 0.014, -0.066, suited);
   kit.sphere(0.048, 0.055, 0.034, '#717c64', 0.174, -0.09, 0.085, suited, 12);
-  return { rig, name, shock, suited, previous: new THREE.Vector3() };
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 192;
+  const context = canvas.getContext('2d')!;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  kit.textures.add(texture);
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+  });
+  kit.materials.add(material);
+  const speech = new THREE.Sprite(material);
+  speech.scale.set(3.8, 0.72, 1);
+  speech.position.set(0, 2.85, 0);
+  rig.root.add(speech);
+  let lastLine = '';
+  return {
+    rig,
+    name,
+    shock,
+    suited,
+    speech,
+    previous: new THREE.Vector3(),
+    say(line: string) {
+      speech.visible = !!line;
+      if (!line || line === lastLine) return;
+      lastLine = line;
+      context.clearRect(0, 0, 1024, 192);
+      context.fillStyle = '#221f18ed';
+      context.beginPath();
+      context.roundRect(4, 4, 1016, 180, 24);
+      context.fill();
+      context.fillStyle = '#ffe6a4';
+      context.font = '600 38px Arial';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      const words = line.split(' '),
+        lines: string[] = [];
+      let current = '';
+      for (const word of words) {
+        if ((current + ' ' + word).length > 38 && current) {
+          lines.push(current);
+          current = word;
+        } else current += (current ? ' ' : '') + word;
+      }
+      if (current) lines.push(current);
+      lines
+        .slice(0, 3)
+        .forEach((text, row) =>
+          context.fillText(
+            text,
+            512,
+            94 + (row - (lines.length - 1) / 2) * 48,
+            960,
+          ),
+        );
+      texture.needsUpdate = true;
+    },
+  };
 }
 
-export function createCleaner(kit: RenderKit, index: number, helper: boolean) {
+export function createCleaner(kit: RenderKit, index: number) {
   const color = ['#b3bea0', '#a4b5a1', '#b2b493'][index];
-  const rig = createRig(kit, { ...people[index], uniform: false, color });
+  const role = cleanCrew[index];
+  const person = people.find((person) => person.id === role.id)!;
+  const rig = createRig(kit, { ...person, uniform: false, color });
+  rig.root.name = `cleaner-${role.id}`;
   // Hood and side filter leave the photographed face readable through a clear visor.
   kit.sphere(0.191, 0.233, 0.13, color, 0, 0.018, -0.065, rig.head);
   for (const sign of [-1, 1]) {
@@ -117,12 +186,7 @@ export function createCleaner(kit: RenderKit, index: number, helper: boolean) {
   visor.position.set(0, -0.003, 0.105);
   visor.scale.set(0.157, 0.199, 0.08);
   visor.castShadow = false;
-  const name = makeLabel(
-    kit,
-    helper ? `${people[index].name} · помогает` : people[index].name,
-    '#eef0d5',
-    helper ? 2 : 1.25,
-  );
+  const name = makeLabel(kit, role.name, '#eef0d5', 1.25);
   name.position.set(0, 2.29, 0);
   rig.root.add(name);
   const tool = new THREE.Group();

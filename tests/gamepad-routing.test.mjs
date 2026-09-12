@@ -6,6 +6,7 @@ import {
   inputPlayerCount,
   mapGamepads,
   navigateGamepad,
+  gamepadPrompt,
 } from '../lib/game/input/gamepads.ts';
 import {
   freshClean,
@@ -147,5 +148,33 @@ void test('any teammate can resume with B or confirm A and navigate a shared pau
     const direction = mapGamepads(s, devices(player, [], [0, 1]), 3);
     assert.equal(navigateGamepad(navigation, direction, 2).direction, 'down');
     navigateGamepad(navigation, mapGamepads(s, devices(), 3), 3);
+  }
+});
+
+void test('vacuum trigger reaches each assigned actor independently of screwdriver action and physical index', () => {
+  const s = createPadInput();
+  const devices = (active = -1, buttons = []) =>
+    [2, 5, 8].map((index, player) => ({
+      ...pad(player === active ? buttons : []),
+      index,
+      id:
+        player === 0
+          ? 'DualSense Wireless Controller'
+          : 'Xbox Wireless Controller',
+    }));
+  mapGamepads(s, devices(), 3);
+  for (const { player, secondary, action } of [
+    { player: 0, secondary: 'ShiftLeft', action: 'KeyE' },
+    { player: 1, secondary: 'ShiftRight', action: 'Enter' },
+    { player: 2, secondary: 'KeyU', action: 'KeyO' },
+  ]) {
+    const f = mapGamepads(s, devices(player, [0, 6]), 3);
+    assert.deepEqual([...f.keys].sort(), [action, secondary].sort());
+    assert.equal(
+      gamepadPrompt(f, player, 'secondary'),
+      player === 0 ? 'L2' : 'LT',
+    );
+    assert.equal(f.primaryActionPressed, player === 0);
+    assert.equal(mapGamepads(s, devices(), 3).keys.size, 0);
   }
 });

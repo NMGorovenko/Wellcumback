@@ -92,13 +92,15 @@ function keysFor(s) {
       )
         add('KeyE');
     } else if (s.drillMode === 'drill') {
+      add('ShiftLeft');
       add(signKey(5.9 - s.aim, 'KeyW', 'KeyS', 0.01));
       if (
         s.drillHeat < 0.73 &&
         (!s.simulation.previousActions[0] ? s.drillHeat < 0.25 : true)
       )
         add('KeyE');
-    }
+    } else if (['climb', 'handoff', 'descend'].includes(s.drillMode))
+      add('KeyE');
   } else if (s.phase === 'lift') {
     add(
       signKey(
@@ -138,3 +140,8 @@ assert.equal(s.phase, 'result');
 assert.equal(s.tool.catches, 15);
 assert.equal(s.tool.misses, 0);
 assert.equal(s.penalties, 0);
+assert.equal(s.falls, 0);
+assert.equal(s.drillOverheats, 0);
+assert.equal(s.holes.length, 2);
+assert.ok(s.dustGenerated > 0);
+assert.ok(s.dustCaptured / s.dustGenerated > 0.98);

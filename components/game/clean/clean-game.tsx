@@ -1,6 +1,13 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Pause, Play, Trophy } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Pause,
+  Play,
+  SkipForward,
+  Trophy,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,13 +19,23 @@ import {
   cleanTick,
   cleanAction,
   cleanPrompt,
+  cleanCrew,
 } from '@/lib/game/clean/engine';
 import type { Result } from '@/lib/game/types';
-import { people } from '@/lib/game/presets';
-import { gamepadHint, type PadFrame } from '@/lib/game/input/gamepads';
+import {
+  gamepadHint,
+  inputPrompt,
+  type PadFrame,
+} from '@/lib/game/input/gamepads';
 import { useGameInspection } from '@/hooks/use-game-inspection';
 import { useGameLoop } from '@/hooks/use-game-loop';
 import { useCleanAudio } from '@/hooks/use-clean-audio';
+import { EpisodeDialog } from '../episode-dialog';
+import {
+  cleanEpisodes,
+  createCleanEpisode,
+  type CleanEpisodeId,
+} from '@/lib/game/clean/episodes';
 import CleanScene, { type CleanCameraMode } from './scene';
 import CleanStatus from './clean-status';
 import {
@@ -48,10 +65,14 @@ export default function CleanGame({
     [cameraMode, setCameraMode] = useState<CleanCameraMode>('auto');
   const [pads, setPads] = useState<
     Pick<PadFrame, 'assignments' | 'unsupported'>
-  >({ assignments: [], unsupported: [] });
+  >({
+    assignments: [],
+    unsupported: [],
+  });
   const [pauseChoice, setPauseChoice] = useState(0);
-  const pad = pads.assignments.length > 0,
-    active = view.phase !== 'brief' && view.phase !== 'result';
+  const [episodeOpen, setEpisodeOpen] = useState(false);
+  const [episodeChoice, setEpisodeChoice] = useState(0);
+  const active = view.phase !== 'brief' && view.phase !== 'result';
   useGameInspection(game, keys);
   useCleanAudio(sound, view);
   const action = () => {
@@ -65,6 +86,19 @@ export default function CleanGame({
     setView({ ...game.current });
   };
   const pause = () => setPause(!game.current.paused);
+  const openEpisodes = () => {
+    if (game.current.phase !== 'result') game.current.paused = true;
+    keys.current.clear();
+    setEpisodeOpen(true);
+    setView({ ...game.current });
+  };
+  const jumpToEpisode = (id: string) => {
+    game.current = createCleanEpisode(players, id as CleanEpisodeId);
+    keys.current.clear();
+    saved.current = false;
+    setEpisodeOpen(false);
+    setView({ ...game.current });
+  };
   useGameLoop({
     game,
     keys,
@@ -75,22 +109,32 @@ export default function CleanGame({
     onGamepads: setPads,
     padMenu: {
       enabled: view.paused || !active,
-      onMove: () => setPauseChoice((v) => 1 - v),
+      onMove: (direction) => {
+        const delta = direction === 'up' || direction === 'left' ? -1 : 1;
+        if (episodeOpen)
+          setEpisodeChoice(
+            (v) => (v + delta + cleanEpisodes.length) % cleanEpisodes.length,
+          );
+        else setPauseChoice((v) => (v + delta + 3) % 3);
+      },
       onConfirm: () => {
-        if (view.paused) {
+        if (episodeOpen) jumpToEpisode(cleanEpisodes[episodeChoice].id);
+        else if (view.paused) {
           if (pauseChoice === 0) setPause(false);
+          else if (pauseChoice === 1) openEpisodes();
           else onExit();
         } else if (view.phase === 'brief') action();
         else (onNext ?? onExit)();
       },
       onBack: () => {
-        if (view.paused) setPause(false);
+        if (episodeOpen) setEpisodeOpen(false);
+        else if (view.paused) setPause(false);
         else onExit();
       },
     },
   });
   useEffect(() => {
-    if (view.phase === 'result' && !saved.current) {
+    if (view.phase === 'result' && !saved.current && !view.practice) {
       saved.current = true;
       onFinish({
         story: 'clean',
@@ -103,6 +147,7 @@ export default function CleanGame({
     }
   }, [
     view.phase,
+    view.practice,
     view.score,
     view.elapsed,
     view.spots.length,
@@ -136,6 +181,11 @@ export default function CleanGame({
         <div className="world-heading">
           <span>02 / ДРУГАЯ РОТА</span>
           <strong>Операция «Чистый проход»</strong>
+          {view.practice && (
+            <span className="practice-badge">
+              Тренировка · без зачёта очков
+            </span>
+          )}
         </div>
       </div>
       <aside className="game-sidebar" aria-label="Задача и состояние">
@@ -151,6 +201,13 @@ export default function CleanGame({
             <Trophy size={16} />
             <strong>{view.score.toLocaleString('ru-RU')}</strong>
           </span>
+          <button
+            className="icon-button"
+            onClick={openEpisodes}
+            aria-label="Выбрать эпизод"
+          >
+            <SkipForward size={17} />
+          </button>
           {view.phase !== 'result' && (
             <button className="icon-button" onClick={pause} aria-label="Пауза">
               <Pause size={17} />
@@ -173,12 +230,13 @@ export default function CleanGame({
               Солдат решил сначала спросить разрешения. Организм решил иначе.
             </p>
             <p>
-              Дойди до дневального, переживи стирку, а потом всей компанией
-              отмой последствия.
+              Дойди до дневального, переживи стирку, а потом помоги Роме отмыть
+              последствия.
             </p>
             <p className="quiet">
-              Первая часть — за безымянного солдата. Уборка — за вашу бригаду. В
-              одиночку поможет напарник.
+              Первая часть — за безымянного солдата другой роты. На уборку
+              выходит Рома. Вдвоём к нему присоединяется Никита, втроём — Ярик.
+              В одиночку Рома справляется сам.
             </p>
             <button className="play-button" onClick={action}>
               Заступить на смену <ArrowRight size={16} />
@@ -222,8 +280,12 @@ export default function CleanGame({
           </div>
         ) : (
           <>
-            <CleanStatus game={view} pad={pad} />
-            <p className="context-prompt">{cleanPrompt(view)}</p>
+            <CleanStatus game={view} pads={pads} />
+            <p className="context-prompt">
+              {cleanPrompt(view)
+                .replace(/\bE\b/g, inputPrompt(pads, 0, 'action'))
+                .replace(/\bQ\b/g, inputPrompt(pads, 0, 'throw'))}
+            </p>
           </>
         )}
         <details className="clean-help">
@@ -237,7 +299,7 @@ export default function CleanGame({
           <p>
             До уборки первый геймпад управляет солдатом. При игре вдвоём или
             втроём один геймпад после переодевания переходит Никите, клавиатура
-            остаётся у Ярослава. Отпусти кнопки при смене ролей.
+            остаётся у Ромы. Отпусти кнопки при смене ролей.
           </p>
           <div className="camera-switch" aria-label="Камера">
             {(
@@ -276,48 +338,34 @@ export default function CleanGame({
         </div>
         {active && (
           <div className="keyboard-controls">
-            {pad ? (
-              <>
-                <span>
-                  <kbd>Стик</kbd> ходьба
+            {Array.from(
+              { length: view.phase === 'clean' ? players : 1 },
+              (_, i) => (
+                <span key={i}>
+                  <b>{view.phase === 'clean' ? cleanCrew[i].name : 'Солдат'}</b>{' '}
+                  · <kbd>{inputPrompt(pads, i, 'move')}</kbd> ·{' '}
+                  <kbd>{inputPrompt(pads, i, 'action')}</kbd> держи для действия
                 </span>
-                <span>
-                  <kbd>A / ×</kbd> действие
-                </span>
-                {['find', 'toilet'].includes(view.phase) && (
-                  <span>
-                    <kbd>RB / R1</kbd> сдержаться
-                  </span>
-                )}
-              </>
-            ) : (
-              <>
-                <span>
-                  <kbd>WASD</kbd> + <kbd>E</kbd>{' '}
-                  {view.phase === 'clean' ? people[0].name : 'Солдат'}
-                </span>
-                {view.phase === 'find' || view.phase === 'toilet' ? (
-                  <span>
-                    <kbd>Q</kbd> сдержаться
-                  </span>
-                ) : null}
-                {view.phase === 'clean' && players > 1 && (
-                  <span>
-                    <kbd>Стрелки</kbd> + <kbd>Enter</kbd> Никита
-                  </span>
-                )}
-                {view.phase === 'clean' && players > 2 && (
-                  <span>
-                    <kbd>IJKL</kbd> + <kbd>O</kbd> Рома
-                  </span>
-                )}
-              </>
+              ),
+            )}
+            {['find', 'toilet'].includes(view.phase) && (
+              <span>
+                <kbd>{inputPrompt(pads, 0, 'throw')}</kbd> сдержаться
+              </span>
             )}
           </div>
         )}
       </footer>
+      <EpisodeDialog
+        open={episodeOpen}
+        options={cleanEpisodes}
+        selected={episodeChoice}
+        onSelect={setEpisodeChoice}
+        onChoose={jumpToEpisode}
+        onClose={() => setEpisodeOpen(false)}
+      />
       <Dialog
-        open={view.paused && view.phase !== 'result'}
+        open={!episodeOpen && view.paused && view.phase !== 'result'}
         onOpenChange={setPause}
       >
         <DialogContent className="help-dialog">
@@ -334,6 +382,12 @@ export default function CleanGame({
           </button>
           <button
             className={`secondary-button${pauseChoice === 1 ? ' pad-selected' : ''}`}
+            onClick={openEpisodes}
+          >
+            <SkipForward size={17} /> Выбрать эпизод
+          </button>
+          <button
+            className={`secondary-button${pauseChoice === 2 ? ' pad-selected' : ''}`}
             onClick={onExit}
           >
             К выбору историй

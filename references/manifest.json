@@ -99,6 +99,16 @@
       "path": "references/vehicles/mustang/rear.jpg",
       "bytes": 261865,
       "sha256": "b5aba7d788bfa29acf8156ae05a52a5207997a3445ce2cf983baa67ddfe13ae1"
+    },
+    {
+      "path": "references/barracks/duty-post.png",
+      "bytes": 308716,
+      "sha256": "64e09055415c1fd4270e6c4f8354483fd4f2892be8c87dd2fa2fe69d67e604ef"
+    },
+    {
+      "path": "references/feedback/screen-chair-collision.png",
+      "bytes": 3257225,
+      "sha256": "d609db3edd6e4c8b56e963d26739ac85b5e7c16d223f44507dcaad2cba91a0d7"
     }
   ]
 }

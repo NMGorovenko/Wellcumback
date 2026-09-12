@@ -1,5 +1,8 @@
+import { CARRY_SHIFT_LIMIT } from './carrier-staging.ts';
 /** Pure, deterministic screen story simulation. Coordinates are logical metres;
  * renderers may uniformly scale the floor scene. No DOM, Three.js, or timers. */
+import { drillStep, type DrillingState } from './drilling.ts';
+import { PLAYER_BINDINGS } from '../input/gamepads.ts';
 export type Phase =
   | 'frame'
   | 'rods'
@@ -17,6 +20,8 @@ export type WorkerAction =
   | 'throw'
   | 'catch'
   | 'drill'
+  | 'climb'
+  | 'handoff'
   | 'fall'
   | 'lift';
 export type Worker = {
@@ -75,7 +80,7 @@ export type ToolState = {
   catches: number;
   misses: number;
 };
-export type GameState = {
+export type GameState = DrillingState & {
   phase: Phase;
   players: number;
   elapsed: number;
@@ -83,6 +88,8 @@ export type GameState = {
   score: number;
   penalties: number;
   paused: boolean;
+  practice: boolean;
+  heldKeys: string[];
   corners: number;
   cursor: number;
   side: number;
@@ -118,7 +125,6 @@ export type GameState = {
   springTarget: number;
   tension: number[];
   recommendedSide: number;
-  drillMode: 'position' | 'climb' | 'drill';
   chairX: number;
   drillHeat: number;
   drillMark: number | null;
@@ -166,17 +172,7 @@ export const SIDE_NAMES = [
   'Ближняя сторона',
   'Левая сторона',
 ];
-export const CONTROLS = [
-  { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', action: 'KeyE' },
-  {
-    up: 'ArrowUp',
-    down: 'ArrowDown',
-    left: 'ArrowLeft',
-    right: 'ArrowRight',
-    action: 'Enter',
-  },
-  { up: 'KeyI', down: 'KeyK', left: 'KeyJ', right: 'KeyL', action: 'KeyO' },
-] as const;
+export const CONTROLS = PLAYER_BINDINGS;
 const STEP = 1 / 60;
 const clamp = (n: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, n));
@@ -236,6 +232,8 @@ export function freshGame(players = 1): GameState {
     score: 0,
     penalties: 0,
     paused: false,
+    practice: false,
+    heldKeys: [],
     corners: 0,
     cursor: 0,
     side: 2,
@@ -293,7 +291,17 @@ export function freshGame(players = 1): GameState {
     tension: [0, 0, 0, 0],
     recommendedSide: 2,
     drillMode: 'position',
-    chairX: -6.5,
+    chairX: -4.4,
+    drillGear: 'none',
+    handoffProgress: 0,
+    drillRunning: false,
+    vacuumRunning: false,
+    dustGenerated: 0,
+    dustCaptured: 0,
+    wallDust: [0, 0],
+    fallProgress: 0,
+    fallHeight: 0,
+    braceHeld: false,
     drillHeat: 0,
     drillMark: null,
     drillOverheats: 0,
@@ -316,7 +324,7 @@ export function freshGame(players = 1): GameState {
     },
   };
 }
-function emit(
+export function emit(
   s: GameState,
   kind: GameEvent['kind'],
   worker = 0,
@@ -334,10 +342,11 @@ function emit(
   if (s.events.length > 12) s.events.shift();
 }
 export function award(s: GameState, label: string, value: number) {
+  if (s.practice) return;
   s.score += value;
   s.awards.push({ label, value });
 }
-function penalty(s: GameState, message: string, amount = 25) {
+export function penalty(s: GameState, message: string, amount = 25) {
   s.penalties++;
   s.score = Math.max(0, s.score - amount);
   s.message = message;
@@ -369,6 +378,9 @@ export function moveToSide(s: GameState, player: number, side: number) {
 export function setPaused(s: GameState, paused: boolean) {
   s.paused = paused;
   if (!paused) return;
+  s.heldKeys = [];
+  s.drillRunning = false;
+  s.vacuumRunning = false;
   s.simulation.previousActions.fill(false);
   s.simulation.pendingActions.fill(false);
   s.simulation.previousThrow = false;
@@ -394,12 +406,13 @@ export function springWindow(s: GameState): [number, number] {
   const center = 0.62 + s.clips[s.spring.side] * 0.018;
   return [center - 0.09, center + 0.09];
 }
-type Input = {
+export type Input = {
   x: number;
   y: number;
   held: boolean;
   pressed: boolean;
   released: boolean;
+  secondary: boolean;
 };
 function buildInputs(s: GameState, keys: Set<string>): Input[] {
   return CONTROLS.map((c, p) => {
@@ -413,6 +426,7 @@ function buildInputs(s: GameState, keys: Set<string>): Input[] {
       held,
       pressed: (held && !previous) || pending,
       released: !held && previous,
+      secondary: p < s.players && keys.has(c.secondary),
     };
     s.simulation.previousActions[p] = held;
     s.simulation.pendingActions[p] = false;
@@ -1165,119 +1179,6 @@ function tensionStep(
       s.clips[i] / 4 +
       (s.spring.active && s.spring.side === i ? s.spring.power * 0.09 : 0);
 }
-function fall(s: GameState) {
-  s.falls++;
-  penalty(
-    s,
-    'БУХ. Диван принял специалиста. Готовое отверстие сохранилось.',
-    100,
-  );
-  s.balance = 0;
-  s.drill = 0;
-  s.drillMark = null;
-  s.drillHeat = 0;
-  s.cooldown = 1.6;
-  s.drillMode = 'position';
-  s.workers[0].animation = 'fall';
-  emit(s, 'fall', 0, s.holes.length);
-}
-function drillStep(s: GameState, dt: number, input: Input[]) {
-  if (s.cooldown > 0) return;
-  const targetX = s.holes.length === 0 ? -4.4 : 4.4;
-  if (s.drillMode === 'position') {
-    if (input[0].y > 0 && s.chairs !== 2) setChairs(s, 2);
-    if (input[0].y < 0 && s.chairs !== 1) setChairs(s, 1);
-    s.chairX = clamp(s.chairX + input[0].x * dt * 2.7, -7, 7);
-    s.workers[0].animation = input[0].x ? 'walk' : 'idle';
-    if (input[0].pressed) {
-      if (Math.abs(s.chairX - targetX) > 0.35) {
-        s.message =
-          'Сначала поставь стулья под отметку. Дрель длиннее от этого не станет.';
-        return;
-      }
-      s.chairX = targetX;
-      s.drillMode = 'climb';
-      s.climb = 0;
-      s.message =
-        s.players === 1
-          ? 'W/S — высота. E сверлит. Отпускай E, когда дрель перегревается.'
-          : 'Первый A/D держит. Второй ↑/↓ целится, Enter сверлит с перерывами.';
-    }
-    return;
-  }
-  if (s.drillMode === 'climb') {
-    s.climb = Math.min(1, s.climb + dt * 0.8);
-    s.workers[0].animation = 'walk';
-    if (s.climb === 1) s.drillMode = 'drill';
-    return;
-  }
-  const drillInput = s.players === 1 ? input[0] : input[1];
-  const brace =
-    s.players === 1 ? clamp(-s.balance * 2.4, -0.9, 0.9) : input[0].x;
-  const third = s.players === 3 && input[2].held;
-  s.balance +=
-    (Math.sin(s.phaseTime * 1.9) * 0.24 +
-      s.balance * 0.52 +
-      brace * 0.95 +
-      (drillInput.held ? Math.sin(s.phaseTime * 29) * 0.13 : 0)) *
-    dt *
-    (s.chairs === 2 ? 1.65 : 1);
-  if (third) s.balance *= Math.exp(-dt * 1.3);
-  if (Math.abs(s.balance) > 1) {
-    fall(s);
-    return;
-  }
-  s.aim = clamp(
-    s.aim + drillInput.y * dt * 0.65,
-    s.chairs === 1 ? 4.6 : 5.4,
-    s.chairs === 1 ? 5.35 : 7,
-  );
-  if (drillInput.held) {
-    s.workers[0].animation = 'drill';
-    s.workers[1].animation = 'hold';
-    s.drillHeat = Math.min(1, s.drillHeat + dt * 0.26);
-    const stable = Math.abs(s.balance) < 0.5;
-    if (s.drillMark === null) s.drillMark = s.aim;
-    s.drillMark += (s.aim - s.drillMark) * dt * 1.7;
-    if (stable && s.drillHeat < 0.86)
-      s.drill = Math.min(1, s.drill + dt * 0.19);
-    if (s.drillHeat >= 1) {
-      s.drillOverheats++;
-      penalty(
-        s,
-        'Дрель перегрелась. Короткими подходами, товарищ перфоратор.',
-        35,
-      );
-      s.drill = Math.max(0, s.drill - 0.12);
-      s.drillHeat = 0.45;
-      s.cooldown = 0.85;
-      emit(s, 'jam', 0, s.holes.length);
-      return;
-    }
-  } else s.drillHeat = Math.max(0, s.drillHeat - dt * 0.5);
-  if (s.drill === 1) {
-    s.holes.push(s.drillMark ?? s.aim);
-    award(s, `Отверстие ${s.holes.length}`, 300);
-    emit(s, 'hole', 0, s.holes.length - 1);
-    s.drill = 0;
-    s.drillMark = null;
-    s.drillHeat = 0;
-    s.balance = 0;
-    s.cooldown = 0.4;
-    if (s.holes.length === 2)
-      transition(
-        s,
-        'lift',
-        'Поднимайте края W/S и ↑/↓. A/D сдвигает экран. Каждый держит действие у своего крючка.',
-      );
-    else {
-      s.drillMode = 'position';
-      s.aim = clamp(s.aim + 0.13, 4.6, 7);
-      s.message =
-        'Теперь переставь стулья направо. Потолок говорит: «тут тоже 15». Уровень не согласен.';
-    }
-  }
-}
 function liftStep(s: GameState, dt: number, input: Input[]) {
   if (s.holes.length < 2) return;
   if (s.players === 1) {
@@ -1287,7 +1188,11 @@ function liftStep(s: GameState, dt: number, input: Input[]) {
   }
   const damping = s.players === 3 && input[2].held ? 6.5 : 4.5;
   s.liftXVelocity += (input[0].x * 3.4 - s.liftXVelocity * damping) * dt;
-  s.liftX = clamp(s.liftX + s.liftXVelocity * dt, -2, 2);
+  s.liftX = clamp(
+    s.liftX + s.liftXVelocity * dt,
+    -CARRY_SHIFT_LIMIT,
+    CARRY_SHIFT_LIMIT,
+  );
   const heights = [s.liftLeft, s.liftRight];
   for (let p = 0; p < 2; p++) {
     s.workers[p].animation = 'lift';
@@ -1379,6 +1284,7 @@ function levelStep(s: GameState, dt: number, input: Input[]) {
   }
 }
 function fixedStep(s: GameState, dt: number, keys: Set<string>) {
+  s.heldKeys = [...keys];
   const input = buildInputs(s, keys),
     throwing = keys.has('KeyQ');
   const throwRelease = !throwing && s.simulation.previousThrow;

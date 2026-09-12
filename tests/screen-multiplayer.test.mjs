@@ -95,19 +95,24 @@ function controller(s) {
       } else if (s.cooldown === 0) press(p);
     }
   } else if (s.phase === 'drill') {
+    add('KeyE');
+    if (s.players === 3) add('KeyO');
     if (s.drillMode === 'position') {
       const target = s.holes.length === 0 ? -4.4 : 4.4;
       add(signKey(target - s.chairX, 'KeyD', 'KeyA', 0.04));
-      if (Math.abs(s.chairX - target) < 0.08) press(0);
-    } else if (s.drillMode === 'drill') {
+      if (Math.abs(s.chairX - target) < 0.08) press(1);
+    } else {
       add(signKey(-s.balance, 'KeyD', 'KeyA', 0.04));
-      add(signKey(5.9 - s.aim, 'ArrowUp', 'ArrowDown', 0.01));
-      if (
-        s.drillHeat < 0.73 &&
-        (!s.simulation.previousActions[1] ? s.drillHeat < 0.25 : true)
-      )
+      if (s.drillMode === 'drill') {
+        add('ShiftRight');
+        add(signKey(5.9 - s.aim, 'ArrowUp', 'ArrowDown', 0.01));
+        if (
+          s.drillHeat < 0.73 &&
+          (!s.simulation.previousActions[1] ? s.drillHeat < 0.25 : true)
+        )
+          add('Enter');
+      } else if (['climb', 'handoff', 'descend'].includes(s.drillMode))
         add('Enter');
-      if (s.players === 3) add('KeyO');
     }
   } else if (s.phase === 'lift') {
     add(
@@ -163,4 +168,9 @@ for (const players of [2, 3]) {
   assert.equal(s.tool.catches, 15);
   assert.equal(s.tool.misses, 0);
   assert.equal(s.penalties, 0);
+  assert.equal(s.falls, 0);
+  assert.equal(s.drillOverheats, 0);
+  assert.equal(s.holes.length, 2);
+  assert.ok(s.dustGenerated > 0);
+  assert.ok(s.dustCaptured / s.dustGenerated > 0.98);
 }

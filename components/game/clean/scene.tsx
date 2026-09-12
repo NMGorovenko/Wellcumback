@@ -89,9 +89,7 @@ export default function CleanScene({
       traces = createTraceField(kit);
     const soldier = createSoldier(kit),
       npcs = [0, 1, 2].map((i) => createNpc(kit, i));
-    const crew = [0, 1, 2].map((i) =>
-      createCleaner(kit, i, i === 1 && game.current.players === 1),
-    );
+    const crew = [0, 1, 2].map((i) => createCleaner(kit, i));
     const routeMaterial = new THREE.MeshStandardMaterial({
       color: '#d6c576',
       emissive: '#766a35',
@@ -358,14 +356,24 @@ export default function CleanScene({
         );
         npc.rig.update(time + i * 0.29, actorPose(state.action));
         npc.suited.visible = state.suited;
-        npc.shock.visible = state.action === 'react';
+        const speaking =
+          i === 0
+            ? s.phase === 'accident' ||
+              (s.phase === 'toilet' && s.phaseTime < 8)
+            : state.action === 'react';
+        npc.say(speaking ? state.line : '');
+        npc.shock.visible = state.action === 'react' && !state.line;
         npc.name.visible = false;
         if (state.action === 'react') {
           npc.rig.head.rotation.z = Math.sin(time * 5 + i) * 0.14;
           hand.set(-0.1, 1.57, 0.22);
           npc.rig.root.localToWorld(hand);
           npc.rig.reach('left', hand);
-          hand.set(0.16, 1.62, 0.1);
+          hand.set(
+            i === 0 ? 0.35 : 0.16,
+            i === 0 ? 1.35 : 1.62,
+            i === 0 ? 0.65 : 0.1,
+          );
           npc.rig.root.localToWorld(hand);
           npc.rig.reach('right', hand);
         }
@@ -519,6 +527,11 @@ export default function CleanScene({
       });
       // The washer interaction ring sits in front of its collider, where a person can actually stand.
       room.markers[3].position.z = washerHome.z + 0.78;
+      // Map labels help in overview; in close-ups they would cover faces.
+      room.roomSigns.forEach((sign) => {
+        sign.visible =
+          mode.current === 'wide' || cleaning || s.phase === 'brief';
+      });
       room.labels.forEach((label, i) => {
         label.visible =
           mode.current === 'wide' ||

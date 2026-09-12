@@ -2,6 +2,10 @@
 'use client';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
+import { carrierStaging } from '@/lib/game/screen/carrier-staging';
+import { toolGripTarget } from '@/lib/game/screen/tool-staging';
+import { drillStaging } from '@/lib/game/screen/staging';
+import { createDrillProps } from './drill-props';
 import { people } from '@/lib/game/presets';
 import {
   freshGame,
@@ -37,6 +41,8 @@ const poses: Record<WorkerAction, Pose> = {
   throw: 'throw',
   catch: 'catch',
   drill: 'drill',
+  climb: 'walk',
+  handoff: 'work',
   fall: 'fall',
   lift: 'carry',
 };
@@ -105,11 +111,12 @@ export default function Scene({
     const apartment = createApartment(kit);
     apartment.sofa.position.z = PHYSICAL_LAYOUT.sofaZ;
     const screen = createScreenModel(kit);
-    const rigs = people.map((p) => createRig(kit, p));
+    const crew = [people[1], people[0], people[2]];
+    const rigs = crew.map((p) => createRig(kit, p));
     const nameplates = rigs.map((rig, i) => {
       const label = makeLabel(
         kit,
-        people[i].name,
+        crew[i].name,
         i === 0 ? '#eadca9' : i === 1 ? '#b4ced7' : '#c6d3b1',
         0.83,
       );
@@ -166,12 +173,7 @@ export default function Scene({
       world.add(label);
       return label;
     });
-    const drill = new THREE.Group();
-    world.add(drill);
-    kit.box(0.22, 0.13, 0.12, '#457b70', 0, 0, 0, drill, 0.03);
-    kit.box(0.08, 0.19, 0.1, '#283c36', -0.04, -0.1, 0, drill, 0.02);
-    const bit = kit.cylinder(0.007, 0.007, 0.2, '#b8b9ae', 0.17, 0, 0, drill);
-    bit.rotation.z = Math.PI / 2;
+    const drillingProps = createDrillProps(kit);
     const screwdriver = new THREE.Group();
     world.add(screwdriver);
     kit.cylinder(0.027, 0.021, 0.19, '#be803d', 0, 0, 0, screwdriver);
@@ -180,9 +182,6 @@ export default function Scene({
     tip.scale.x = 0.6;
     const toolHalo = kit.torus(0.16, 0.008, '#dfbd78', 0, 0.028, 0);
     toolHalo.rotation.x = -Math.PI / 2;
-    const drillDust = Array.from({ length: 16 }, () =>
-      kit.sphere(0.009, 0.009, 0.009, '#cfbda2'),
-    );
     const popParts = Array.from({ length: 12 }, () =>
       kit.sphere(0.018, 0.018, 0.018, '#d0c4a2'),
     );
@@ -192,8 +191,7 @@ export default function Scene({
     const hand = new THREE.Vector3(),
       temp = new THREE.Vector3(),
       grip = new THREE.Vector3(),
-      workTarget = new THREE.Vector3(),
-      drillTarget = new THREE.Vector3();
+      workTarget = new THREE.Vector3();
     let time = 0,
       last = performance.now(),
       raf = 0,
@@ -223,6 +221,7 @@ export default function Scene({
       const floor =
         ['frame', 'rods', 'tension'].includes(s.phase) && !isPreview;
       const drillPhase = s.phase === 'drill' && !isPreview;
+      const stage = drillStaging(s);
       const count = isPreview ? 3 : Math.max(2, s.players);
       rigs.forEach((rig, i) => {
         rig.root.visible = i < count;
@@ -282,8 +281,9 @@ export default function Scene({
           // Both carriers stand on the floor and lift with their arms. Ring height never raises a body.
           if (i < 2) {
             screen.gripWorld(i, grip);
-            x = grip.x;
-            z = grip.z + 0.34;
+            const carrier = carrierStaging(grip);
+            x = carrier.x;
+            z = carrier.z;
           } else {
             x = 0;
             z = -1.8;
@@ -291,49 +291,42 @@ export default function Scene({
           rotation = Math.PI;
           pose = s.phase === 'result' ? 'celebrate' : i < 2 ? 'carry' : 'idle';
         } else if (drillPhase) {
-          const activeDriller = s.players === 1 ? 0 : 1;
-          x =
-            s.chairX * FLOOR_SCALE +
-            (i === activeDriller ? 0 : i === 0 ? -0.64 : 0.7);
-          z = -2.68 + (i === activeDriller ? 0 : 0.55);
-          rotation = Math.PI;
-          if (i === activeDriller) {
-            y =
-              s.drillMode === 'position'
-                ? 0
-                : s.climb * (s.chairs === 2 ? 1.47 : 0.8);
+          const staged = stage.workers[i];
+          x = staged.x;
+          y = staged.y;
+          z = staged.z;
+          rotation = staged.rotation;
+          if (i === 1)
             pose =
-              s.drillMode === 'drill'
-                ? 'drill'
-                : s.drillMode === 'climb'
-                  ? 'walk'
-                  : 'idle';
-          } else pose = s.drillMode === 'position' ? 'walk' : 'work';
-          const fall = s.events.findLast((e) => e.kind === 'fall');
-          if (fall && s.elapsed - fall.at < 0.65 && i === activeDriller) {
-            const t = (s.elapsed - fall.at) / 0.65;
-            y = Math.max(0, (1 - t) * 0.8);
-            pose = 'fall';
-            rig.root.rotation.z = Math.sin(t * Math.PI) * 0.5;
-          } else
-            rig.root.rotation.z =
-              s.drillMode === 'drill' ? s.balance * 0.065 : 0;
+              s.drillMode === 'fallen'
+                ? 'fall'
+                : s.drillMode === 'drill'
+                  ? s.drillRunning
+                    ? 'drill'
+                    : 'idle'
+                  : s.drillMode === 'position'
+                    ? poses[worker.animation]
+                    : 'idle';
+          else
+            pose =
+              s.drillMode === 'position' ? poses[worker.animation] : 'idle';
+          rig.root.rotation.z = staged.lean;
         }
         if (opt.cameraMode === 'faces') rotation = 0;
-        if (floor) rig.root.position.set(x, y, z);
-        else rig.root.position.lerp(temp.set(x, y, z), 1 - Math.exp(-dt * 11));
-        if (
-          !drillPhase ||
-          (s.drillMode === 'position' &&
-            !s.events.some((e) => e.kind === 'fall' && s.elapsed - e.at < 0.65))
-        )
+        // Staged paths already interpolate safely; smoothing world positions cuts through the cloth.
+        rig.root.position.set(x, y, z);
+        if (!drillPhase) {
           rig.root.position.y = 0;
+          rig.root.rotation.z = 0;
+        }
         const difference =
           THREE.MathUtils.euclideanModulo(
             rotation - rig.root.rotation.y + Math.PI,
             Math.PI * 2,
           ) - Math.PI;
-        rig.root.rotation.y += difference * (1 - Math.exp(-dt * 10));
+        if (drillPhase || (!floor && !isPreview))
+          rig.root.rotation.y = rotation;
+        else rig.root.rotation.y += difference * (1 - Math.exp(-dt * 10));
         if (!s.paused)
           rig.update(
             time + i * 0.83,
@@ -364,43 +357,74 @@ export default function Scene({
           opt.cameraMode !== 'faces'
         ) {
           screen.gripWorld(i, grip);
-          rig.setCrouch(THREE.MathUtils.clamp(1.39 - grip.y - 0.43, 0, 0.72));
+          rig.setCrouch(carrierStaging(grip).crouch);
           rig.reach('left', grip.clone().add(new THREE.Vector3(0.13, 0, 0)));
           rig.reach('right', grip.clone().add(new THREE.Vector3(-0.13, 0, 0)));
-        } else if (
-          drillPhase &&
-          i === (s.players === 1 ? 0 : 1) &&
-          s.drillMode === 'drill' &&
-          opt.cameraMode !== 'faces'
-        ) {
-          const mark = new THREE.Vector3(
-            s.chairX * FLOOR_SCALE,
-            hookHeight(s.aim),
-            -3.16,
-          );
-          const reachTarget = mark
-            .clone()
-            .add(
-              new THREE.Vector3(-0.035, s.chairs === 1 ? -0.24 : -0.12, 0.23),
+        } else if (drillPhase && opt.cameraMode !== 'faces') {
+          rig.setCrouch(stage.workers[i].crouch);
+          if (s.drillMode === 'handoff') {
+            temp.copy(stage.handoffTarget);
+            if (i === 0) {
+              rig.reach('left', temp);
+              rig.reach(
+                'right',
+                new THREE.Vector3(stage.stools[0].x - 0.27, 1.05, -2.38),
+              );
+            } else if (i === 1)
+              rig.reach(s.drillGear === 'none' ? 'right' : 'left', temp);
+          } else if (i === 1 && s.drillMode === 'drill') {
+            temp.copy(stage.wallTarget);
+            temp.z += 0.005;
+            rig.rightArm.getWorldPosition(hand);
+            rig.reach(
+              'right',
+              new THREE.Vector3().copy(toolGripTarget('drill', temp, hand)),
             );
-          rig.reach('right', reachTarget);
-          rig.reach(
-            'left',
-            reachTarget.clone().add(new THREE.Vector3(0.18, -0.05, 0.05)),
-          );
+            temp.y -= 0.05;
+            rig.leftArm.getWorldPosition(hand);
+            rig.reach(
+              'left',
+              new THREE.Vector3().copy(toolGripTarget('vacuum', temp, hand)),
+            );
+          } else if (
+            i === 1 &&
+            ['climb', 'descend'].includes(s.drillMode) &&
+            s.climb >= 0.16 &&
+            s.climb <= 0.7
+          ) {
+            const stool = stage.stools[s.chairs - 1];
+            rig.reach(
+              'right',
+              new THREE.Vector3(
+                stool.x + 0.3,
+                stool.y + (1.05 + 0.21 * Math.cos(0.1)) * stool.scaleY,
+                stool.z + 0.25 + 0.21 * Math.sin(0.1),
+              ),
+            );
+          } else if (i === 0 && s.braceHeld) {
+            rig.reach(
+              'left',
+              new THREE.Vector3(stage.stools[0].x - 0.23, 1.12, -2.39),
+            );
+            rig.reach(
+              'right',
+              new THREE.Vector3(stage.stools[0].x - 0.27, 0.99, -2.43),
+            );
+          }
         }
         nameplates[i].visible = !isPreview && opt.cameraMode !== 'faces';
       });
       apartment.stools.forEach((stool, i) => {
         if (drillPhase) {
-          stool.position.set(
-            s.chairX * FLOOR_SCALE,
-            i === 1 && s.chairs === 2 ? 0.67 : 0,
-            i === 1 && s.chairs === 1 ? -0.75 : -2.65,
-          );
-          stool.rotation.set(0, Math.PI, s.balance * 0.065);
+          const staged = stage.stools[i];
+          stool.visible = staged.visible;
+          stool.position.copy(staged);
+          stool.rotation.set(0, staged.rotation, staged.lean);
+          stool.scale.y = staged.scaleY;
         } else {
           const parked = PHYSICAL_LAYOUT.parkedStools[i];
+          stool.visible = true;
+          stool.scale.y = 1;
           stool.position.set(parked.x, 0, parked.z);
           stool.rotation.set(0, -Math.PI / 2, 0);
         }
@@ -433,31 +457,7 @@ export default function Scene({
           -3.04,
         );
       });
-      drill.visible = drillPhase && s.drillMode !== 'position';
-      if (drill.visible) {
-        const user = rigs[s.players === 1 ? 0 : 1];
-        user.rightHand.getWorldPosition(hand);
-        drill.position.copy(hand);
-        drillTarget.set(s.chairX * FLOOR_SCALE, hookHeight(s.aim), -3.16);
-        const direction = drillTarget.clone().sub(hand);
-        drill.quaternion.setFromUnitVectors(
-          new THREE.Vector3(1, 0, 0),
-          direction.clone().normalize(),
-        );
-        const length = Math.max(0.16, direction.length() - 0.12);
-        bit.scale.y = length / 0.2;
-        bit.position.x = 0.12 + length / 2;
-      }
-      const drilling = drill.visible && s.drillHeat > 0 && s.drillHeat < 0.85;
-      drillDust.forEach((dust, i) => {
-        dust.visible = drilling;
-        const t = (time * 1.7 + i / 16) % 1;
-        dust.position.set(
-          s.chairX * FLOOR_SCALE + Math.sin(i * 7) * t * 0.13,
-          hookHeight(s.aim) - t * 0.7,
-          -3.12 + t * 0.13,
-        );
-      });
+      drillingProps.update(s, rigs, time);
       screwdriver.visible = s.phase === 'tension';
       toolHalo.visible = s.phase === 'tension' && s.tool.status === 'ground';
       if (screwdriver.visible) {
@@ -512,7 +512,7 @@ export default function Scene({
           ? 1
           : s.phase === 'tension'
             ? s.tool.owner
-            : s.phase === 'drill' && s.players > 1
+            : s.phase === 'drill'
               ? 1
               : 0;
         const rig = rigs[index];
@@ -532,8 +532,8 @@ export default function Scene({
         targetPosition.set(4.45, 5.25, 6.25);
         wantedLook.set(0, 0.55, -0.25);
       } else if (drillPhase) {
-        targetPosition.set(s.chairX * FLOOR_SCALE * 0.25 + 3.5, 4.1, 6.3);
-        wantedLook.set(s.chairX * FLOOR_SCALE * 0.5, 1.65, -2.35);
+        targetPosition.set(s.chairX * FLOOR_SCALE + 2.5, 3.45, 3.4);
+        wantedLook.set(s.chairX * FLOOR_SCALE, 1.72, -2.55);
       } else {
         targetPosition.set(3.4, 3.35, 6.6);
         wantedLook.set(0, 1.5, -2.4);

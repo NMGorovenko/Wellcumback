@@ -132,13 +132,13 @@ export function ScreenPhasePanel({
           )}
           {players > 1 && (
             <div className="hud-helper">
-              {hold('Enter', 'Никита · держать Enter')}
+              {hold('Enter', 'Ярик · держать Enter')}
               {players === 3 && hold('KeyO', 'Рома · проверить угол O')}
             </div>
           )}
           {players === 1 && (
             <p className="hud-note">
-              Никита придерживает профиль. Твоя задача — совместить угол.
+              Ярик придерживает профиль. Твоя задача — совместить угол.
             </p>
           )}
         </>
@@ -222,7 +222,7 @@ export function ScreenPhasePanel({
               <p className="hud-instruction">
                 {view.tool.target < players
                   ? `${NAMES[view.tool.target]}, держи ${ACTION_LABELS[view.tool.target]} при подлёте.`
-                  : 'Никита ловит. Точный бросок — твоя половина работы.'}
+                  : 'Ярик ловит. Точный бросок — твоя половина работы.'}
               </p>
               {view.tool.target < players &&
                 hold(
@@ -279,7 +279,7 @@ export function ScreenPhasePanel({
                     )
                   ) : (
                     <p className="hud-note">
-                      Никита сейчас вернёт отвёртку. Приготовь E.
+                      Ярик сейчас вернёт отвёртку. Приготовь E.
                     </p>
                   )}
                 </>
@@ -301,7 +301,7 @@ export function ScreenPhasePanel({
                     )
                   ) : (
                     <p className="hud-note">
-                      Никита натягивает противоположный край. Потом ловишь ты.
+                      Ярик натягивает противоположный край. Потом ловишь ты.
                     </p>
                   )}
                 </>
@@ -326,129 +326,77 @@ export function ScreenPhasePanel({
     case 'drill':
       return (
         <>
-          <div className="hud-section-heading">
-            <span>Отверстие {view.holes.length + 1} / 2</span>
-            <strong>
-              {view.drillMode === 'position'
-                ? 'Подставить стулья'
-                : view.drillMode === 'climb'
-                  ? 'Без резких движений'
-                  : 'Сверлим с перерывами'}
-            </strong>
-          </div>
-          {view.drillMode === 'position' ? (
+          <p className="hud-instruction">
+            Никита слева подаёт и держит. Ярик справа забирается и работает
+            двумя инструментами.
+          </p>
+          {view.drillMode === 'position' && (
             <>
-              <p className="hud-instruction">
-                A/D перевози стулья под отмеченную точку. E — залезть, когда
-                маркер в центре.
-              </p>
-              <Meter
-                label="Стулья под отметкой"
-                value={view.chairX}
-                min={-7}
-                max={7}
-                target={view.holes.length === 0 ? [-4.75, -4.05] : [4.05, 4.75]}
-              />
-              <div
-                className="hud-inline-choice"
-                aria-label="Количество стульев"
-              >
+              <div className="hud-button-grid">
+                {hold('KeyA', '← Стулья')}
+                {hold('KeyD', 'Стулья →')}
+              </div>
+              <div className="hud-inline-choice">
                 <button
                   type="button"
                   aria-pressed={view.chairs === 1}
                   onClick={() => chooseChairs(1)}
                 >
-                  1 стул<small>ниже и устойчивее</small>
+                  1 стул
                 </button>
                 <button
                   type="button"
                   aria-pressed={view.chairs === 2}
                   onClick={() => chooseChairs(2)}
                 >
-                  2 стула<small>выше и веселее</small>
+                  2 стула
                 </button>
               </div>
-              <div className="hud-button-grid">
-                {hold('KeyA', 'A · ← Везти')}
-                {hold('KeyD', 'Везти → · D')}
-              </div>
-              <button
-                type="button"
-                className="hud-primary"
-                onClick={() => clickAction()}
-              >
-                E · Залезть
-              </button>
               <button
                 type="button"
                 className="hud-text-button"
                 onClick={findLadder}
               >
-                <Search size={14} /> Всё-таки поискать стремянку
+                <Search size={14} /> Поискать стремянку
               </button>
             </>
-          ) : view.drillMode === 'climb' ? (
+          )}
+          {players > 1 && (
             <>
-              <Fill label="Поднимаемся" value={view.climb} />
-              <p className="hud-note">
-                Последний момент, когда стул ещё выглядит хорошей идеей.
-              </p>
+              {hold('KeyE', 'Никита · E держать / подать')}
+              <div className="hud-button-grid">
+                {hold('KeyA', 'A · баланс ←')}
+                {hold('KeyD', 'D · баланс →')}
+              </div>
             </>
-          ) : (
+          )}
+          {hold(
+            players === 1 ? 'KeyE' : 'Enter',
+            `Ярик · ${players === 1 ? 'E' : 'Enter'} · ${view.drillMode === 'drill' ? 'сверлить' : view.drillMode === 'handoff' ? 'принять инструмент' : view.drillMode === 'descend' ? 'спуститься' : 'забраться'}`,
+          )}
+          {view.drillMode === 'drill' && (
             <>
-              <Meter
-                label="Равновесие"
-                value={view.balance}
-                min={-1}
-                max={1}
-                target={[-0.5, 0.5]}
-                hint={players === 1 ? 'Никита страхует' : 'A / D'}
-                danger={Math.abs(view.balance) > 0.7}
-              />
+              {hold(
+                players === 1 ? 'ShiftLeft' : 'ShiftRight',
+                'Shift · пылесосить одновременно',
+              )}
+              <div className="hud-button-grid">
+                {hold(players === 1 ? 'KeyW' : 'ArrowUp', '↑ выше')}
+                {hold(players === 1 ? 'KeyS' : 'ArrowDown', '↓ ниже')}
+              </div>
               <Fill label="Отверстие" value={view.drill} />
               <Fill
-                label={
-                  view.drillHeat > 0.75
-                    ? 'Отпусти — дрель горячая'
-                    : 'Нагрев дрели'
-                }
+                label="Нагрев · отпускай дрель для охлаждения"
                 value={view.drillHeat}
                 danger={view.drillHeat > 0.75}
               />
-              {view.holes.length > 0 && (
-                <p className="hud-reading">
-                  Относительно первого:{' '}
-                  <strong>
-                    {Math.abs(view.aim - view.holes[0]) < 0.04
-                      ? 'на одном уровне'
-                      : view.aim > view.holes[0]
-                        ? 'выше'
-                        : 'ниже'}
-                  </strong>
-                </p>
-              )}
-              <p className="hud-instruction">
-                {players === 1
-                  ? 'W/S выбирают высоту. E сверлит. Отпускай, чтобы остудить.'
-                  : 'Ярослав держит A/D. Никита целится стрелками и сверлит Enter.'}
-              </p>
-              {players > 1 && (
-                <div className="hud-button-grid">
-                  {hold('KeyA', 'A · держать ←')}
-                  {hold('KeyD', 'держать → · D')}
-                </div>
-              )}
-              <div className="hud-button-grid">
-                {hold(players === 1 ? 'KeyW' : 'ArrowUp', '↑ Целиться выше')}
-                {hold(players === 1 ? 'KeyS' : 'ArrowDown', '↓ Целиться ниже')}
-              </div>
-              {hold(
-                players === 1 ? 'KeyE' : 'Enter',
-                `${players === 1 ? 'E' : 'Enter'} · Сверлить`,
-              )}
-              {players === 3 && hold('KeyO', 'Рома · страховать O')}
             </>
           )}
+          {players === 3 && hold('KeyO', 'Рома · O страховать вместе')}
+          <p className="hud-note">
+            При падении готовые отверстия сохраняются. Заберись и получи дрель с
+            пылесосом заново.
+          </p>
         </>
       );
     case 'lift':
@@ -472,7 +420,7 @@ export function ScreenPhasePanel({
             min={-1.5}
             max={1.5}
             target={[-0.12, 0.12]}
-            hint={players === 1 ? 'Никита помогает' : '↑ / ↓'}
+            hint={players === 1 ? 'Ярик помогает' : '↑ / ↓'}
           />
           <Meter
             label="Сдвиг к крючкам"
@@ -517,7 +465,7 @@ export function ScreenPhasePanel({
             </>
           ) : (
             <p className="hud-note">
-              Никита повторяет подъём твоего края и ловит правый крючок вместе с
+              Ярик повторяет подъём твоего края и ловит правый крючок вместе с
               твоим E.
             </p>
           )}

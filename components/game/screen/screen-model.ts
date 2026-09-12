@@ -10,7 +10,7 @@ export const FLOOR_Z = -0.56;
 export const HEIGHT_SCALE = 0.13;
 export const hookHeight = (logical: number) =>
   2.7 + (logical - 2.6) * HEIGHT_SCALE;
-export const SCREEN_Z = -2.89;
+export const SCREEN_Z = -2.66;
 export const RING_Y = 1.235;
 export const MOUNT_Z = SCREEN_Z + 0.068;
 /** Pure mounting transform: the top attachment centres exactly retain target X/Y. */

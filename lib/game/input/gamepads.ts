@@ -1,5 +1,5 @@
 /** Standard Gamepad layout: https://www.w3.org/TR/gamepad/#remapping
- * No device names or browser globals enter the deterministic mapping functions. */
+ * Device identity selects prompt labels only; the browser owns button remapping. */
 export type PadButton = { pressed: boolean; value: number };
 export type PadLike = {
   index: number;
@@ -10,7 +10,13 @@ export type PadLike = {
   buttons: readonly PadButton[];
 };
 export type PadDirection = 'up' | 'down' | 'left' | 'right';
-export type PadAssignment = { index: number; player: number; ready: boolean };
+export type PadBrand = 'playstation' | 'xbox' | 'generic';
+export type PadIdentity = { brand: PadBrand; label: string };
+export type PadAssignment = PadIdentity & {
+  index: number;
+  player: number;
+  ready: boolean;
+};
 export type PadFrame = {
   keys: Set<string>;
   primaryActionPressed: boolean;
@@ -26,6 +32,7 @@ type PadMemory = {
   x: number;
   y: number;
   action: boolean;
+  secondary: boolean;
   pause: boolean;
 };
 export type PadInputState = { pads: Map<number, PadMemory> };
@@ -38,24 +45,45 @@ export type PadNavigation = {
   confirm: boolean;
   back: boolean;
 };
-const bindings = [
-  { left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS', action: 'KeyE' },
+export const PLAYER_BINDINGS = [
+  {
+    left: 'KeyA',
+    right: 'KeyD',
+    up: 'KeyW',
+    down: 'KeyS',
+    action: 'KeyE',
+    secondary: 'ShiftLeft',
+  },
   {
     left: 'ArrowLeft',
     right: 'ArrowRight',
     up: 'ArrowUp',
     down: 'ArrowDown',
     action: 'Enter',
+    secondary: 'ShiftRight',
   },
-  { left: 'KeyJ', right: 'KeyL', up: 'KeyI', down: 'KeyK', action: 'KeyO' },
+  {
+    left: 'KeyJ',
+    right: 'KeyL',
+    up: 'KeyI',
+    down: 'KeyK',
+    action: 'KeyO',
+    secondary: 'KeyU',
+  },
 ] as const;
 export const createPadInput = (): PadInputState => ({ pads: new Map() });
 export const createPadNavigation = (): PadNavigationState => ({
   direction: null,
   repeatAt: 0,
 });
+const buttonValue = (pad: PadLike, index: number) => {
+  const value = pad.buttons[index]?.value ?? 0;
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+};
 const pushed = (pad: PadLike, index: number) =>
-  !!pad.buttons[index]?.pressed || (pad.buttons[index]?.value ?? 0) > 0.5;
+  !!pad.buttons[index]?.pressed || buttonValue(pad, index) > 0.5;
+const secondaryHeld = (pad: PadLike, previous: boolean) =>
+  !!pad.buttons[6]?.pressed || buttonValue(pad, 6) > (previous ? 0.25 : 0.5);
 const axisValue = (pad: PadLike, index: number) =>
   Number.isFinite(pad.axes[index])
     ? Math.max(-1, Math.min(1, pad.axes[index]))
@@ -74,7 +102,7 @@ export function resetPadInput(state: PadInputState) {
   for (const memory of state.pads.values()) {
     memory.ready = false;
     memory.x = memory.y = 0;
-    memory.action = memory.pause = false;
+    memory.action = memory.secondary = memory.pause = false;
   }
 }
 /** Keyboard and touch remain source-owned. Never write pad keys into their mutable Set. */
@@ -130,6 +158,7 @@ export function mapGamepads(
         x: 0,
         y: 0,
         action: false,
+        secondary: false,
         pause: false,
       };
       state.pads.set(pad.index, memory);
@@ -137,10 +166,18 @@ export function mapGamepads(
     const neutral =
       Math.abs(axisValue(pad, 0)) <= 0.25 &&
       Math.abs(axisValue(pad, 1)) <= 0.25 &&
+      !pad.buttons[6]?.pressed &&
+      buttonValue(pad, 6) <= 0.25 &&
       [0, 1, 5, 9, 12, 13, 14, 15].every((index) => !pushed(pad, index));
+    const identity = identifyGamepad(pad.id);
     if (!memory.ready) {
       memory.ready = neutral;
-      frame.assignments.push({ index: pad.index, player, ready: memory.ready });
+      frame.assignments.push({
+        ...identity,
+        index: pad.index,
+        player,
+        ready: memory.ready,
+      });
       return;
     }
     const horizontal = Number(pushed(pad, 15)) - Number(pushed(pad, 14));
@@ -151,12 +188,14 @@ export function mapGamepads(
       pause = pushed(pad, 1) || pushed(pad, 9);
     const actionPressed = action && !memory.action,
       pausePressed = pause && !memory.pause;
-    const keys = bindings[player];
+    const keys = PLAYER_BINDINGS[player];
     if (memory.x < 0) frame.keys.add(keys.left);
     if (memory.x > 0) frame.keys.add(keys.right);
     if (memory.y < 0) frame.keys.add(keys.up);
     if (memory.y > 0) frame.keys.add(keys.down);
     if (action) frame.keys.add(keys.action);
+    memory.secondary = secondaryHeld(pad, memory.secondary);
+    if (memory.secondary) frame.keys.add(keys.secondary);
     if (pushed(pad, 5)) frame.keys.add('KeyQ'); // Shared screwdriver; the engine determines its current owner.
     if (player === 0 && actionPressed) frame.primaryActionPressed = true;
     frame.pausePressed ||= pausePressed;
@@ -170,7 +209,12 @@ export function mapGamepads(
     frame.navigation.back ||= pausePressed;
     memory.action = action;
     memory.pause = pause;
-    frame.assignments.push({ index: pad.index, player, ready: true });
+    frame.assignments.push({
+      ...identity,
+      index: pad.index,
+      player,
+      ready: true,
+    });
   });
   return frame;
 }
@@ -224,6 +268,121 @@ export function readGamepads(): readonly (PadLike | null)[] {
     return [];
   } // Unsupported browser / permissions policy: keyboard input continues.
 }
+/** IDs vary by browser and transport. Unknown IDs keep positional labels;
+ * a familiar name never makes a nonstandard device safe to map. */
+export function identifyGamepad(id: string): PadIdentity {
+  const sony = /\b054c\b/i.test(id);
+  if (/dualsense/i.test(id) || (sony && /\b(?:0ce6|0df2)\b/i.test(id)))
+    return { brand: 'playstation', label: 'DualSense' };
+  if (/dualshock/i.test(id) || (sony && /\b(?:05c4|09cc|0ba0)\b/i.test(id)))
+    return { brand: 'playstation', label: 'DualShock' };
+  if (sony || /\b(?:sony|playstation|ps[345])\b/i.test(id))
+    return { brand: 'playstation', label: 'PlayStation' };
+  if (
+    /\b(?:xbox|xinput)\b/i.test(id) ||
+    (/\b045e\b/i.test(id) &&
+      /\b(?:028e|02d1|02dd|02e0|02e3|02ea|02fd|0719|0b00|0b05|0b06|0b0a|0b12|0b13|0b20|0b22)\b/i.test(
+        id,
+      ))
+  )
+    return { brand: 'xbox', label: 'Xbox' };
+  return { brand: 'generic', label: 'Геймпад' };
+}
+const PAD_BUTTON_LABELS: Record<PadBrand, readonly string[]> = {
+  playstation: [
+    '×',
+    '○',
+    '□',
+    '△',
+    'L1',
+    'R1',
+    'L2',
+    'R2',
+    'Create / Share',
+    'Options',
+  ],
+  xbox: ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', 'Menu'],
+  generic: [
+    'нижняя кнопка',
+    'правая кнопка',
+    'левая кнопка',
+    'верхняя кнопка',
+    'левый бампер',
+    'правый бампер',
+    'левый триггер',
+    'правый триггер',
+    'выбор',
+    'меню',
+  ],
+};
+export function padButtonLabel(brand: PadBrand, button: number): string {
+  return PAD_BUTTON_LABELS[brand][button] ?? `Кнопка ${button + 1}`;
+}
+export type InputControl =
+  | 'move'
+  | 'horizontal'
+  | 'vertical'
+  | 'action'
+  | 'secondary'
+  | 'throw'
+  | 'pause';
+export function keyPrompt(code: string): string {
+  const labels: Record<string, string> = {
+    ArrowLeft: '←',
+    ArrowRight: '→',
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    ShiftLeft: 'левый Shift',
+    ShiftRight: 'правый Shift',
+    Escape: 'Esc',
+  };
+  return labels[code] ?? code.replace(/^Key/, '');
+}
+export function keyboardPrompt(player: number, control: InputControl): string {
+  const keys = PLAYER_BINDINGS[player];
+  if (!keys) return '';
+  if (control === 'move')
+    return [keys.up, keys.left, keys.down, keys.right].map(keyPrompt).join('');
+  if (control === 'horizontal')
+    return `${keyPrompt(keys.left)}/${keyPrompt(keys.right)}`;
+  if (control === 'vertical')
+    return `${keyPrompt(keys.up)}/${keyPrompt(keys.down)}`;
+  return keyPrompt(
+    control === 'throw'
+      ? 'KeyQ'
+      : control === 'pause'
+        ? 'Escape'
+        : keys[control],
+  );
+}
+/** Resolve by playable actor, never by physical browser index. */
+export function gamepadPrompt(
+  frame: Pick<PadFrame, 'assignments'>,
+  player: number,
+  control: InputControl,
+): string | null {
+  const assignment = frame.assignments.find((pad) => pad.player === player);
+  if (!assignment) return null;
+  if (control === 'move') return 'левый стик / крестовина';
+  if (control === 'horizontal') return 'стик ←/→';
+  if (control === 'vertical') return 'стик ↑/↓';
+  const label = (button: number) => padButtonLabel(assignment.brand, button);
+  if (control === 'pause') return `${label(1)} / ${label(9)}`;
+  return label(control === 'action' ? 0 : control === 'secondary' ? 6 : 5);
+}
+/** Keyboard stays usable even while a pad is assigned to the same actor. */
+export function inputPrompt(
+  frame: Pick<PadFrame, 'assignments'>,
+  player: number,
+  control: InputControl,
+): string {
+  return [
+    keyboardPrompt(player, control),
+    gamepadPrompt(frame, player, control),
+  ]
+    .filter(Boolean)
+    .join(' / ');
+}
 export function gamepadHint(
   frame: Pick<PadFrame, 'assignments' | 'unsupported'>,
 ): string {
@@ -231,10 +390,16 @@ export function gamepadHint(
     return frame.unsupported.length
       ? 'Нестандартный геймпад: используй клавиатуру.'
       : 'Клавиатура · подключи геймпад и нажми любую кнопку';
-  return frame.assignments
+  const assigned = frame.assignments
     .map(
-      ({ index, player, ready }) =>
-        `Геймпад ${index + 1} → игрок ${player + 1}${ready ? '' : ' · отпусти кнопки'}`,
+      ({ index, player, ready, label }) =>
+        `${label} ${index + 1} → игрок ${player + 1}${ready ? '' : ' · отпусти кнопки'}`,
     )
     .join(' / ');
+  return (
+    assigned +
+    (frame.unsupported.length
+      ? ' · Нестандартный геймпад: используй клавиатуру.'
+      : '')
+  );
 }

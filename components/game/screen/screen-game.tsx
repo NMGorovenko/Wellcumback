@@ -7,6 +7,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  SkipForward,
   Trophy,
   Volume2,
   VolumeX,
@@ -20,6 +21,7 @@ import {
 import { gamepadHint, type PadFrame } from '@/lib/game/input/gamepads';
 import { useGameInspection } from '@/hooks/use-game-inspection';
 import { useGameLoop } from '@/hooks/use-game-loop';
+import { useScreenMotors } from '@/hooks/use-screen-motors';
 import type { Result } from '@/lib/game/types';
 import {
   act,
@@ -31,6 +33,13 @@ import {
   titles,
   type GameState,
 } from '@/lib/game/screen/engine';
+import { EpisodeDialog } from '../episode-dialog';
+import {
+  createScreenEpisode,
+  screenEpisodes,
+  type ScreenEpisode,
+} from '@/lib/game/screen/episodes';
+import { ContextPrompts } from './context-prompts';
 import Scene, { type CameraMode } from './scene';
 import {
   NAMES,
@@ -39,7 +48,6 @@ import {
   clock,
   actNumber,
   progress,
-  instructions,
 } from './screen-hud-data';
 import { ScreenPhasePanel } from './screen-phase-panel';
 import { ScreenCompactStatus } from './screen-compact-status';
@@ -75,12 +83,15 @@ export default function ScreenGame({
   const soundOn = soundOverride ?? sound;
   const soundRef = useRef(soundOn);
   const audio = useRef<AudioContext | null>(null);
+  useScreenMotors(audio, view, soundOn);
   const lastSoundEvent = useRef(0);
   const saved = useRef(false);
   const [pads, setPads] = useState<
     Pick<PadFrame, 'assignments' | 'unsupported'>
   >({ assignments: [], unsupported: [] });
   const [pauseChoice, setPauseChoice] = useState(0);
+  const [episodeOpen, setEpisodeOpen] = useState(false);
+  const [episodeChoice, setEpisodeChoice] = useState(0);
   useEffect(() => {
     soundRef.current = soundOn;
   }, [soundOn]);
@@ -118,20 +129,33 @@ export default function ScreenGame({
     padMenu: {
       enabled: briefOpen || view.paused || view.phase === 'result',
       onMove: (direction) => {
-        if (view.paused && !briefOpen)
+        if (episodeOpen) {
+          setEpisodeChoice(
+            (n) =>
+              (n +
+                (direction === 'up' || direction === 'left' ? -1 : 1) +
+                screenEpisodes.length) %
+              screenEpisodes.length,
+          );
+        } else if (view.paused && !briefOpen)
           setPauseChoice(
             (n) =>
-              (n + (direction === 'up' || direction === 'left' ? -1 : 1) + 4) %
-              4,
+              (n + (direction === 'up' || direction === 'left' ? -1 : 1) + 5) %
+              5,
           );
       },
       onConfirm: () => {
-        if (briefOpen) begin();
+        if (episodeOpen) jumpToEpisode(screenEpisodes[episodeChoice].id);
+        else if (briefOpen) begin();
         else if (view.phase === 'result') (onNext ?? onExit)();
-        else [() => setPause(false), openBrief, restart, onExit][pauseChoice]();
+        else
+          [() => setPause(false), openBrief, openEpisodes, restart, onExit][
+            pauseChoice
+          ]();
       },
       onBack: () => {
-        if (briefOpen || view.phase === 'result') onExit();
+        if (episodeOpen) setEpisodeOpen(false);
+        else if (briefOpen || view.phase === 'result') onExit();
         else setPause(false);
       },
     },
@@ -186,7 +210,7 @@ export default function ScreenGame({
     }
   }, [view.events, view.elapsed]);
   useEffect(() => {
-    if (view.phase !== 'result' || saved.current) return;
+    if (view.phase !== 'result' || saved.current || view.practice) return;
     saved.current = true;
     onFinish({
       story: 'screen',
@@ -198,6 +222,7 @@ export default function ScreenGame({
     });
   }, [
     view.phase,
+    view.practice,
     view.score,
     view.elapsed,
     view.tool.catches,
@@ -222,7 +247,24 @@ export default function ScreenGame({
     saved.current = false;
     lastSoundEvent.current = 0;
     setSelectedPlayer(0);
+    setEpisodeOpen(false);
     setBriefOpen(true);
+    snapshot();
+  }
+  function openEpisodes() {
+    setPause(true);
+    setBriefOpen(false);
+    setEpisodeOpen(true);
+  }
+  function jumpToEpisode(id: string) {
+    game.current = createScreenEpisode(players, id as ScreenEpisode);
+    keys.current.clear();
+    saved.current = false;
+    lastSoundEvent.current = 0;
+    setSelectedPlayer(0);
+    setBriefOpen(false);
+    setEpisodeOpen(false);
+    unlockAudio();
     snapshot();
   }
   function move(player: number, side: number) {
@@ -273,9 +315,17 @@ export default function ScreenGame({
     <section className="game-layout" aria-label="Экран на полстены — игра">
       <div className="game-world">
         <Scene stateRef={game} cameraMode={cameraMode} />
+        <div key={view.phase} className="scene-cut" aria-hidden="true">
+          <span>{titles[view.phase]}</span>
+        </div>
         <div className="world-heading">
           <span>ИСТОРИЯ 01 · АКТ {currentAct + 1} / 3</span>
           <strong>{titles[view.phase]}</strong>
+          {view.practice && (
+            <span className="practice-badge">
+              Тренировка · без зачёта очков
+            </span>
+          )}
         </div>
       </div>
       <aside className="game-sidebar" aria-label="Задача и управление">
@@ -286,6 +336,15 @@ export default function ScreenGame({
             <time>{clock(view.elapsed)}</time>
           </div>
           <div className="hud-top-actions">
+            <button
+              type="button"
+              className="hud-icon"
+              aria-label="Выбрать эпизод"
+              title="Перемотка к эпизоду"
+              onClick={openEpisodes}
+            >
+              <SkipForward size={16} />
+            </button>
             <button
               type="button"
               className="hud-icon"
@@ -375,23 +434,15 @@ export default function ScreenGame({
           </div>
         )}
       </aside>
-      <footer className="game-footer" aria-label="Клавиши текущего этапа">
-        {(pads.assignments.length
-          ? [
-              ['Стик', 'движение / настройка'],
-              ['A / ×', 'действие'],
-              ['RB / R1', 'бросок'],
-            ]
-          : instructions(view)
-        )
-          .slice(0, 3)
-          .map(([key, text]) => (
-            <span className="control-hint" key={key}>
-              <kbd>{key}</kbd>
-              {text}
-            </span>
-          ))}
-      </footer>
+      <ContextPrompts state={view} pads={pads} />
+      <EpisodeDialog
+        open={episodeOpen}
+        options={screenEpisodes}
+        selected={episodeChoice}
+        onSelect={setEpisodeChoice}
+        onChoose={jumpToEpisode}
+        onClose={() => setEpisodeOpen(false)}
+      />
 
       <Dialog
         open={briefOpen}
@@ -438,9 +489,16 @@ export default function ScreenGame({
           </div>
           <p className="brief-note">
             {players === 1
-              ? 'Играешь за Ярослава. Никита помогает напротив: придерживает, ловит и возвращает отвёртку. Твои действия он не делает за тебя.'
-              : 'Клавиши у каждого свои. На рамке первый совмещает, остальные держат; на полу можно работать одновременно. Подсказки справа меняются вместе с этапом.'}
+              ? 'Один набор WASD + E. На полу управляешь Никитой, Ярик помогает напротив. У стены E направляет Ярика, Никита страхует и подаёт. Переключать героев не нужно. При сверлении держи ещё левый Shift — пылесос.'
+              : 'Никита слева: WASD + E. Ярик справа: стрелки + Enter. На стульях Ярик сверлит Enter и пылесосит правым Shift; Никита держит E и балансирует A/D. Подсказки внизу показывают следующий шаг.'}
           </p>
+          <button
+            type="button"
+            className="hud-text-button"
+            onClick={openEpisodes}
+          >
+            <SkipForward size={15} /> Сразу к эпизоду · тренировка
+          </button>
           <p className="brief-note">
             Цельтесь в зелёные зоны. Действие иногда нужно удерживать, иногда —
             вовремя отпускать. Ошибки смешные и исправимые. Поднимать и
@@ -458,7 +516,9 @@ export default function ScreenGame({
         </DialogContent>
       </Dialog>
       <Dialog
-        open={view.paused && !briefOpen && view.phase !== 'result'}
+        open={
+          view.paused && !briefOpen && !episodeOpen && view.phase !== 'result'
+        }
         onOpenChange={(open) => setPause(open)}
       >
         <DialogContent className="screen-pause-dialog">
@@ -483,13 +543,20 @@ export default function ScreenGame({
           <button
             type="button"
             className={`hud-secondary${pauseChoice === 2 ? ' pad-selected' : ''}`}
+            onClick={openEpisodes}
+          >
+            <SkipForward size={15} /> Выбрать эпизод
+          </button>
+          <button
+            type="button"
+            className={`hud-secondary${pauseChoice === 3 ? ' pad-selected' : ''}`}
             onClick={restart}
           >
             <RotateCcw size={15} /> Начать историю заново
           </button>
           <button
             type="button"
-            className={`hud-text-button${pauseChoice === 3 ? ' pad-selected' : ''}`}
+            className={`hud-text-button${pauseChoice === 4 ? ' pad-selected' : ''}`}
             onClick={onExit}
           >
             <ArrowLeft size={15} /> К выбору историй

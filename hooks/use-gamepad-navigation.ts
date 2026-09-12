@@ -53,7 +53,9 @@ export function useGamepadNavigation({
         1,
       );
       const key =
-        pads.assignments.map((p) => `${p.index}:${p.ready}`).join(',') +
+        pads.assignments
+          .map((p) => `${p.index}:${p.ready}:${p.brand}:${p.label}`)
+          .join(',') +
         '/' +
         pads.unsupported.join(',');
       if (key !== statusKey) {

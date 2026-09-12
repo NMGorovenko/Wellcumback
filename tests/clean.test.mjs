@@ -9,6 +9,7 @@ import {
   stations,
   getDrops,
   getFootprints,
+  dutyReprimand,
 } from '../lib/game/clean/engine.ts';
 const bindings = [
   ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyE'],
@@ -45,7 +46,7 @@ function approach(s, actor, target, radius = 53, rhythm = false) {
   assert.ok(
     route.length ||
       Math.hypot(s.x[actor] - target.x, s.y[actor] - target.y) < radius,
-    `route exists to ${target.x},${target.y}`,
+    `route exists to ${target.x},${target.y}; actor=${actor} positions=${JSON.stringify(s.x.map((x, i) => [x, s.y[i]]))}`,
   );
   let cursor = 0;
   for (let step = 0; step < 20000; step++) {
@@ -136,7 +137,7 @@ void test('perfect restraint cannot defeat the rising baseline indefinitely; dut
   run(s, 20);
   assert.equal(s.phase, 'toilet');
   assert.ok(Math.hypot(s.npcs[0].x - from.x, s.npcs[0].y - from.y) > 300);
-  assert.equal(s.npcs[0].line, 'Иди, блять, сри в туалете');
+  assert.equal(s.npcs[0].line, dutyReprimand);
 });
 
 void test('asking at the desk triggers the actual accident; traces follow movement and shower stops new footprints', () => {

@@ -23,16 +23,16 @@ function tiledFloor(kit: RenderKit) {
     for (let col = 0; col < 8; col++) {
       const seed = (row * 23 + col * 17) % 7;
       c.fillStyle = [
-        '#a2aea3',
-        '#abb7aa',
-        '#9fae9f',
-        '#b3bcae',
-        '#a8b3a5',
-        '#acb7a7',
-        '#a6b0a1',
+        '#9a9d92',
+        '#afb1a5',
+        '#90968b',
+        '#b9bbae',
+        '#a2a899',
+        '#b7b6a7',
+        '#999f91',
       ][seed];
       c.fillRect(col * 128, row * 128, 128, 128);
-      c.strokeStyle = '#6d8172';
+      c.strokeStyle = '#696f66';
       c.lineWidth = 3;
       c.strokeRect(col * 128 + 1, row * 128 + 1, 126, 126);
       c.strokeStyle = '#d6dbbd66';
@@ -62,6 +62,170 @@ function tiledFloor(kit: RenderKit) {
     depth = (bounds.maxY - bounds.minY) / 70 + 0.5;
   const mesh = kit.mesh(new THREE.BoxGeometry(width, 0.14, depth), material);
   mesh.position.set(0, -0.09, (bounds.minY + bounds.maxY - 800) / 140);
+}
+
+/** Different floor finishes make each real room readable in the cutaway. */
+function roomFloor(
+  kit: RenderKit,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+  wood = false,
+) {
+  const center = floorWorld(x + w / 2, y + h / 2);
+  kit.box(
+    w / 70,
+    0.012,
+    h / 70,
+    color,
+    center.x,
+    -0.012,
+    center.z,
+    kit.scene,
+    0,
+  );
+  const step = wood ? 24 : 42;
+  for (let line = step; line < w; line += step) {
+    const p = floorWorld(x + line, y + h / 2);
+    kit.box(
+      0.008,
+      0.002,
+      h / 70,
+      wood ? '#726b4e' : '#95988b',
+      p.x,
+      -0.004,
+      p.z,
+      kit.scene,
+      0,
+    );
+  }
+  if (!wood)
+    for (let line = step; line < h; line += step) {
+      const p = floorWorld(x + w / 2, y + line);
+      kit.box(w / 70, 0.002, 0.008, '#95988b', p.x, -0.004, p.z, kit.scene, 0);
+    }
+}
+
+function doorway(
+  kit: RenderKit,
+  left: number,
+  right: number,
+  y: number,
+  text: string,
+) {
+  const center = floorWorld((left + right) / 2, y);
+  const width = (right - left) / 70;
+  // Jambs sit in the bordering collider; the opening stays free for two people.
+  for (const edge of [left - 3, right + 3]) {
+    const p = floorWorld(edge, y);
+    kit.box(0.075, 1.95, 0.19, '#987344', p.x, 0.975, p.z);
+  }
+  kit.box(width + 0.15, 0.13, 0.19, '#a17d4c', center.x, 1.99, center.z);
+  kit.box(
+    width + 0.08,
+    0.012,
+    0.21,
+    '#a28d65',
+    center.x,
+    0.003,
+    center.z,
+    kit.scene,
+    0,
+  );
+  // The open leaf rests within its adjoining wall's footprint, outside the gap.
+  const wall = obstacles.find(
+    (solid) =>
+      solid.kind === 'wall' &&
+      solid.h < 30 &&
+      solid.x + solid.w === left &&
+      Math.abs(solid.y - y) < 12,
+  )!;
+  const leafWidth = Math.min(0.88, wall.w / 70 - 0.04);
+  const leaf = floorWorld(left - leafWidth * 35 - 1.4, y + 6);
+  kit.box(leafWidth, 1.62, 0.035, '#b89351', leaf.x, 0.81, leaf.z);
+  kit.box(
+    leafWidth * 0.75,
+    1.28,
+    0.016,
+    '#c5a366',
+    leaf.x,
+    0.82,
+    leaf.z + 0.027,
+  );
+  kit.sphere(
+    0.027,
+    0.027,
+    0.024,
+    '#555748',
+    leaf.x - leafWidth * 0.33,
+    0.89,
+    leaf.z + 0.05,
+    kit.scene,
+    8,
+  );
+  const sign = makeLabel(kit, text, '#fff0c6', Math.max(1.45, width));
+  sign.position.set(center.x, 2.22, center.z);
+  kit.scene.add(sign);
+  return sign;
+}
+
+function noticeBoard(
+  kit: RenderKit,
+  title: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  lift = 1.85,
+) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 640;
+  const c = canvas.getContext('2d')!;
+  c.fillStyle = '#976226';
+  c.fillRect(0, 0, 1024, 640);
+  c.fillStyle = '#773328';
+  c.fillRect(24, 20, 976, 90);
+  c.fillStyle = '#f2d991';
+  c.font = 'bold 43px Arial';
+  c.textAlign = 'center';
+  c.fillText(title, 512, 80, 940);
+  const titles = [
+    'ОБЯЗАННОСТИ',
+    'РАСПОРЯДОК ДНЯ',
+    'НАРЯД ПО РОТЕ',
+    'ИНСТРУКЦИЯ',
+    'ПОЖАРНЫЙ РАСЧЁТ',
+    'ТЕЛЕФОНЫ',
+  ];
+  for (let i = 0; i < 6; i++) {
+    const col = i % 3,
+      row = Math.floor(i / 3),
+      px = 34 + col * 330,
+      py = 137 + row * 245;
+    c.fillStyle = '#ede8d3';
+    c.fillRect(px, py, 295, 216);
+    c.fillStyle = '#842d25';
+    c.font = 'bold 18px Arial';
+    c.fillText(titles[i], px + 147, py + 28, 276);
+    for (let line = 0; line < 10; line++) {
+      c.fillStyle = line % 3 ? '#69716a' : '#3f4e46';
+      c.fillRect(px + 20, py + 45 + line * 14, 205 + (line % 4) * 16, 3);
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  kit.textures.add(texture);
+  const material = new THREE.MeshStandardMaterial({
+    map: texture,
+    roughness: 0.86,
+  });
+  const p = floorWorld(x, y);
+  kit.box(width + 0.09, height + 0.09, 0.07, '#764b23', p.x, lift, p.z);
+  const face = kit.mesh(new THREE.PlaneGeometry(width, height), material);
+  face.position.set(p.x, lift, p.z + 0.043);
 }
 
 function bed(
@@ -285,17 +449,35 @@ function batchStaticFixtures(kit: RenderKit, dynamic: THREE.Object3D[]) {
 /** All blocking silhouettes are derived from the same rectangles as movement. */
 export function createBarracks(kit: RenderKit) {
   tiledFloor(kit);
+  roomFloor(kit, 60, 60, 1080, 220, '#a39a73', true);
+  roomFloor(kit, 60, 550, 225, 200, '#c8c9b7');
+  roomFloor(kit, 305, 550, 200, 200, '#c3d0c7');
+  roomFloor(kit, 523, 550, 312, 200, '#b8b59b');
+  roomFloor(kit, 853, 550, 287, 200, '#cbd0bf');
+  // Light tile stripe follows the corridor, as on the duty-post reference.
+  const corridor = floorWorld(600, 401);
+  kit.box(
+    1080 / 70,
+    0.007,
+    0.6,
+    '#d6d4bd',
+    corridor.x,
+    -0.015,
+    corridor.z,
+    kit.scene,
+    0,
+  );
   const xmin = (bounds.minX - 600) / 70 - 0.25,
     xmax = (bounds.maxX - 600) / 70 + 0.25;
   const zmin = (bounds.minY - 400) / 70 - 0.25,
     zmax = (bounds.maxY - 400) / 70 + 0.25;
-  kit.box(xmax - xmin + 0.15, 1.2, 0.16, '#758c79', 0, 0.6, zmin);
-  kit.box(xmax - xmin + 0.15, 1.95, 0.16, '#cbd0b9', 0, 2.15, zmin);
-  kit.box(xmax - xmin, 0.045, 0.2, '#a4b29b', 0, 1.22, zmin + 0.02);
+  kit.box(xmax - xmin + 0.15, 1.2, 0.16, '#c1b472', 0, 0.6, zmin);
+  kit.box(xmax - xmin + 0.15, 1.95, 0.16, '#e7dfbd', 0, 2.15, zmin);
+  kit.box(xmax - xmin, 0.045, 0.2, '#e2cc8c', 0, 1.22, zmin + 0.02);
   // Low outer cutaway walls keep both the follow camera and the cleanup view unobstructed.
   for (const x of [xmin, xmax])
-    kit.box(0.16, 0.36, zmax - zmin, '#8b9c85', x, 0.18, (zmin + zmax) / 2);
-  kit.box(xmax - xmin, 0.16, 0.15, '#6c8170', 0, 0.075, zmax);
+    kit.box(0.16, 0.36, zmax - zmin, '#cab776', x, 0.18, (zmin + zmax) / 2);
+  kit.box(xmax - xmin, 0.16, 0.15, '#b7a56e', 0, 0.075, zmax);
   for (let i = 0; i < 4; i++) {
     const x = -5.8 + i * 3.85;
     kit.box(2.0, 1.38, 0.065, '#6f8476', x, 2.16, zmin + 0.105);
@@ -326,12 +508,12 @@ export function createBarracks(kit: RenderKit) {
     if (solid.kind === 'bed')
       bed(kit, solid.x, solid.y, solid.w, solid.h, bedIndex++);
     else if (solid.kind === 'wall') {
-      const height = solid.h < 30 ? 1.05 : 1.14;
+      const height = solid.y < 300 ? 0.88 : solid.h < 30 ? 1.05 : 1.14;
       kit.box(
         solid.w / 70,
         height,
         solid.h / 70,
-        '#829b8a',
+        '#d5c78c',
         center.x,
         height / 2,
         center.z,
@@ -340,7 +522,7 @@ export function createBarracks(kit: RenderKit) {
         solid.w / 70 + 0.035,
         0.06,
         solid.h / 70 + 0.035,
-        '#c2cbb3',
+        '#f0e5bd',
         center.x,
         height,
         center.z,
@@ -385,6 +567,20 @@ export function createBarracks(kit: RenderKit) {
           );
     }
   }
+  const roomSigns = [
+    doorway(kit, 130, 285, 543, 'ТУАЛЕТ'),
+    doorway(kit, 330, 460, 543, 'ДУШЕВАЯ'),
+    doorway(kit, 610, 795, 543, 'ХОЗКОМНАТА'),
+    doorway(kit, 920, 1050, 543, 'ПРАЧЕЧНАЯ'),
+  ];
+  const sleeping = makeLabel(kit, 'СПАЛЬНОЕ ПОМЕЩЕНИЕ', '#f3e8c3', 3.4);
+  sleeping.position.copy(floorWorld(550, 250));
+  sleeping.position.y = 1.5;
+  kit.scene.add(sleeping);
+  roomSigns.push(sleeping);
+  const boardWall = floorWorld(830, 288);
+  kit.box(2.4, 2.65, 0.16, '#e7dfbd', boardWall.x, 1.325, boardWall.z);
+  noticeBoard(kit, 'ВНУТРЕННИЙ РАСПОРЯДОК', 830, 292, 2.2, 1.25, 1.88);
   const deskRect = furniture.find((solid) => solid.kind === 'desk')!;
   const desk = floorWorld(
     deskRect.x + deskRect.w / 2,
@@ -394,7 +590,7 @@ export function createBarracks(kit: RenderKit) {
     deskRect.w / 70,
     0.1,
     deskRect.h / 70,
-    '#a38e65',
+    '#ba8642',
     desk.x,
     1.03,
     desk.z,
@@ -403,7 +599,7 @@ export function createBarracks(kit: RenderKit) {
     deskRect.w / 70 - 0.09,
     0.95,
     deskRect.h / 70 - 0.1,
-    '#768061',
+    '#98672f',
     desk.x,
     0.48,
     desk.z,
@@ -431,7 +627,58 @@ export function createBarracks(kit: RenderKit) {
       kit.scene,
       0,
     );
-  kit.box(0.32, 0.02, 0.25, '#6a3428', desk.x + 0.34, 1.1, desk.z + 0.03);
+  // Red desk pad, varnished wooden slats and a field telephone at the duty podium.
+  kit.box(1.05, 0.018, 0.48, '#a33127', desk.x, 1.087, desk.z);
+  for (let slat = 0; slat < 6; slat++) {
+    kit.box(
+      0.026,
+      0.85,
+      0.026,
+      '#c09351',
+      desk.x - 0.5 + slat * 0.2,
+      0.49,
+      desk.z + 0.274,
+    );
+  }
+  kit.box(1.14, 0.065, 0.055, '#d2a35c', desk.x, 0.91, desk.z + 0.28);
+  kit.box(0.38, 0.075, 0.22, '#ded4ac', desk.x + 0.31, 1.15, desk.z - 0.085);
+  kit.box(0.4, 0.045, 0.075, '#313c31', desk.x + 0.31, 1.22, desk.z - 0.1);
+  for (const end of [-1, 1])
+    kit.box(
+      0.09,
+      0.07,
+      0.095,
+      '#313c31',
+      desk.x + 0.31 + end * 0.15,
+      1.2,
+      desk.z - 0.1,
+    );
+  for (let key = 0; key < 9; key++)
+    kit.box(
+      0.024,
+      0.008,
+      0.018,
+      '#626954',
+      desk.x + 0.26 + (key % 3) * 0.037,
+      1.193,
+      desk.z - 0.045 + Math.floor(key / 3) * 0.025,
+      kit.scene,
+      0,
+    );
+  const cord = kit.torus(
+    0.066,
+    0.007,
+    '#2a332c',
+    desk.x + 0.54,
+    1.08,
+    desk.z - 0.065,
+  );
+  cord.scale.y = 2.2;
+  // A board rises directly from the wooden post; paper instructions are baked into one texture.
+  noticeBoard(kit, 'ДЕЖУРНЫЙ ПО РОТЕ', 1030, 307, 1.62, 1.15, 1.9);
+  const dutyTitle = makeLabel(kit, 'СЛУЖУ РОССИИ', '#f1d18b', 1.15);
+  dutyTitle.position.set(desk.x, 0.64, desk.z + 0.31);
+  kit.scene.add(dutyTitle);
   kit.cylinder(
     0.035,
     0.035,
@@ -572,6 +819,7 @@ export function createBarracks(kit: RenderKit) {
     bucketWater,
     bucketPosition,
     labels,
+    roomSigns,
     markers,
   };
 }
