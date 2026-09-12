@@ -174,3 +174,37 @@ void test('automatic drift trajectories match on 30, 60 and 144Hz displays', () 
     assert.ok(Math.hypot(s.x - states[0].x, s.z - states[0].z) < 0.3);
   }
 });
+
+void test('full throttle reaches the stronger launch while partial triggers stay gentle', () => {
+  const full = freshCity(),
+    partial = freshCity();
+  for (let i = 0; i < 30; i++) {
+    tickCity(full, 1 / 60, new Set(['KeyW']));
+    tickCity(partial, 1 / 60, new Set(), { throttle: 0.25, steer: 0 });
+  }
+  assert.ok(
+    full.speed > 10.5 && full.speed < 11.3,
+    'strong launch after half a second',
+  );
+  assert.ok(
+    partial.speed < 2,
+    'a quarter trigger remains suitable for parking',
+  );
+  for (let i = 0; i < 24; i++) tickCity(full, 1 / 60, new Set(['KeyW']));
+  assert.ok(
+    full.speed >= 17.9 && full.speed <= 18,
+    'full speed in under a second',
+  );
+});
+void test('fractional refresh periods cannot silently lose a city simulation tick', () => {
+  const states = [30, 60, 144].map((hz) => {
+    const s = freshCity();
+    for (let i = 0; i < hz * 2; i++) tickCity(s, 1 / hz, new Set(['KeyW']));
+    return s;
+  });
+  for (const s of states) {
+    assert.ok(Math.abs(s.elapsed - 2) < 1e-9);
+    assert.ok(Math.abs(s.z - states[0].z) < 1e-8);
+    assert.ok(s.accumulator >= 0 && s.accumulator < 1 / 60);
+  }
+});

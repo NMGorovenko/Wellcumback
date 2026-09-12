@@ -15,6 +15,7 @@ setPath('sessionData', profile);
 app.setPath = (name, value) =>
   setPath(name, name === 'userData' ? profile : value);
 let finished = false;
+let checkpoint = 'loading the application';
 const errors = [];
 function fail(error) {
   if (finished) return;
@@ -28,16 +29,32 @@ function fail(error) {
 dialog.showErrorBox = (title, message) =>
   fail(new Error(`${title}: ${message}`));
 const timer = setTimeout(
-  () => fail(new Error('Native desktop smoke timed out after 30 seconds')),
+  () =>
+    fail(
+      new Error(
+        `Native desktop smoke timed out after 30 seconds: ${phase}, ${checkpoint}`,
+      ),
+    ),
   30000,
 );
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function waitFor(contents, expression, label) {
+  checkpoint = `waiting for ${label}`;
   for (let attempt = 0; attempt < 100; attempt++) {
-    if (await contents.executeJavaScript(expression)) return;
+    if (await contents.executeJavaScript(expression)) {
+      checkpoint = `completed ${label}`;
+      return;
+    }
     await pause(100);
   }
-  throw new Error(`Timed out waiting for ${label}`);
+  const ui = await contents.executeJavaScript(`({
+    focused: document.hasFocus(), hidden: document.hidden,
+    paused: Boolean(document.querySelector('.city-pause-menu')),
+    speed: document.querySelector('.city-speed')?.textContent,
+    destination: document.querySelector('.city-heading')?.textContent,
+    arrival: document.querySelector('.city-arrival')?.textContent
+  })`);
+  throw new Error(`Timed out waiting for ${label}: ${JSON.stringify(ui)}`);
 }
 
 app.on('browser-window-created', (_event, window) => {
@@ -224,6 +241,11 @@ async function inspectCityInput(contents) {
 
 async function inspect(window) {
   const contents = window.webContents;
+  // Keep the disposable QA window visible when another app occupies a macOS Space.
+  // The production window and the game's genuine focus/blur handling are unchanged.
+  if (process.platform === 'darwin')
+    window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  window.setAlwaysOnTop(true);
   window.show();
   window.focus();
   app.focus({ steal: true });
@@ -257,6 +279,38 @@ async function inspect(window) {
   assert.equal(preferences.webSecurity, true);
 
   if (phase === 'write') {
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('.city-minimap > svg'))`,
+      'driving minimap',
+    );
+    await contents.executeJavaScript(
+      `document.querySelector('.city-minimap').click()`,
+      true,
+    );
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('.city-view-map')) && !document.querySelector('.city-minimap')`,
+      'minimap opens the full city',
+    );
+    await contents.executeJavaScript(
+      `document.querySelector('.city-actions button').click()`,
+      true,
+    );
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('.city-view-faces'))`,
+      'face inspection retained',
+    );
+    await contents.executeJavaScript(
+      `document.querySelector('.city-actions button').click()`,
+      true,
+    );
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('.city-view-drive .city-minimap'))`,
+      'minimap returns with the driving camera',
+    );
     await inspectCityInput(contents);
     await contents.executeJavaScript(
       `document.querySelector('[aria-label="Клавиатура и геймпады"]').click()`,

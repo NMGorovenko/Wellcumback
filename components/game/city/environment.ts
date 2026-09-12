@@ -15,6 +15,14 @@ import {
 import type { RenderKit } from '../world/render-kit.ts';
 import { makeLabel } from '../world/labels.ts';
 import { createCityLandmarks } from './landmarks.ts';
+import { createStreetDetails } from './streets.ts';
+import {
+  createCivicBuilding,
+  createApartmentDetails,
+  createStationRoof,
+  createNorthernChapel,
+  createSiberianRidges,
+} from './krasnoyarsk.ts';
 
 /** Bake static boxes/windows into material groups once, including nested props.
  * Source geometries are released after merging, rather than retained per window. */
@@ -230,19 +238,47 @@ export function createCityEnvironment(kit: RenderKit) {
         color,
         root,
       );
-      if (index)
-        for (let j = 0; j < 18; j++) {
-          const z1 = -14 + (j * 28) / 18,
-            z2 = -14 + ((j + 1) * 28) / 18;
-          const arch = (z: number) => 1.05 + 3.4 * (1 - (z / 14) ** 2);
-          kit.rod(
-            new THREE.Vector3(x, arch(z1), bridge.z + z1),
-            new THREE.Vector3(x, arch(z2), bridge.z + z2),
-            0.16,
-            color,
-            root,
-          );
-        }
+      if (index) {
+        for (let span = 0; span < 3; span++)
+          for (let j = 0; j < 10; j++) {
+            const centre = -9.4 + span * 9.4;
+            const z1 = -4.7 + j * 0.94,
+              z2 = z1 + 0.94;
+            const arch = (z: number) => 1.05 + 2.5 * (1 - (z / 4.7) ** 2);
+            kit.rod(
+              new THREE.Vector3(x, arch(z1), bridge.z + centre + z1),
+              new THREE.Vector3(x, arch(z2), bridge.z + centre + z2),
+              0.2,
+              '#d4d2b7',
+              root,
+            );
+          }
+      } else {
+        kit.box(0.25, 0.6, bridge.d - 1, '#b76b55', x, 0.3, bridge.z, root, 0);
+      }
+      for (let j = -2; j <= 2; j++) {
+        kit.cylinder(
+          0.07,
+          0.09,
+          3.5,
+          '#40545a',
+          x,
+          1.8,
+          bridge.z + j * 6,
+          root,
+        );
+        kit.box(
+          0.55,
+          0.1,
+          0.35,
+          '#f3d5a3',
+          x - side * 0.2,
+          3.56,
+          bridge.z + j * 6,
+          root,
+          0,
+        );
+      }
     }
   }
   // The round island is a real circular collider; its surrounding 16 m lane is drivable.
@@ -304,6 +340,8 @@ export function createCityEnvironment(kit: RenderKit) {
   kit.materials.add(lit);
   for (const [index, building] of cityBuildings.entries()) {
     const { x, z, w, d, h, color } = building;
+    if (createCivicBuilding(kit, root, building, lit)) continue;
+    createApartmentDetails(kit, root, building, index);
     kit.box(w, h, d, color, x, h / 2, z, root, 0);
     kit.box(w + 0.16, 0.16, d + 0.16, '#6e7e82', x, h + 0.08, z, root, 0);
     const floors = Math.max(2, Math.floor(h / 1.7));
@@ -315,32 +353,33 @@ export function createCityEnvironment(kit: RenderKit) {
             0.72,
             0.88,
             0.035,
-            '#f3d5a3',
+            '#536671',
             x - w / 2 + 1.1 + column * 2,
             y,
             z + side * (d / 2 + 0.025),
             root,
             0,
           );
-          if ((column + floor + index) % 4) pane.material = lit;
+          if ((column + floor + index) % 4 === 0) pane.material = lit;
         }
         for (let column = 0; column < Math.floor(d / 2); column++) {
           const pane = kit.box(
             0.035,
             0.88,
             0.72,
-            '#f3d5a3',
+            '#536671',
             x + side * (w / 2 + 0.025),
             y,
             z - d / 2 + 1.1 + column * 2,
             root,
             0,
           );
-          if ((column + floor + index) % 3) pane.material = lit;
+          if ((column + floor + index) % 3 === 0) pane.material = lit;
         }
       }
     kit.box(1.1, 1.65, 0.12, '#3c5159', x, 0.825, z + d / 2 + 0.065, root, 0);
     if (building.kind === 'station') {
+      createStationRoof(kit, root, building);
       // Pale symmetrical facade, central clock and roof sign distinguish the main station.
       kit.box(4.6, 2.2, d + 0.4, '#dfe0c6', x, h + 0.8, z, root, 0);
       const clock = kit.cylinder(
@@ -378,30 +417,10 @@ export function createCityEnvironment(kit: RenderKit) {
       );
     }
   }
-  // Outlying green ridges frame the city without adding invisible driving obstacles.
-  for (let i = 0; i < 14; i++) {
-    const hill = kit.mesh(
-      new THREE.ConeGeometry(10 + (i % 3) * 2, 8 + (i % 4), 5),
-      kit.material(i % 2 ? '#799684' : '#6f8a7c'),
-      root,
-    );
-    hill.position.set(minX + i * 18, 2, maxZ + 12 + (i % 3) * 3);
-    hill.rotation.y = i;
-  }
-  const chapel = new THREE.Group();
-  chapel.position.set(-12, 1.0, minZ - 4);
-  root.add(chapel);
-  kit.cylinder(1.15, 1.3, 2.5, '#e4dfc0', 0, 1.25, 0, chapel);
-  const roof = kit.mesh(
-    new THREE.ConeGeometry(1.45, 1.6, 8),
-    kit.material('#536671'),
-    chapel,
-  );
-  roof.position.y = 3.3;
-  kit.sphere(0.25, 0.35, 0.25, '#d6b46d', 0, 4.28, 0, chapel, 12);
-  kit.box(0.08, 0.85, 0.08, '#e8dca7', 0, 4.85, 0, chapel, 0);
-  kit.box(0.5, 0.08, 0.08, '#e8dca7', 0, 4.95, 0, chapel, 0);
+  createSiberianRidges(kit, root);
+  createNorthernChapel(kit, root);
   const scenery = createCityLandmarks(kit, root, lit);
+  const streetFurniture = createStreetDetails(kit, root, lit, scenery);
   batchCity(kit, root);
   const labels: THREE.Sprite[] = [];
   const label = (text: string, x: number, z: number, width: number, y = 3) => {
@@ -411,7 +430,9 @@ export function createCityEnvironment(kit: RenderKit) {
     labels.push(sprite);
     return sprite;
   };
-  label('КАРАУЛЬНАЯ ГОРА', -12, minZ - 4, 13, 7.2);
+  label('КАРАУЛЬНАЯ ГОРА', -12, minZ - 14, 15, 14);
+  label('ТЕАТРАЛЬНАЯ ПЛОЩАДЬ', 14, -40, 17, 7);
+  label('ТАКМАК · СТОЛБЫ', -72, maxZ + 15, 17, 16);
   label('КРАСНОЯРСК · ЛЕВЫЙ БЕРЕГ', -18, -77, 21);
   label('ПРАВЫЙ БЕРЕГ · АПРЕЛЬСКАЯ', 80, 73, 16);
   label('СТУДГОРОДОК', -101, -18, 11, 6.7);
@@ -476,6 +497,7 @@ export function createCityEnvironment(kit: RenderKit) {
   return {
     root,
     scenery,
+    streetFurniture,
     stops,
     labels,
     update(

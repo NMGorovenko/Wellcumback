@@ -158,7 +158,8 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
   const lateral = s.vx * -fz + s.vz * fx;
   const grip = 7.5 + (0.55 - 7.5) * s.driftBlend;
   const opposing = gas * forward < 0 && Math.abs(forward) > 0.35;
-  const acceleration = opposing ? 24 : gas < 0 ? 10 : 14.5;
+  // Keep small analog inputs gentle; full throttle gets the stronger engine.
+  const acceleration = opposing ? 24 : gas < 0 ? 10 : 14.5 + 8.5 * gas * gas;
   // Rolling resistance is mild: lifting the accelerator preserves momentum,
   // while an opposite pedal gives controllable braking before reversing.
   const speed = Math.hypot(s.vx, s.vz);
@@ -232,8 +233,8 @@ export function tickCity(
 ) {
   if (s.paused || !Number.isFinite(dt) || dt <= 0) return;
   s.accumulator += Math.min(dt, 0.1);
-  while (s.accumulator >= STEP) {
+  while (s.accumulator + 1e-9 >= STEP) {
     step(s, keys, axes);
-    s.accumulator -= STEP;
+    s.accumulator = Math.max(0, s.accumulator - STEP);
   }
 }

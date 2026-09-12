@@ -1,4 +1,7 @@
-import { CITY_BOUNDS } from '../../../lib/game/city/layout.ts';
+import {
+  CITY_BOUNDS,
+  CITY_SCENERY_BOUNDS,
+} from '../../../lib/game/city/layout.ts';
 import type { CityState } from '../../../lib/game/city/engine.ts';
 
 export type CityCameraMode = 'drive' | 'map' | 'faces';
@@ -93,9 +96,9 @@ export function cityOverviewCamera(aspect: number) {
   const horizontal = Math.hypot(outward.x, outward.z);
   let extentX = 0,
     extentY = 0;
-  for (const x of [CITY_BOUNDS.minX - 14, CITY_BOUNDS.maxX + 14])
-    for (const z of [CITY_BOUNDS.minZ - 4, CITY_BOUNDS.maxZ + 26])
-      for (const y of [0, 14]) {
+  for (const x of [CITY_SCENERY_BOUNDS.minX, CITY_SCENERY_BOUNDS.maxX])
+    for (const z of [CITY_SCENERY_BOUNDS.minZ, CITY_SCENERY_BOUNDS.maxZ])
+      for (const y of [0, CITY_SCENERY_BOUNDS.maxY]) {
         const dz = z - look.z;
         const cameraX = (x * outward.z - dz * outward.x) / horizontal;
         const cameraY =

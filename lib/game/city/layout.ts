@@ -1,6 +1,13 @@
 /** Compressed, north-up game geography: west/east and river banks match the
  * named districts. These metres are gameplay space, never geographic coordinates. */
 export const CITY_BOUNDS = { minX: -116, maxX: 116, minZ: -80, maxZ: 80 };
+export const CITY_SCENERY_BOUNDS = {
+  minX: -130,
+  maxX: 130,
+  minZ: -108,
+  maxZ: 108,
+  maxY: 20,
+};
 export const CITY_SPAWN = { x: -92, z: -4, heading: 0 };
 export const RIVER_HALF_WIDTH = 9.5;
 export const RIVER_SLOPE = 0.28;
@@ -133,7 +140,7 @@ export const cityStops: (CityPoint & {
 export type CityBuilding = CityRect & {
   h: number;
   color: string;
-  kind?: 'station' | 'university';
+  kind?: 'station' | 'university' | 'theatre' | 'city-clock';
 };
 export const cityBuildings: CityBuilding[] = [
   { x: -70, z: -69, w: 24, d: 10, h: 4.6, color: '#d6d8b4', kind: 'station' },
@@ -200,5 +207,11 @@ for (let row = 0; row < 10; row++)
       d,
       h: 4.2 + ((row * 3 + column) % 5) * 0.8,
       color: palette[(row + column) % palette.length],
+      kind:
+        z === -40 && x === 14
+          ? 'theatre'
+          : z === -40 && x === 2
+            ? 'city-clock'
+            : undefined,
     });
   }

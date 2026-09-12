@@ -22,6 +22,7 @@ import {
 } from '@/lib/game/city/engine';
 import { cityStops, type CityMission } from '@/lib/game/city/layout';
 import CityScene from './scene';
+import CityMinimap from './minimap';
 import { CITY_CAMERA_MODES, type CityCameraMode } from './camera';
 import { useGameInspection } from '@/hooks/use-game-inspection';
 import { useRoom } from '@/hooks/use-room';
@@ -269,6 +270,13 @@ export default function CityHub({
     >
       <div className="city-world">
         <CityScene game={game} targetStop={target} cameraMode={cameraMode} />
+        {cameraMode !== 'map' && !view.paused && (
+          <CityMinimap
+            state={view}
+            target={target}
+            onExpand={() => setCameraMode('map')}
+          />
+        )}
         <div className="city-heading">
           <span>КРАСНОЯРСК · КАРТА ИСТОРИЙ</span>
           <h1>{cityStops[target].title}</h1>

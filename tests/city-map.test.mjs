@@ -10,6 +10,7 @@ import {
 import {
   BRIDGES,
   CITY_BOUNDS,
+  CITY_SCENERY_BOUNDS,
   CITY_SPAWN,
   ROUNDABOUT,
   cityStops,
@@ -23,6 +24,7 @@ import {
   cityDriveCamera,
 } from '../components/game/city/camera.ts';
 import { createCityEnvironment } from '../components/game/city/environment.ts';
+import { citySceneryFits } from '../components/game/city/landmarks.ts';
 import { RenderKit } from '../components/game/world/render-kit.ts';
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const wrap = (x) => Math.atan2(Math.sin(x), Math.cos(x));
@@ -224,9 +226,9 @@ void test('overview fits both banks and tall landmarks without changing close ca
       );
     camera.lookAt(target);
     camera.updateMatrixWorld();
-    for (const x of [CITY_BOUNDS.minX, CITY_BOUNDS.maxX])
-      for (const z of [CITY_BOUNDS.minZ, CITY_BOUNDS.maxZ])
-        for (const y of [0, 10]) {
+    for (const x of [CITY_SCENERY_BOUNDS.minX, CITY_SCENERY_BOUNDS.maxX])
+      for (const z of [CITY_SCENERY_BOUNDS.minZ, CITY_SCENERY_BOUNDS.maxZ])
+        for (const y of [0, CITY_SCENERY_BOUNDS.maxY]) {
           const projected = new THREE.Vector3(x, y, z).project(camera);
           assert.ok(
             Math.abs(projected.x) < 1 &&
@@ -262,6 +264,15 @@ void test('larger city statics are batched and repeated driving updates allocate
       `${staticMeshes} static meshes should be a few material batches, not one per window`,
     );
     assert.ok(kit.geometries.size < 70, 'baked source geometry is released');
+    assert.ok(
+      city.streetFurniture.length >= 20,
+      'visible street detail is actually built',
+    );
+    for (const p of city.streetFurniture)
+      assert.ok(
+        citySceneryFits(p, p.radius),
+        'street details leave road and stop clearance',
+      );
     const before = [kit.geometries.size, kit.materials.size, kit.textures.size];
     for (let i = 0; i < 180; i++)
       city.update(i / 60, i % cityStops.length, -1, i % 2 === 0);
