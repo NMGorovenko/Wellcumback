@@ -179,6 +179,7 @@ export default function MovingGame({
   );
   return (
     <section
+      data-phase={view.phase}
       className="game-layout moving-game-layout"
       aria-label="Переезд Ярика и Насти"
     >

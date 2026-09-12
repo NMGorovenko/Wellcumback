@@ -21,7 +21,7 @@ export type CityState = {
   steering: number;
   speed: number;
   drifting: boolean;
-  /** Rear grip eases back in after the handbrake is released. */
+  /** Automatic cornering slip; the handbrake adds stronger oversteer. */
   driftBlend?: number;
   elapsed: number;
   bumps: number;
@@ -124,15 +124,26 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
   }
   s.previousHorn = horn;
   const { throttle: gas, steer: steering } = resolveDrive(keys, axes);
-  const drift = keys.has('ShiftLeft');
-  const blend = s.driftBlend ?? 0;
-  s.driftBlend =
-    blend +
-    (Number(drift) - blend) * (1 - Math.exp(-STEP * (drift ? 11 : 2.8)));
+  const handbrake = keys.has('ShiftLeft');
   let fx = Math.sin(s.heading),
     fz = -Math.cos(s.heading);
   const forward = s.vx * fx + s.vz * fz;
   s.steering += (steering - s.steering) * (1 - Math.exp(-STEP * 12));
+  // The Mustang is playful on every corner without holding a drift button.
+  // Preserve grip at parking speeds, under braking and while reversing.
+  const speedFactor = Math.max(0, Math.min(1, (forward - 2.5) / 5.5));
+  const turnFactor = Math.max(
+    0,
+    Math.min(1, (Math.abs(s.steering) - 0.12) / 0.7),
+  );
+  const automaticSlip = gas < 0 ? 0 : 0.52 * speedFactor * turnFactor;
+  const targetSlip = handbrake ? 1 : automaticSlip;
+  const blend = s.driftBlend ?? 0;
+  s.driftBlend =
+    blend +
+    (targetSlip - blend) *
+      (1 - Math.exp(-STEP * (targetSlip > blend ? 11 : 2.8)));
+
   const turnSpeed = Math.min(1, Math.abs(forward) / 2.2);
   const nextHeading =
     s.heading +

@@ -58,3 +58,12 @@ void test('an impossibly dense group uses a bounded local fallback instead of se
   assert.ok(p.y >= 320 - 48 && p.y <= 320);
   assert.equal(p.x + p.tail + 8, 500);
 });
+
+void test('a tall corner HUD cannot cover dialogue when space remains above it', () => {
+  const hud = { x: 14, y: 466, w: 290, h: 240 };
+  const p = speechPlacement(180, 650, 280, 80, 1280, 720, [], [hud]);
+  const overlapX = Math.min(p.x + 280, hud.x + hud.w) - Math.max(p.x, hud.x);
+  const overlapY = Math.min(p.y + 80, hud.y + hud.h) - Math.max(p.y, hud.y);
+  assert.ok(overlapX <= 0 || overlapY <= 0, 'bubble clears the HUD');
+  assert.ok(p.x >= 10 && p.x + 280 <= 1270 && p.y >= 82);
+});

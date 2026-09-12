@@ -191,7 +191,7 @@ export default function Home() {
   const total = results.reduce((sum, r) => sum + r.score, 0);
   return (
     <main
-      className={`shell${active ? ' game-active' : ' hub'}${!active && hubMode === 'city' ? ' city-mode' : ''}${fullscreen.mode === 'window' ? ' window-fullscreen' : ''}`}
+      className={`shell${active || hubMode === 'city' ? ' play-viewport' : ''}${active ? ' game-active' : ' hub'}${!active && hubMode === 'city' ? ' city-mode' : ''}${fullscreen.mode === 'window' ? ' window-fullscreen' : ''}`}
     >
       <header className="topbar">
         <button
@@ -205,7 +205,8 @@ export default function Home() {
           }}
           aria-label="К выбору историй"
         >
-          <span>↗</span> НУ, С ВОЗВРАЩЕНИЕМ!
+          <span>↗</span>
+          <span className="brand-title">НУ, С ВОЗВРАЩЕНИЕМ!</span>
         </button>
         <div className="top-actions">
           {!active && (

@@ -285,6 +285,15 @@ async function inspect(window) {
       `Boolean(document.fullscreenElement)`,
       'native fullscreen (window fallback does not pass)',
     );
+    await waitFor(
+      contents,
+      `(() => {
+      const canvas = document.querySelector('.city-world canvas').getBoundingClientRect();
+      return Math.abs(canvas.x) < 1 && Math.abs(canvas.y) < 1 &&
+        Math.abs(canvas.width - innerWidth) < 1 && Math.abs(canvas.height - innerHeight) < 1;
+    })()`,
+      'fullscreen canvas covers the entire window without a reserved HUD column',
+    );
     await contents.executeJavaScript(
       `document.querySelector('.fullscreen-button').click()`,
       true,

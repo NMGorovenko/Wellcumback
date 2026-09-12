@@ -220,6 +220,7 @@ export default function CleanGame({
   );
   return (
     <section
+      data-phase={view.phase}
       className={`game-layout clean-game-layout${active ? ' clean-active' : ''}`}
       aria-label="Операция Чистый проход"
     >

@@ -118,3 +118,59 @@ void test('the higher forward limit cannot tunnel through buildings, banks, or b
     assert.ok(s.bumps > 0);
   }
 });
+
+void test('every confident forward turn enters a real automatic drift; Space amplifies it', () => {
+  const make = () => ({ ...freshCity(), z: 0, vz: -7, speed: 7 });
+  const auto = make(),
+    stronger = make(),
+    straight = make();
+  advance(auto, 0.6, ['KeyW', 'KeyD']);
+  advance(stronger, 0.6, ['KeyW', 'KeyD', 'ShiftLeft']);
+  advance(straight, 0.6, ['KeyW']);
+  assert.ok(auto.drifting && auto.driftDistance > 3 && slip(auto) > 3);
+  assert.ok(
+    slip(stronger) > slip(auto) * 1.5,
+    'handbrake still has a clear purpose',
+  );
+  assert.equal(straight.driftDistance, 0);
+  assert.equal(straight.drifting, false);
+  assert.equal(auto.bumps, 0);
+  const before = slip(auto);
+  tickCity(auto, 1 / 60, new Set());
+  assert.ok(slip(auto) > before * 0.8, 'release never snaps the car straight');
+  advance(auto, 1.2);
+  assert.ok(
+    slip(auto) < 0.3,
+    'centred steering progressively catches the slide',
+  );
+});
+void test('parking, reverse and small analog corrections retain precision', () => {
+  for (const config of [
+    { forward: -3, throttle: -1, steer: 1 },
+    { forward: 1, throttle: 0, steer: 1 },
+    { forward: 7, throttle: 1, steer: 0.1 },
+  ]) {
+    const s = {
+      ...freshCity(),
+      z: 0,
+      vz: -config.forward,
+      speed: Math.abs(config.forward),
+    };
+    for (let i = 0; i < 24; i++) tickCity(s, 1 / 60, new Set(), config);
+    assert.equal(s.driftBlend, 0);
+    assert.equal(s.drifting, false);
+    assert.equal(s.bumps, 0);
+  }
+});
+void test('automatic drift trajectories match on 30, 60 and 144Hz displays', () => {
+  const states = [30, 60, 144].map((hz) => {
+    const s = { ...freshCity(), z: 0, vz: -7, speed: 7 };
+    for (let i = 0; i < hz; i++) tickCity(s, 1 / hz, new Set(['KeyW', 'KeyD']));
+    return s;
+  });
+  for (const s of states) {
+    assert.ok(s.drifting);
+    assert.equal(s.bumps, 0);
+    assert.ok(Math.hypot(s.x - states[0].x, s.z - states[0].z) < 0.3);
+  }
+});

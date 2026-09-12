@@ -479,6 +479,7 @@ export default function ScreenGame({
 
   return (
     <section
+      data-phase={view.phase}
       className="game-layout screen-game-layout"
       aria-label="Экран на полстены — игра"
     >

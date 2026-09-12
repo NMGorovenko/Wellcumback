@@ -486,7 +486,7 @@ export function createCityEnvironment(kit: RenderKit) {
       overviewLabelWidth = 32,
     ) {
       labels.forEach((sprite) => {
-        sprite.visible = overview || sprite.position.y > 3;
+        sprite.visible = overview;
       });
       stops.forEach(({ ring, label: sign, overviewLabel }, index) => {
         const selected = index === targetStop || index === nearStop;
@@ -494,7 +494,7 @@ export function createCityEnvironment(kit: RenderKit) {
         (ring.material as THREE.MeshBasicMaterial).opacity = selected
           ? 0.92
           : 0.42;
-        sign.visible = !overview;
+        sign.visible = !overview && selected;
         overviewLabel.visible = overview;
         const width = selected ? 6.4 : 5.6;
         sign.scale.set(width, (width * 96) / 512, 1);

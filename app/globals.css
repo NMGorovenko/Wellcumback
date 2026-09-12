@@ -10,6 +10,7 @@
 @import './styles/network.css';
 @import './styles/moving.css';
 @import './styles/hub.css';
+@import './styles/viewport.css';
 @custom-variant dark (&:is(.dark *));
 @theme inline {
   --color-background: var(--background);

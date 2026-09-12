@@ -22,6 +22,7 @@ import {
 } from '@/lib/game/city/engine';
 import { cityStops, type CityMission } from '@/lib/game/city/layout';
 import CityScene from './scene';
+import { CITY_CAMERA_MODES, type CityCameraMode } from './camera';
 import { useGameInspection } from '@/hooks/use-game-inspection';
 import { useRoom } from '@/hooks/use-room';
 import {
@@ -70,7 +71,13 @@ export default function CityHub({
   const isDriver = !shared || (room.world?.driver ?? 0) === room.slot;
   const [view, setView] = useState(freshCity);
   const [target, setTarget] = useState(0);
-  const [closeView, setCloseView] = useState(true);
+  const [cameraMode, setCameraMode] = useState<CityCameraMode>('drive');
+  const cameraNames = { drive: 'За машиной', map: 'Весь город', faces: 'Лица' };
+  const nextCamera =
+    CITY_CAMERA_MODES[
+      (CITY_CAMERA_MODES.indexOf(cameraMode) + 1) % CITY_CAMERA_MODES.length
+    ];
+  const cycleCamera = () => setCameraMode(nextCamera);
   const [pauseSelected, setPauseSelected] = useState(0);
   const pauseButtons = useRef<(HTMLButtonElement | null)[]>([]);
   useEffect(() => {
@@ -134,7 +141,7 @@ export default function CityHub({
     { id: 'target', label: `Куда едем: ${cityStops[target].title}` },
     {
       id: 'camera',
-      label: closeView ? 'Показать весь город' : 'Приблизить Mustang',
+      label: `Камера: ${cameraNames[cameraMode]} → ${cameraNames[nextCamera]}`,
     },
     {
       id: 'reset',
@@ -177,7 +184,7 @@ export default function CityHub({
         setTarget((target + 1) % cityStops.length);
         break;
       case 'camera':
-        setCloseView(!closeView);
+        cycleCamera();
         if (canResume) pause();
         break;
       case 'reset':
@@ -257,16 +264,15 @@ export default function CityHub({
     gamepadPrompt(pads, 0, key, 'city') || keyboardPrompt(0, key, 'city');
   return (
     <section
-      className="city-hub"
+      className={`city-hub city-view-${cameraMode}`}
       aria-label="Поездка по Красноярску между историями"
     >
       <div className="city-world">
-        <CityScene game={game} targetStop={target} closeView={closeView} />
+        <CityScene game={game} targetStop={target} cameraMode={cameraMode} />
         <div className="city-heading">
           <span>КРАСНОЯРСК · КАРТА ИСТОРИЙ</span>
-          <h1>Ну что, куда едем?</h1>
+          <h1>{cityStops[target].title}</h1>
           <p>
-            {cityStops[target].title} ·{' '}
             {Math.round(
               Math.hypot(
                 view.x - cityStops[target].x,
@@ -278,14 +284,12 @@ export default function CityHub({
         </div>
         <div className="city-actions">
           <button
-            aria-label={
-              closeView ? 'Показать весь город' : 'Приблизить Mustang'
-            }
-            aria-pressed={closeView}
-            onClick={() => setCloseView(!closeView)}
+            aria-label={`Камера: ${cameraNames[cameraMode]}. Показать: ${cameraNames[nextCamera]}`}
+            title={`Следующий вид: ${cameraNames[nextCamera]}`}
+            onClick={cycleCamera}
           >
             <Camera size={16} />
-            {closeView ? 'Карта' : 'Ближе'}
+            {cameraNames[cameraMode]}
           </button>
           <button disabled={shared} onClick={onStories}>
             Все истории <ArrowUpRight size={14} />
@@ -349,7 +353,7 @@ export default function CityHub({
               <kbd>{control('horizontal')}</kbd> руль
             </span>
             <span>
-              <kbd>{control('secondary')}</kbd> дрифт
+              <kbd>{control('secondary')}</kbd> сильнее занос
             </span>
           </div>
         )}

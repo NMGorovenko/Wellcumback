@@ -1,0 +1,452 @@
+/* One continuous play surface in a window and native fullscreen. HUD islands
+   overlay the scene; none of them owns a column or reduces the camera viewport. */
+.shell.play-viewport {
+  --hud-edge: max(14px, env(safe-area-inset-left));
+  --hud-top: max(14px, env(safe-area-inset-top));
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.play-viewport .game-layout,
+.play-viewport .city-hub {
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+.play-viewport .game-world,
+.play-viewport .city-world {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+}
+.play-viewport .topbar {
+  position: absolute;
+  z-index: 12;
+  inset: var(--hud-top) var(--hud-edge) auto;
+  height: 36px;
+  border: 0;
+  pointer-events: none;
+}
+.play-viewport .topbar > * {
+  pointer-events: auto;
+}
+.play-viewport .brand-title,
+.play-viewport .fullscreen-button > span,
+.play-viewport .fullscreen-button kbd {
+  display: none;
+}
+.play-viewport .hub-brand {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+}
+.play-viewport .hub-brand,
+.play-viewport .top-actions {
+  background: #172820dd;
+  border-radius: 8px;
+  color: #f2f3e5;
+  backdrop-filter: blur(8px);
+}
+.play-viewport .top-actions {
+  gap: 3px;
+  padding: 0 3px;
+}
+.play-viewport .top-actions button {
+  min-height: 36px;
+}
+.play-viewport .fullscreen-button {
+  border: 0;
+  background: transparent;
+}
+.play-viewport .world-heading {
+  top: var(--hud-top);
+  left: 64px;
+  max-width: calc(100% - 235px);
+  gap: 4px;
+}
+.play-viewport .world-heading > span {
+  font-size: 11px;
+}
+.play-viewport .world-heading > strong {
+  font-size: 16px;
+}
+.play-viewport .game-sidebar {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: block;
+  background: none;
+  border: 0;
+  padding: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.play-viewport .game-sidebar > * {
+  pointer-events: auto;
+}
+.play-viewport .hud-top,
+.play-viewport .sidebar-toolbar {
+  position: absolute;
+  top: 62px;
+  right: var(--hud-edge);
+  gap: 14px;
+  padding: 8px 10px;
+  background: #172820dd;
+  border: 0;
+  border-radius: 8px;
+}
+.play-viewport .hud-progress {
+  position: absolute;
+  top: 116px;
+  right: var(--hud-edge);
+  width: 215px;
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #172820cc;
+}
+.play-viewport .hud-section,
+.play-viewport .clean-status {
+  position: absolute;
+  bottom: var(--hud-edge);
+  left: var(--hud-edge);
+  width: min(290px, calc(100% - 28px));
+  max-height: min(42dvh, 360px);
+  overflow: auto;
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #172820dc;
+  backdrop-filter: blur(8px);
+  scrollbar-width: thin;
+  gap: 9px;
+}
+.play-viewport .hud-section:has(details[open]) {
+  max-height: calc(100dvh - 180px);
+}
+.play-viewport .hud-compact-title,
+.play-viewport .hud-meter-label,
+.play-viewport .hud-progress > div,
+.play-viewport .hud-help-controls > summary,
+.play-viewport .meter-caption,
+.play-viewport .meter-caption strong {
+  font-size: 12px;
+}
+.play-viewport .hud-help-controls {
+  margin-top: 4px;
+  padding-top: 7px;
+}
+.play-viewport .game-sidebar > .hud-message,
+.play-viewport .clean-game-layout > .game-footer,
+.play-viewport .moving-footer .footer-message {
+  /* The same dialogue is already anchored to its speaker inside the world. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  padding: 0;
+  margin: 0;
+}
+.play-viewport .screen-game-layout[data-phase='result'] .hud-section {
+  left: 50%;
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  width: min(500px, calc(100% - 28px));
+  max-height: calc(100dvh - 100px);
+  background: #172820f5;
+}
+.play-viewport .clean-game-layout .world-heading {
+  display: none;
+}
+.play-viewport .sidebar-heading {
+  position: absolute;
+  top: var(--hud-top);
+  left: 64px;
+  max-width: calc(100% - 235px);
+  color: #fff6df;
+  text-shadow: 0 1px 7px #000c;
+}
+.play-viewport .sidebar-heading h2 {
+  font-size: 17px;
+  margin: 4px 0 0;
+}
+.play-viewport .sidebar-toolbar > button:first-child {
+  display: none;
+}
+.play-viewport .clean-camera-toggle {
+  top: 114px;
+  right: var(--hud-edge);
+  z-index: 8;
+}
+.play-viewport .clean-help {
+  position: absolute;
+  right: var(--hud-edge);
+  bottom: var(--hud-edge);
+  width: min(270px, calc(100% - 28px));
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #172820e8;
+  max-height: calc(100dvh - 180px);
+  overflow: auto;
+  font-size: 12px;
+}
+.play-viewport .clean-help:not([open]) {
+  width: auto;
+}
+.play-viewport .clean-help summary {
+  cursor: pointer;
+}
+.play-viewport .clean-game-layout:not(.clean-active) .game-sidebar {
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100% - 28px));
+  max-height: calc(100dvh - 100px);
+  padding: 24px;
+  overflow: auto;
+  border-radius: 14px;
+  background: #172820f5;
+  pointer-events: auto;
+}
+.play-viewport .clean-game-layout:not(.clean-active) .game-sidebar > * {
+  position: static;
+  max-width: none;
+  transform: none;
+}
+.play-viewport .clean-game-layout:not(.clean-active) .sidebar-heading {
+  margin: 16px 0;
+}
+.play-viewport .clean-game-layout:not(.clean-active) .clean-help {
+  margin-top: 16px;
+  width: 100%;
+}
+.play-viewport .moving-bar {
+  position: absolute;
+  z-index: 7;
+  bottom: var(--hud-edge);
+  left: var(--hud-edge);
+  right: var(--hud-edge);
+  width: fit-content;
+  max-width: calc(100% - 28px);
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #172820dd;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.play-viewport .moving-bar > button:first-child {
+  display: none;
+}
+.play-viewport .moving-footer {
+  position: absolute;
+  z-index: 7;
+  bottom: 76px;
+  left: var(--hud-edge);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  width: min(320px, calc(100% - 28px));
+  background: #172820e8;
+}
+.play-viewport .moving-help {
+  padding: 10px 12px;
+  max-height: calc(100dvh - 180px);
+  overflow: auto;
+}
+.play-viewport .moving-day-clock {
+  top: 66px;
+  right: var(--hud-edge);
+}
+.play-viewport .moving-alert {
+  top: 68px;
+  max-width: calc(100% - 180px);
+}
+.play-viewport .moving-overlay {
+  z-index: 10;
+}
+.play-viewport .room-strip {
+  position: absolute;
+  z-index: 9;
+  top: 61px;
+  left: var(--hud-edge);
+  max-width: min(400px, calc(100% - 300px));
+  border-radius: 8px;
+  background: #172820dd;
+  font-size: 12px;
+}
+.play-viewport .city-heading {
+  top: 15px;
+  left: 64px;
+  color: #f3f3e2;
+  text-shadow: 0 1px 5px #10271c;
+}
+.play-viewport .city-heading > span {
+  display: none;
+}
+.play-viewport .city-heading h1 {
+  font-size: 16px;
+  margin: 0 0 4px;
+  letter-spacing: 0;
+}
+.play-viewport .city-heading p {
+  font-size: 12px;
+}
+.play-viewport .city-actions {
+  top: 62px;
+  right: var(--hud-edge);
+}
+.play-viewport .city-actions button {
+  font-size: 12px;
+  min-height: 36px;
+}
+.play-viewport .city-bottom {
+  position: absolute;
+  z-index: 6;
+  bottom: var(--hud-edge);
+  left: var(--hud-edge);
+  right: var(--hud-edge);
+  padding: 0;
+  pointer-events: none;
+}
+.play-viewport .city-bottom > * {
+  pointer-events: auto;
+}
+.play-viewport .city-bottom nav,
+.play-viewport .city-players,
+.play-viewport .city-network {
+  background: #172820dd;
+  border-radius: 8px;
+  padding: 4px;
+}
+.play-viewport .city-bottom nav {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.play-viewport .city-bottom nav button {
+  white-space: nowrap;
+  font-size: 12px;
+}
+.play-viewport .city-hub:not(.city-view-map) .city-bottom {
+  display: none;
+}
+.play-viewport .city-drive-hints {
+  bottom: 18px;
+  left: var(--hud-edge);
+  background: #172820d9;
+  padding: 10px 12px;
+  border-radius: 8px;
+  gap: 10px;
+}
+.play-viewport .city-drive-hints > span {
+  color: #eff2df;
+  font-size: 12px;
+}
+.play-viewport .city-speed {
+  bottom: 15px;
+  right: var(--hud-edge);
+  color: #f3f3e2;
+  text-shadow: 0 1px 4px #163325;
+}
+.play-viewport .city-radio {
+  bottom: 68px;
+  left: var(--hud-edge);
+  max-width: min(550px, calc(100% - 100px));
+}
+.play-viewport .city-arrival {
+  bottom: 18px;
+}
+.play-viewport .city-view-map .city-drive-hints,
+.play-viewport .city-view-map .city-speed,
+.play-viewport .city-view-map .city-arrival {
+  bottom: 78px;
+}
+.play-viewport .city-view-map .city-radio {
+  bottom: 132px;
+}
+.play-viewport .city-pause {
+  z-index: 10;
+}
+.play-viewport .city-hub:has(.city-pause) .city-bottom {
+  visibility: hidden;
+}
+@media (max-width: 760px) {
+  .play-viewport .city-heading {
+    top: 62px;
+    left: var(--hud-edge);
+    max-width: 50%;
+  }
+  .play-viewport .city-actions {
+    top: 118px;
+  }
+  .play-viewport .hud-section,
+  .play-viewport .clean-status {
+    max-height: 34dvh;
+    width: min(260px, calc(100% - 28px));
+    padding: 10px;
+  }
+  .play-viewport .hud-progress {
+    top: 112px;
+    width: 185px;
+  }
+  .play-viewport .world-heading,
+  .play-viewport .sidebar-heading {
+    max-width: calc(100% - 180px);
+  }
+  .play-viewport .room-strip {
+    top: 166px;
+    max-width: calc(100% - 28px);
+  }
+  .play-viewport .city-bottom {
+    flex-wrap: nowrap;
+  }
+  .play-viewport .city-players > span {
+    display: none;
+  }
+  .play-viewport .city-arrival {
+    bottom: 62px;
+  }
+  .play-viewport .city-drive-hints {
+    max-width: calc(100% - 100px);
+  }
+  .play-viewport .city-radio {
+    bottom: 100px;
+  }
+  .play-viewport .clean-help {
+    bottom: auto;
+    top: 160px;
+    max-width: 190px;
+  }
+  .play-viewport .moving-alert {
+    top: 112px;
+    max-width: calc(100% - 28px);
+  }
+}
+@media (max-height: 520px) and (min-width: 761px) {
+  .play-viewport .hud-section,
+  .play-viewport .clean-status {
+    max-height: 48dvh;
+  }
+  .play-viewport .moving-alert {
+    left: 40%;
+    top: 14px;
+  }
+}

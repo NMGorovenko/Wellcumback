@@ -5,7 +5,13 @@ import type { CityState } from '@/lib/game/city/engine';
 import { RenderKit } from '../world/render-kit';
 import { createCityEnvironment } from './environment';
 import { createMustang } from './mustang';
-import { cityDriveCamera, cityOverviewCamera } from './camera';
+import {
+  cityDriveCamera,
+  cityFaceCamera,
+  cityOverviewCamera,
+  followCityHeading,
+  type CityCameraMode,
+} from './camera';
 
 const SKID_CAPACITY = 160,
   SMOKE_CAPACITY = 20;
@@ -14,18 +20,18 @@ const SKID_CAPACITY = 160,
 export default function CityScene({
   game,
   targetStop = -1,
-  closeView = true,
+  cameraMode = 'drive',
 }: {
   game: RefObject<CityState>;
   targetStop?: number;
-  closeView?: boolean;
+  cameraMode?: CityCameraMode;
 }) {
   const host = useRef<HTMLDivElement>(null),
     selectedStop = useRef(targetStop);
-  const following = useRef(closeView);
+  const mode = useRef(cameraMode);
   useEffect(() => {
-    following.current = closeView;
-  }, [closeView]);
+    mode.current = cameraMode;
+  }, [cameraMode]);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     selectedStop.current = targetStop;
@@ -162,6 +168,11 @@ export default function CityScene({
     const projected = new THREE.Vector3();
     const currentLook = look.clone(),
       currentOutward = outward.clone();
+    let cameraHeading = game.current.heading;
+    const localView = () =>
+      mode.current === 'faces'
+        ? cityFaceCamera(game.current, aspect)
+        : cityDriveCamera({ ...game.current, heading: cameraHeading }, aspect);
     let aspect = 1,
       viewportHeight = 1,
       overviewHalfHeight = 25,
@@ -176,11 +187,10 @@ export default function CityScene({
       viewportHeight = height;
       overviewHalfHeight = cityOverviewCamera(aspect).halfHeight;
       if (!currentHalfHeight) {
-        const driveView = cityDriveCamera(game.current, aspect);
-        currentHalfHeight = following.current
-          ? driveView.halfHeight
-          : overviewHalfHeight;
-        if (following.current) {
+        const driveView = localView();
+        currentHalfHeight =
+          mode.current !== 'map' ? driveView.halfHeight : overviewHalfHeight;
+        if (mode.current !== 'map') {
           currentLook.set(driveView.look.x, driveView.look.y, driveView.look.z);
           currentOutward.set(
             driveView.outward.x,
@@ -216,23 +226,25 @@ export default function CityScene({
       lastElapsed = s.elapsed;
       const cameraDelta = Math.min((now - lastCameraTime) / 1000, 0.05);
       lastCameraTime = now;
-      const driveView = cityDriveCamera(s, aspect);
-      const smoothCamera = 1 - Math.exp(-cameraDelta * 5);
-      const desiredLook = following.current
-        ? projected.set(driveView.look.x, driveView.look.y, driveView.look.z)
-        : look;
+      cameraHeading = followCityHeading(cameraHeading, s.heading, cameraDelta);
+      const driveView = localView();
+      const smoothCamera = 1 - Math.exp(-cameraDelta * 8);
+      const desiredLook =
+        mode.current !== 'map'
+          ? projected.set(driveView.look.x, driveView.look.y, driveView.look.z)
+          : look;
       currentLook.lerp(desiredLook, smoothCamera);
-      const desiredOutward = following.current
-        ? projected.set(
-            driveView.outward.x,
-            driveView.outward.y,
-            driveView.outward.z,
-          )
-        : outward;
+      const desiredOutward =
+        mode.current !== 'map'
+          ? projected.set(
+              driveView.outward.x,
+              driveView.outward.y,
+              driveView.outward.z,
+            )
+          : outward;
       currentOutward.lerp(desiredOutward, smoothCamera).normalize();
-      const halfHeight = following.current
-        ? driveView.halfHeight
-        : overviewHalfHeight;
+      const halfHeight =
+        mode.current !== 'map' ? driveView.halfHeight : overviewHalfHeight;
       currentHalfHeight += (halfHeight - currentHalfHeight) * smoothCamera;
       camera.position
         .copy(currentLook)
@@ -243,17 +255,17 @@ export default function CityScene({
       camera.top = currentHalfHeight;
       camera.bottom = -currentHalfHeight;
       camera.updateProjectionMatrix();
-      car.update(s, dt, following.current);
+      car.update(s, dt, mode.current === 'faces');
       city.update(
         s.elapsed,
         selectedStop.current,
         s.nearStop,
-        !following.current && currentHalfHeight > overviewHalfHeight * 0.65,
+        mode.current === 'map' && currentHalfHeight > overviewHalfHeight * 0.65,
         (currentHalfHeight * 2 * 150) / viewportHeight,
       );
       // Spend the shadow map on the nearby street when driving; overview covers both banks.
-      const shadowSize = following.current ? 27 : 160;
-      const shadowTarget = following.current ? currentLook : look;
+      const shadowSize = mode.current !== 'map' ? 27 : 160;
+      const shadowTarget = mode.current !== 'map' ? currentLook : look;
       sun.target.position.copy(shadowTarget);
       sun.position.copy(shadowTarget).add(projected.set(-55, 135, 45));
       sun.shadow.camera.left = -shadowSize;

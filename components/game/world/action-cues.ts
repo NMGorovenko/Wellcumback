@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { RefObject } from 'react';
+import { hudObstacles } from './hud-obstacles.ts';
 
 export type ActionCueRefs = RefObject<(HTMLDivElement | null)[]>;
 const projected = new THREE.Vector3();
@@ -20,6 +21,7 @@ export function placeActionCues(
     height = host.clientHeight;
   const occupied: { x: number; y: number; w: number; h: number }[] = [
     ...avoid,
+    ...hudObstacles(host),
     { x: 12, y: 10, w: Math.min(260, width * 0.45), h: 72 },
     { x: width - 125, y: 10, w: 115, h: 44 },
   ];

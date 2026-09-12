@@ -2,12 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { freshCity } from '../lib/game/city/engine.ts';
-import { cityDriveCamera } from '../components/game/city/camera.ts';
+import {
+  cityDriveCamera,
+  cityFaceCamera,
+  followCityHeading,
+} from '../components/game/city/camera.ts';
 import { createMustang } from '../components/game/city/mustang.ts';
 import { RenderKit } from '../components/game/world/render-kit.ts';
 
-const cameraFor = (s, aspect) => {
-  const view = cityDriveCamera(s, aspect);
+const cameraFor = (s, aspect, faceView = false) => {
+  const view = faceView
+    ? cityFaceCamera(s, aspect)
+    : cityDriveCamera(s, aspect);
   const half = view.halfHeight;
   const camera = new THREE.OrthographicCamera(
     -half * aspect,
@@ -67,7 +73,7 @@ void test('driving view leads real forward, reversing and sideways motion while 
       }
 });
 
-void test('all three actual photo faces are large enough and unobstructed by the coupe in the driving view', () => {
+void test('all three actual photo faces are large enough and unobstructed by the coupe in the face inspection view', () => {
   const scene = new THREE.Scene();
   const kit = new RenderKit(scene);
   kit.texture = (url) => {
@@ -86,7 +92,7 @@ void test('all three actual photo faces are large enough and unobstructed by the
       const s = { ...freshCity(), heading };
       car.update(s, 0, true);
       scene.updateMatrixWorld(true);
-      const { camera } = cameraFor(s, 16 / 9);
+      const { camera } = cameraFor(s, 16 / 9, true);
       for (const head of car.passengers) {
         let face;
         head.traverse((object) => {
@@ -148,4 +154,87 @@ void test('all three actual photo faces are large enough and unobstructed by the
   } finally {
     kit.dispose();
   }
+});
+
+void test('chase camera sits behind the car and gives the forward road more room than the rear', () => {
+  for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+    const fx = Math.sin(heading),
+      fz = -Math.cos(heading);
+    const s = {
+      ...freshCity(),
+      x: 0,
+      z: 0,
+      heading,
+      vx: fx * 16,
+      vz: fz * 16,
+      speed: 16,
+    };
+    const { camera, view } = cameraFor(s, 16 / 9);
+    assert.ok(
+      view.outward.x * fx + view.outward.z * fz < -0.5,
+      'look over the boot toward the next corner, never from the bonnet',
+    );
+    const car = new THREE.Vector3(0, 0, 0).project(camera);
+    const road = new THREE.Vector3(fx * 14, 0, fz * 14).project(camera);
+    assert.ok(
+      car.y < -0.2 && car.y > -0.7,
+      'car stays in lower half of the play surface',
+    );
+    assert.ok(
+      road.y > car.y && road.y < 1,
+      'at least 14m of the forward road is visible',
+    );
+    assert.ok(
+      view.halfHeight > 10,
+      'driving is wider than the face inspection',
+    );
+  }
+});
+void test('camera heading crosses north smoothly and ignores frame-rate spikes', () => {
+  const a = Math.PI - 0.02,
+    b = -Math.PI + 0.02;
+  const next = followCityHeading(a, b, 1 / 60);
+  assert.ok(
+    next > a && next - a < 0.01,
+    'take the short turn across the angle seam',
+  );
+  assert.ok(
+    Math.abs(followCityHeading(0, 1.5, 5)) < 0.25,
+    'a stalled frame cannot whip the camera around',
+  );
+  assert.equal(followCityHeading(0.5, 1, 0), 0.5);
+});
+
+void test('speed progressively opens the chase view and reserves more forward road under a shallow angle', () => {
+  const frames = [0, 6, 12, 18].map((speed) =>
+    cityDriveCamera(
+      { ...freshCity(), x: 0, z: 0, heading: 0, vx: 0, vz: -speed, speed },
+      16 / 9,
+    ),
+  );
+  for (let i = 1; i < frames.length; i++) {
+    assert.ok(frames[i].halfHeight > frames[i - 1].halfHeight);
+    assert.ok(-frames[i].look.z > -frames[i - 1].look.z);
+  }
+  assert.ok(
+    frames.at(-1).halfHeight > frames[0].halfHeight * 1.8,
+    'full speed reveals almost twice the street area on each axis',
+  );
+  const v = frames[0];
+  const elevation =
+    (Math.atan2(v.outward.y, Math.hypot(v.outward.x, v.outward.z)) * 180) /
+    Math.PI;
+  assert.ok(
+    elevation > 30 && elevation < 37,
+    'a shallow rear angle shows the road instead of looking straight down',
+  );
+  const { camera } = cameraFor(
+    { ...freshCity(), x: 0, z: 0, heading: 0, vx: 0, vz: -18, speed: 18 },
+    16 / 9,
+  );
+  const road = new THREE.Vector3(0, 0, -30).project(camera);
+  assert.ok(
+    Math.abs(road.y) < 0.9,
+    'at speed the next 30m remain clearly in view',
+  );
 });

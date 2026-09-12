@@ -1,9 +1,48 @@
 import { CITY_BOUNDS } from '../../../lib/game/city/layout.ts';
 import type { CityState } from '../../../lib/game/city/engine.ts';
 
+export type CityCameraMode = 'drive' | 'map' | 'faces';
+export const CITY_CAMERA_MODES: CityCameraMode[] = ['drive', 'map', 'faces'];
+
+/** Rear chase view: the bonnet points into the road, with enough room to
+ * read the next corner. Drift leads the camera along velocity, not the nose. */
+export function cityDriveCamera(
+  state: Pick<CityState, 'x' | 'z' | 'vx' | 'vz' | 'heading' | 'speed'>,
+  aspect: number,
+) {
+  const speed = Math.max(0, Math.min(18, state.speed));
+  const lead = 2.8 + speed * 0.43;
+  const fx = Math.sin(state.heading),
+    fz = -Math.cos(state.heading);
+  const moving = speed > 0.4;
+  const dx = moving ? state.vx / Math.max(state.speed, 0.4) : fx;
+  const dz = moving ? state.vz / Math.max(state.speed, 0.4) : fz;
+  const length = Math.hypot(1, 0.68);
+  return {
+    look: { x: state.x + dx * lead, y: 0.6, z: state.z + dz * lead },
+    outward: { x: -fx / length, y: 0.68 / length, z: -fz / length },
+    halfHeight: Math.max(
+      7.5 + speed * 0.4,
+      (5 + lead * Math.abs(dx * -fz + dz * fx)) / Math.max(0.3, aspect),
+    ),
+  };
+}
+
+/** Unwrap across north and damp orientation independently of translation. */
+export function followCityHeading(current: number, target: number, dt: number) {
+  const difference = Math.atan2(
+    Math.sin(target - current),
+    Math.cos(target - current),
+  );
+  return (
+    current +
+    difference * (1 - Math.exp(-Math.min(Math.max(dt, 0), 0.05) * 3.5))
+  );
+}
+
 /** A front-quarter cutaway view shows the real cabin faces. The target leads
  * actual travel, including lateral drift and reverse, rather than only the bonnet. */
-export function cityDriveCamera(
+export function cityFaceCamera(
   state: Pick<CityState, 'x' | 'z' | 'vx' | 'vz' | 'heading' | 'speed'>,
   aspect: number,
 ) {
