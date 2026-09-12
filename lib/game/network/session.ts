@@ -1,3 +1,9 @@
+import {
+  driveIsNeutral,
+  neutralDrive,
+  resolveDrive,
+  type DriveAxes,
+} from '../input/drive.ts';
 import { DrivingPeer, type PeerStatus } from './peer.ts';
 import { drivingKeys, type PeerPacket } from './protocol.ts';
 import { tickCity, type CityState } from '../city/engine.ts';
@@ -27,8 +33,8 @@ let remoteAt: number | null = null,
   transportConnected = false,
   appStale = false,
   guestArmed = false,
-  hostArmed = true,
-  previousHorn = false;
+  hostArmed = true;
+let remoteDrive = neutralDrive();
 let remoteKeys = new Set<string>(),
   remoteCity: CityState | null = null;
 const notify = (change: Partial<SessionView>) => {
@@ -51,6 +57,7 @@ function receive(packet: PeerPacket) {
   ) {
     lastSequence = packet.seq;
     remoteKeys = new Set(packet.keys);
+    remoteDrive = packet.drive ?? neutralDrive();
     remoteAt = performance.now();
   } else if (
     view.role === 'guest' &&
@@ -93,7 +100,10 @@ function setup(role: 'host' | 'guest') {
       }
       transportConnected = connected;
       if (!connected) {
-        remoteKeys.clear();
+        {
+          remoteKeys.clear();
+          remoteDrive = neutralDrive();
+        }
         guestArmed = false;
       }
       notify({ status, message });
@@ -152,7 +162,10 @@ export function disconnectNetwork() {
   const connection = peer;
   peer = null;
   connection?.close();
-  remoteKeys.clear();
+  {
+    remoteKeys.clear();
+    remoteDrive = neutralDrive();
+  }
   remoteCity = null;
   remoteAt = null;
   connectedAt = 0;
@@ -164,16 +177,17 @@ export function disconnectNetwork() {
   sequence = 0;
   sendClock = 0;
   epoch = 0;
-  previousHorn = false;
   notify(EMPTY_SESSION);
 }
 export function passNetworkWheel() {
   if (view.role === 'host' && view.status === 'connected') {
     epoch++;
-    remoteKeys.clear();
+    {
+      remoteKeys.clear();
+      remoteDrive = neutralDrive();
+    }
     remoteAt = null;
     connectedAt = performance.now();
-    previousHorn = false;
     hostArmed = false;
     const driver = view.driver === 'host' ? 'guest' : 'host';
     notify({
@@ -194,12 +208,14 @@ export function tickNetworkCity(
   s: CityState,
   dt: number,
   input: ReadonlySet<string>,
+  axes?: DriveAxes,
 ) {
   if (!isNetworkDrive()) {
-    tickCity(s, dt, input);
+    tickCity(s, dt, input, axes);
     return;
   }
   s.interaction = null;
+  const localDrive = resolveDrive(input, axes);
   if (!Number.isFinite(dt) || dt < 0) return;
   const delta = Math.min(dt, 0.1),
     now = performance.now();
@@ -207,6 +223,7 @@ export function tickNetworkCity(
   const stale = transportConnected && now - (remoteAt ?? connectedAt) > 2000;
   if (stale && !appStale) {
     appStale = true;
+    hostArmed = false;
     notify({
       status: 'connecting',
       message: 'Ждём данные друга. Управление отпущено.',
@@ -237,7 +254,7 @@ export function tickNetworkCity(
       !remoteCity?.paused &&
       view.driver === 'guest';
     if (!eligible) guestArmed = false;
-    else if (!pressed.length) guestArmed = true;
+    else if (!pressed.length && driveIsNeutral(localDrive)) guestArmed = true;
     const canDrive = eligible && guestArmed;
     if (sendClock >= 0.05 && transportConnected) {
       peer?.send({
@@ -246,6 +263,7 @@ export function tickNetworkCity(
         seq: sequence++,
         epoch,
         keys: canDrive ? pressed : [],
+        drive: canDrive ? localDrive : neutralDrive(),
       });
       sendClock = 0;
     }
@@ -259,13 +277,21 @@ export function tickNetworkCity(
     }
     return;
   }
-  if (!transportConnected || remoteAt === null || now - remoteAt >= 350)
+  if (!transportConnected || remoteAt === null || now - remoteAt >= 350) {
     remoteKeys.clear();
-  if (view.driver === 'host' && !drivingKeys(input).length) hostArmed = true;
+    remoteDrive = neutralDrive();
+  }
+  if (
+    view.driver === 'host' &&
+    !stale &&
+    !drivingKeys(input).length &&
+    driveIsNeutral(localDrive)
+  )
+    hostArmed = true;
   const keys = new Set(
     drivingKeys(
       view.driver === 'host'
-        ? hostArmed
+        ? hostArmed && !stale
           ? input
           : new Set<string>()
         : remoteKeys,
@@ -273,16 +299,16 @@ export function tickNetworkCity(
   );
   // Host remains authoritative. E and pending local mission activation are
   // excluded throughout the handshake and after failure, not just when connected.
-  tickCity(s, delta, keys);
-  const horn = keys.has('KeyQ');
-  if (horn && !previousHorn) {
-    s.radio =
-      view.driver === 'host'
-        ? 'Ярик: Бип-бип! Мы вообще-то переезжаем.'
-        : 'Сумки у Ярика.';
-    s.radioUntil = s.elapsed + 4;
-  }
-  previousHorn = horn;
+  tickCity(
+    s,
+    delta,
+    keys,
+    view.driver === 'host'
+      ? hostArmed && !stale
+        ? localDrive
+        : neutralDrive()
+      : remoteDrive,
+  );
   if (sendClock >= 0.06 && transportConnected) {
     peer?.send({
       type: 'city',

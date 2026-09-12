@@ -1,6 +1,6 @@
 {
   "name": "wellcum-back",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -13,7 +13,15 @@
     "format": "oxfmt",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
-    "build:portable": "node scripts/build-portable.mjs"
+    "build:portable": "node scripts/build-portable.mjs",
+    "desktop:prepare": "node scripts/build-desktop.mjs prepare",
+    "desktop:run": "node scripts/build-desktop.mjs run",
+    "desktop:dir": "node scripts/build-desktop.mjs dir",
+    "desktop:mac": "node scripts/build-desktop.mjs mac",
+    "desktop:mac:arm64": "node scripts/build-desktop.mjs mac-arm64",
+    "desktop:win": "node scripts/build-desktop.mjs win",
+    "desktop:win:zip": "node scripts/build-desktop.mjs win-zip",
+    "desktop:smoke": "node scripts/smoke-desktop.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -48,6 +56,8 @@
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
+    "electron": "44.3.0",
+    "electron-builder": "26.16.1",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",

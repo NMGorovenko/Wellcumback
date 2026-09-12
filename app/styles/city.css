@@ -275,3 +275,44 @@
     min-width: 105px;
   }
 }
+
+.city-pause-menu {
+  background: #18231af5;
+  border: 1px solid #cbdca552;
+  border-radius: 12px;
+  width: min(380px, calc(100% - 32px));
+  padding: 20px;
+  display: grid;
+  gap: 6px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  box-shadow: 0 12px 40px #0005;
+}
+.city-pause-menu h2 {
+  font-size: 21px;
+  margin: 0 0 9px;
+}
+.city-pause-menu button {
+  color: #f3f3e8;
+  text-align: left;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #ffffff08;
+}
+.city-pause-menu button.pad-selected {
+  background: #c1d78a24;
+  border-color: #d4e49b;
+}
+.city-pause-menu button:disabled {
+  opacity: 0.35;
+}
+.city-pause-menu small {
+  color: #c6cbb5;
+  font-size: 11px;
+  margin-top: 8px;
+  line-height: 1.5;
+}

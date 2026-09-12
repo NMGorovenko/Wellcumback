@@ -1,4 +1,5 @@
 'use client';
+import { useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,14 @@ export function EpisodeDialog({
   onChoose: (id: string) => void;
   onClose: () => void;
 }) {
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  useEffect(() => {
+    if (open)
+      optionRefs.current[selected]?.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      });
+  }, [open, selected]);
   return (
     <Dialog
       open={open}
@@ -41,6 +50,9 @@ export function EpisodeDialog({
             <button
               type="button"
               key={episode.id}
+              ref={(node) => {
+                optionRefs.current[index] = node;
+              }}
               className={`episode-option${selected === index ? ' pad-selected' : ''}`}
               onFocus={() => onSelect(index)}
               onPointerEnter={() => onSelect(index)}

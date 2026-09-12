@@ -15,6 +15,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--tag', required=True, help='Release tag, for example v0.2.0')
+parser.add_argument('--desktop', action='store_true', help='Include verified macOS and Windows desktop builds')
 args = parser.parse_args()
 version = json.loads((ROOT / 'package.json').read_text())['version']
 if not re.fullmatch(r'\d+\.\d+\.\d+', version) or args.tag != 'v' + version:
@@ -103,6 +104,22 @@ with zipfile.ZipFile(game_zip) as archive:
     if archive.testzip() or archive.read('Wellcum-back.html') != html_bytes:
         raise SystemExit('Playable ZIP failed integrity verification')
 artifacts = [game_zip, standalone, source_zip]
+if args.desktop:
+    suffixes = ['mac-arm64.zip', 'mac-arm64.dmg', 'mac-x64.zip', 'mac-x64.dmg',
+                'windows-x64-portable.exe', 'windows-x64-setup.exe']
+    for suffix in suffixes:
+        binary = ROOT / 'outputs' / 'desktop' / (prefix + '-' + suffix)
+        record = json.loads(Path(str(binary) + '.build.json').read_text())
+        data = binary.read_bytes()
+        if (record['version'] != version or record['source_html_sha256'] != build['html_sha256']
+                or record['bytes'] != len(data) or record['artifact_sha256'] != hashlib.sha256(data).hexdigest()):
+            raise SystemExit(f'Rebuild stale desktop artifact: {binary.name}')
+        for filename in ('main.cjs', 'security.cjs'):
+            if record['runtime'][filename] != hashlib.sha256((ROOT / 'desktop' / filename).read_bytes()).hexdigest():
+                raise SystemExit(f'Rebuild desktop artifact after runtime changes: {binary.name}')
+        destination = output / binary.name
+        shutil.copyfile(binary, destination)
+        artifacts.append(destination)
 checksums = '\n'.join(f'{hashlib.sha256(file.read_bytes()).hexdigest()}  {file.name}' for file in artifacts) + '\n'
 (output / 'SHA256SUMS.txt').write_text(checksums)
 print(f'Release {args.tag} at {commit}: {len(artifacts)} artifacts, {len(references)} original references verified')

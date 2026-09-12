@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
   ArrowUpRight,
   MapPin,
@@ -38,10 +38,14 @@ export default function CityHub({
   players,
   onPlayers,
   onGamepads,
+  onControls,
+  onFullscreen,
 }: {
   game: RefObject<CityState>;
   onPlay: (story: CityMission) => void;
   onStories: () => void;
+  onControls: () => void;
+  onFullscreen: () => void;
   players: number;
   onPlayers: (count: number) => void;
   onGamepads?: (status: Pick<PadFrame, 'assignments' | 'unsupported'>) => void;
@@ -53,15 +57,21 @@ export default function CityHub({
   const [view, setView] = useState(freshCity);
   const [target, setTarget] = useState(0);
   const [closeView, setCloseView] = useState(false);
+  const [pauseSelected, setPauseSelected] = useState(0);
+  const pauseButtons = useRef<(HTMLButtonElement | null)[]>([]);
+  useEffect(() => {
+    if (view.paused)
+      pauseButtons.current[pauseSelected]?.scrollIntoView({ block: 'nearest' });
+  }, [pauseSelected, view.paused]);
   const [pads, setPads] = useState<
     Pick<PadFrame, 'assignments' | 'unsupported'>
   >({ assignments: [], unsupported: [] });
   const keys = useRef(new Set<string>());
   useGameInspection(game, keys);
   const pause = () => {
-    if (isNetworkDrive() && (!document.hasFocus() || network.role === 'guest'))
-      return;
+    if (isNetworkDrive() && !document.hasFocus()) return;
     game.current.paused = !game.current.paused;
+    setPauseSelected(0);
     keys.current.clear();
     setView({ ...game.current });
   };
@@ -74,11 +84,99 @@ export default function CityHub({
       onPlay(stop.mission);
     }
   };
+  const pauseItems = [
+    { id: 'resume', label: 'Продолжить поездку' },
+    { id: 'stories', label: 'Все истории', disabled: shared },
+    { id: 'players', label: `Игроков в истории: ${players}`, disabled: shared },
+    { id: 'target', label: `Куда едем: ${cityStops[target].title}` },
+    {
+      id: 'camera',
+      label: closeView ? 'Показать весь город' : 'Приблизить Mustang',
+    },
+    {
+      id: 'reset',
+      label: 'Вернуть машину на дорогу',
+      disabled: shared && network.role === 'guest',
+    },
+    { id: 'controls', label: 'Управление' },
+    { id: 'fullscreen', label: 'Полный экран / окно' },
+    ...(shared && network.role === 'host'
+      ? [
+          {
+            id: 'wheel',
+            label:
+              network.driver === 'host'
+                ? 'Передать руль другу'
+                : 'Вернуть руль себе',
+            disabled: network.status !== 'connected',
+          },
+        ]
+      : []),
+    ...(shared
+      ? [{ id: 'disconnect', label: 'Выйти из сетевой поездки' }]
+      : []),
+  ];
+  const runPauseAction = (id: string) => {
+    switch (id) {
+      case 'resume':
+        pause();
+        break;
+      case 'stories':
+        onStories();
+        break;
+      case 'players':
+        onPlayers((players % 3) + 1);
+        break;
+      case 'target':
+        setTarget((target + 1) % cityStops.length);
+        break;
+      case 'camera':
+        setCloseView(!closeView);
+        pause();
+        break;
+      case 'reset':
+        resetCityCar(game.current);
+        pause();
+        break;
+      case 'controls':
+        onControls();
+        break;
+      case 'fullscreen':
+        onFullscreen();
+        break;
+      case 'wheel':
+        passNetworkWheel();
+        pause();
+        break;
+      case 'disconnect':
+        disconnectNetwork();
+        pause();
+        break;
+    }
+  };
+  const movePause = (direction: 'up' | 'down' | 'left' | 'right') => {
+    if (
+      (direction === 'left' || direction === 'right') &&
+      pauseItems[pauseSelected].id === 'players' &&
+      !shared
+    ) {
+      onPlayers(
+        Math.max(1, Math.min(3, players + (direction === 'right' ? 1 : -1))),
+      );
+      return;
+    }
+    const delta = direction === 'up' || direction === 'left' ? -1 : 1;
+    let next = pauseSelected;
+    do {
+      next = (next + delta + pauseItems.length) % pauseItems.length;
+    } while (pauseItems[next].disabled);
+    setPauseSelected(next);
+  };
   useGameLoop({
     game,
     keys,
-    tick: (s, dt, input) => {
-      tickNetworkCity(s, dt, input);
+    tick: (s, dt, input, axes) => {
+      tickNetworkCity(s, dt, input, axes);
       if (s.interaction) {
         const id = s.interaction as CityMission;
         s.interaction = null;
@@ -94,16 +192,20 @@ export default function CityHub({
       onGamepads?.(status);
     },
     tickWhileBlocked: shared,
+    profile: 'city',
     padMenu: {
       enabled: view.paused,
-      onMove: () => {},
-      onConfirm: pause,
+      onMove: movePause,
+      onConfirm: () => {
+        const item = pauseItems[pauseSelected];
+        if (!item.disabled) runPauseAction(item.id);
+      },
       onBack: pause,
     },
   });
   const stop = cityStops[view.nearStop];
   const control = (key: Parameters<typeof keyboardPrompt>[1]) =>
-    gamepadPrompt(pads, 0, key) || keyboardPrompt(0, key);
+    gamepadPrompt(pads, 0, key, 'city') || keyboardPrompt(0, key, 'city');
   return (
     <section
       className="city-hub"
@@ -168,7 +270,7 @@ export default function CityHub({
         {settings.showWorldPrompts && !stop && !view.paused && (
           <div className="city-drive-hints">
             <span>
-              <kbd>{control('vertical')}</kbd> газ / назад
+              <kbd>{control('vertical')}</kbd> газ / тормоз
             </span>
             <span>
               <kbd>{control('horizontal')}</kbd> руль
@@ -180,9 +282,28 @@ export default function CityHub({
         )}
         {view.paused && (
           <div className="city-pause">
-            <button className="play-button" onClick={pause}>
-              <Play size={17} /> Поехали дальше
-            </button>
+            <section className="city-pause-menu" aria-label="Пауза на карте">
+              <h2>Куда дальше?</h2>
+              {pauseItems.map((item, i) => (
+                <button
+                  key={item.id}
+                  ref={(node) => {
+                    pauseButtons.current[i] = node;
+                  }}
+                  className={i === pauseSelected ? 'pad-selected' : ''}
+                  disabled={item.disabled}
+                  onClick={() => runPauseAction(item.id)}
+                  onFocus={() => setPauseSelected(i)}
+                >
+                  {item.id === 'resume' && <Play size={15} />}
+                  {item.label}
+                </button>
+              ))}
+              <small>
+                ↑↓ / стик — выбрать · E / A / × — подтвердить · Esc / B / ○ —
+                назад
+              </small>
+            </section>
           </div>
         )}
         {view.elapsed < view.radioUntil && (

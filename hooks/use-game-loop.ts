@@ -1,4 +1,6 @@
 'use client';
+import { neutralDrive, type DriveAxes } from '@/lib/game/input/drive';
+import type { InputProfile } from '@/lib/game/input/settings';
 import { useEffect, useRef, type RefObject } from 'react';
 import {
   PLAYER_BINDINGS,
@@ -46,10 +48,11 @@ export function useGameLoop<
   padMenu,
   onGamepads,
   tickWhileBlocked = false,
+  profile = 'game',
 }: {
   game: RefObject<T>;
   keys: RefObject<Set<string>>;
-  tick: (state: T, delta: number, keys: Set<string>) => void;
+  tick: (state: T, delta: number, keys: Set<string>, drive?: DriveAxes) => void;
   action: () => void;
   pause: () => void;
   snapshot: (state: T) => void;
@@ -57,6 +60,7 @@ export function useGameLoop<
   onGamepads?: (status: PadStatus) => void;
   /** City transport keeps sending neutral heartbeats while a dialog blocks controls. */
   tickWhileBlocked?: boolean;
+  profile?: InputProfile;
 }) {
   const callbacks = useRef({
     tick,
@@ -66,6 +70,7 @@ export function useGameLoop<
     padMenu,
     onGamepads,
     tickWhileBlocked,
+    profile,
   });
   useEffect(() => {
     callbacks.current = {
@@ -76,13 +81,23 @@ export function useGameLoop<
       padMenu,
       onGamepads,
       tickWhileBlocked,
+      profile,
     };
-  }, [tick, action, pause, snapshot, padMenu, onGamepads, tickWhileBlocked]);
+  }, [
+    tick,
+    action,
+    pause,
+    snapshot,
+    padMenu,
+    onGamepads,
+    tickWhileBlocked,
+    profile,
+  ]);
   useEffect(() => {
     initializeControlSettings();
     const sourceKeys = keys.current;
     const physicalKeys = new Set<string>();
-    let previousBindings = getControlSettings().keys,
+    let previousBindings = getControlSettings(),
       previousBlocked = isControlInputBlocked();
     const padState = createPadInput(),
       navigation = createPadNavigation();
@@ -125,8 +140,12 @@ export function useGameLoop<
         )
       )
         return;
-      const code = canonicalKeyForPhysical(getControlSettings(), event.code);
       const menu = callbacks.current.padMenu;
+      const code = canonicalKeyForPhysical(
+        getControlSettings(),
+        event.code,
+        menu?.enabled ? 'game' : callbacks.current.profile,
+      );
       if (menu?.enabled) {
         if (code && keyDirections[code]) {
           event.preventDefault();
@@ -161,7 +180,11 @@ export function useGameLoop<
       // it can act again; browser key-repeat is not a fresh press.
       if (event.repeat && !physicalKeys.has(event.code)) return;
       const actionAlreadyHeld =
-        mapPhysicalKeys(getControlSettings(), physicalKeys).has('KeyE') ||
+        mapPhysicalKeys(
+          getControlSettings(),
+          physicalKeys,
+          callbacks.current.profile,
+        ).has('KeyE') ||
         keys.current.has('KeyE') ||
         keys.current.has('Space') ||
         primaryPadHeld;
@@ -197,17 +220,18 @@ export function useGameLoop<
         previousPaused !== game.current.paused ||
         previousMenu !== menuEnabled ||
         previousBlocked !== blocked ||
-        previousBindings !== settings.keys
+        previousBindings !== settings
       )
         resetInput();
       if (blocked && !previousBlocked && !game.current.paused)
         callbacks.current.pause();
       previousBlocked = blocked;
-      previousBindings = settings.keys;
+      previousBindings = settings;
       const pads = mapGamepads(
         padState,
         document.hidden || !focused ? [] : readGamepads(),
         inputPlayerCount(game.current),
+        callbacks.current.profile,
       );
       const nextStatus =
         pads.assignments
@@ -225,11 +249,17 @@ export function useGameLoop<
           unsupported: pads.unsupported,
         });
       }
-      const keyboard = mapPhysicalKeys(settings, physicalKeys);
+      const keyboard = mapPhysicalKeys(
+        settings,
+        physicalKeys,
+        callbacks.current.profile,
+      );
       const localKeys = mergeInputKeys(keys.current, keyboard);
       let merged = mergeInputKeys(localKeys, pads.keys);
+      let drive = pads.drive;
       if (blocked) {
         merged = new Set();
+        drive = neutralDrive();
         primaryPadHeld = false;
       } else if (menuEnabled && menu) {
         const nav = navigateGamepad(navigation, pads, now / 1000);
@@ -237,11 +267,13 @@ export function useGameLoop<
         else if (nav.confirm) menu.onConfirm();
         else if (nav.direction) menu.onMove(nav.direction);
         merged = new Set();
+        drive = neutralDrive();
         primaryPadHeld = false;
       } else if (pads.pausePressed) {
         callbacks.current.pause();
         resetPadInput(padState);
         merged = new Set();
+        drive = neutralDrive();
         primaryPadHeld = false;
       } else {
         primaryPadHeld = pads.keys.has('KeyE');
@@ -254,7 +286,7 @@ export function useGameLoop<
           callbacks.current.action();
       }
       if (!blocked || callbacks.current.tickWhileBlocked)
-        callbacks.current.tick(game.current, dt, merged);
+        callbacks.current.tick(game.current, dt, merged, drive);
       previousPaused = game.current.paused;
       previousMenu = menuEnabled;
       elapsed += dt;

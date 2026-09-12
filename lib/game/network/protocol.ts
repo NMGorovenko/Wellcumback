@@ -1,3 +1,4 @@
+import type { DriveAxes } from '../input/drive.ts';
 import type { CityState } from '../city/engine.ts';
 export const NETWORK_VERSION = 1;
 export const DRIVE_KEYS = [
@@ -15,6 +16,7 @@ export type DrivePacket = {
   seq: number;
   epoch: number;
   keys: DriveKey[];
+  drive?: DriveAxes;
 };
 export type CityPacket = {
   type: 'city';
@@ -52,9 +54,26 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
         new Set(v.keys).size !== v.keys.length
       )
         return null;
+      const drive = v.drive as DriveAxes | undefined;
+      if (
+        drive !== undefined &&
+        (!drive ||
+          typeof drive !== 'object' ||
+          Array.isArray(drive) ||
+          ![drive.throttle, drive.steer].every(
+            (axis) =>
+              typeof axis === 'number' &&
+              Number.isFinite(axis) &&
+              Math.abs(axis) <= 1,
+          ))
+      )
+        return null;
       return {
         type: 'input',
         version: 1,
+        ...(drive
+          ? { drive: { throttle: drive.throttle, steer: drive.steer } }
+          : {}),
         seq: Number(v.seq),
         epoch: Number(v.epoch),
         keys: v.keys as DriveKey[],

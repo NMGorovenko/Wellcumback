@@ -7,6 +7,10 @@ import {
   type GameState,
 } from '@/lib/game/screen/engine';
 import { NAMES, SIDES, ACTION_LABELS, clock } from './screen-hud-data';
+import type {
+  ScreenResultAction,
+  ScreenResultOption,
+} from '@/lib/game/screen/result-menu';
 import {
   Meter,
   Fill,
@@ -22,9 +26,10 @@ type Props = {
   clickAction: (player?: number) => void;
   chooseChairs: (count: 1 | 2) => void;
   findLadder: () => void;
-  onExit: () => void;
-  onNext?: () => void;
-  restart: () => void;
+  resultMenu: readonly ScreenResultOption[];
+  resultChoice: number;
+  onResultSelect: (index: number) => void;
+  onResultAction: (action: ScreenResultAction) => void;
   keys: KeyRef;
   unlockAudio: () => void;
 };
@@ -36,9 +41,10 @@ export function ScreenPhasePanel({
   clickAction,
   chooseChairs,
   findLadder,
-  onExit,
-  onNext,
-  restart,
+  resultMenu,
+  resultChoice,
+  onResultSelect,
+  onResultAction,
   keys,
   unlockAudio,
 }: Props) {
@@ -541,22 +547,20 @@ export function ScreenPhasePanel({
               <small>полётов на диван</small>
             </span>
           </div>
-          <button
-            type="button"
-            className="hud-primary"
-            onClick={onNext ?? onExit}
-          >
-            {onNext ? 'В машину · дальше по городу' : 'К другим историям'}{' '}
-            <ArrowRight size={16} />
-          </button>
-          {onNext && (
-            <button type="button" className="hud-text-button" onClick={onExit}>
-              К итогам вечера
+          {resultMenu.map((option, index) => (
+            <button
+              key={option.id}
+              type="button"
+              className={`${index === 0 ? 'hud-primary' : option.id === 'restart' ? 'hud-secondary' : 'hud-text-button'}${resultChoice === index ? ' pad-selected' : ''}`}
+              onFocus={() => onResultSelect(index)}
+              onPointerEnter={() => onResultSelect(index)}
+              onClick={() => onResultAction(option.id)}
+            >
+              {option.id === 'restart' && <RotateCcw size={14} />}
+              {option.label}
+              {index === 0 && <ArrowRight size={16} />}
             </button>
-          )}
-          <button type="button" className="hud-secondary" onClick={restart}>
-            <RotateCcw size={14} /> Переделаем нормально
-          </button>
+          ))}
         </div>
       );
   }

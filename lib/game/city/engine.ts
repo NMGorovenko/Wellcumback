@@ -1,3 +1,4 @@
+import { resolveDrive, type DriveAxes } from '../input/drive.ts';
 import {
   BRIDGES,
   CITY_BOUNDS,
@@ -23,6 +24,8 @@ export type CityState = {
   nearStop: number;
   interaction: string | null;
   previousAction: boolean;
+  /** Optional for compatibility with older network snapshots. */
+  previousHorn?: boolean;
   accumulator: number;
   radio: string;
   radioUntil: number;
@@ -45,6 +48,7 @@ export const freshCity = (): CityState => ({
   nearStop: -1,
   interaction: null,
   previousAction: false,
+  previousHorn: false,
   accumulator: 0,
   radio: 'Никита: Все сели? Поехали вспоминать этот год.',
   radioUntil: 7,
@@ -92,11 +96,16 @@ export function resetCityCar(s: CityState) {
   s.radio = 'Ярик: Развернулись. Так и было задумано.';
   s.radioUntil = s.elapsed + 5;
 }
-function step(s: CityState, keys: ReadonlySet<string>) {
+function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
   s.elapsed += STEP;
   s.bumpCooldown = Math.max(0, s.bumpCooldown - STEP);
-  const gas = Number(keys.has('KeyW')) - Number(keys.has('KeyS'));
-  const steering = Number(keys.has('KeyD')) - Number(keys.has('KeyA'));
+  const horn = keys.has('KeyQ');
+  if (horn && !s.previousHorn) {
+    s.radio = 'Ярик: Бип-бип! Мы вообще-то переезжаем.';
+    s.radioUntil = s.elapsed + 4;
+  }
+  s.previousHorn = horn;
+  const { throttle: gas, steer: steering } = resolveDrive(keys, axes);
   const drift = keys.has('ShiftLeft');
   let fx = Math.sin(s.heading),
     fz = -Math.cos(s.heading);
@@ -118,7 +127,9 @@ function step(s: CityState, keys: ReadonlySet<string>) {
     s.vz *= 0.963;
   }
   const magnitude = Math.hypot(s.vx, s.vz),
-    maxSpeed = gas < 0 ? 6 : 12;
+    // A brake request does not turn forward motion into reverse motion.
+    // Apply the reverse cap only after the car actually starts moving back.
+    maxSpeed = s.vx * fx + s.vz * fz < 0 ? 6 : 12;
   if (magnitude > maxSpeed) {
     s.vx *= maxSpeed / magnitude;
     s.vz *= maxSpeed / magnitude;
@@ -169,11 +180,16 @@ function step(s: CityState, keys: ReadonlySet<string>) {
   s.previousAction = action;
 }
 /** Fixed steps keep grip/collisions consistent on 30, 60 and 144 Hz displays. */
-export function tickCity(s: CityState, dt: number, keys: ReadonlySet<string>) {
+export function tickCity(
+  s: CityState,
+  dt: number,
+  keys: ReadonlySet<string>,
+  axes?: DriveAxes,
+) {
   if (s.paused || !Number.isFinite(dt) || dt <= 0) return;
   s.accumulator += Math.min(dt, 0.1);
   while (s.accumulator >= STEP) {
-    step(s, keys);
+    step(s, keys, axes);
     s.accumulator -= STEP;
   }
 }

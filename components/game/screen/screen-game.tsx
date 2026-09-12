@@ -41,6 +41,12 @@ import {
 } from '@/lib/game/screen/engine';
 import { EpisodeDialog } from '../episode-dialog';
 import {
+  screenResultMenu,
+  moveScreenResultChoice,
+  runScreenResultAction,
+  type ScreenResultAction,
+} from '@/lib/game/screen/result-menu';
+import {
   createScreenEpisode,
   screenEpisodes,
   type ScreenEpisode,
@@ -92,6 +98,8 @@ export default function ScreenGame({
     Pick<PadFrame, 'assignments' | 'unsupported'>
   >({ assignments: [], unsupported: [] });
   const [pauseChoice, setPauseChoice] = useState(0);
+  const [resultChoice, setResultChoice] = useState(0);
+  const resultMenu = screenResultMenu(!!onNext);
   const [episodeOpen, setEpisodeOpen] = useState(false);
   const [episodeChoice, setEpisodeChoice] = useState(0);
   useEffect(() => {
@@ -139,7 +147,11 @@ export default function ScreenGame({
                 screenEpisodes.length) %
               screenEpisodes.length,
           );
-        } else if (view.paused && !briefOpen)
+        } else if (view.phase === 'result')
+          setResultChoice((choice) =>
+            moveScreenResultChoice(choice, direction, resultMenu),
+          );
+        else if (view.paused && !briefOpen)
           setPauseChoice(
             (n) =>
               (n + (direction === 'up' || direction === 'left' ? -1 : 1) + 5) %
@@ -149,7 +161,8 @@ export default function ScreenGame({
       onConfirm: () => {
         if (episodeOpen) jumpToEpisode(screenEpisodes[episodeChoice].id);
         else if (briefOpen) begin();
-        else if (view.phase === 'result') (onNext ?? onExit)();
+        else if (view.phase === 'result')
+          chooseResult((resultMenu[resultChoice] ?? resultMenu[0]).id);
         else
           [() => setPause(false), openControls, openEpisodes, restart, onExit][
             pauseChoice
@@ -243,12 +256,16 @@ export default function ScreenGame({
     setBriefOpen(false);
     setPause(false);
   }
+  function chooseResult(id: ScreenResultAction) {
+    runScreenResultAction(id, { onNext, onExit, restart });
+  }
   function restart() {
     game.current = initialGame(players);
     keys.current.clear();
     saved.current = false;
     lastSoundEvent.current = 0;
     setSelectedPlayer(0);
+    setResultChoice(0);
     setEpisodeOpen(false);
     setBriefOpen(true);
     snapshot();
@@ -264,6 +281,7 @@ export default function ScreenGame({
     saved.current = false;
     lastSoundEvent.current = 0;
     setSelectedPlayer(0);
+    setResultChoice(0);
     setBriefOpen(false);
     setEpisodeOpen(false);
     unlockAudio();
@@ -305,9 +323,10 @@ export default function ScreenGame({
       clickAction={clickAction}
       chooseChairs={chooseChairs}
       findLadder={findLadder}
-      onExit={onExit}
-      onNext={onNext}
-      restart={restart}
+      resultMenu={resultMenu}
+      resultChoice={resultChoice}
+      onResultSelect={setResultChoice}
+      onResultAction={chooseResult}
       keys={keys}
       unlockAudio={unlockAudio}
     />

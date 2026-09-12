@@ -1,6 +1,12 @@
 import { PLAYER_BINDINGS } from './bindings.ts';
 import { getControlSettings } from './settings-store.ts';
-import { physicalKeyLabel, type CanonicalKey } from './settings.ts';
+import {
+  getPhysicalBinding,
+  physicalKeyLabel,
+  type CanonicalKey,
+  type InputProfile,
+} from './settings.ts';
+import { analogAxis, neutralDrive, type DriveAxes } from './drive.ts';
 export { PLAYER_BINDINGS } from './bindings.ts';
 /** Standard Gamepad layout: https://www.w3.org/TR/gamepad/#remapping
  * Device identity selects prompt labels only; the browser owns button remapping. */
@@ -23,6 +29,7 @@ export type PadAssignment = PadIdentity & {
 };
 export type PadFrame = {
   keys: Set<string>;
+  drive?: DriveAxes;
   primaryActionPressed: boolean;
   pausePressed: boolean;
   assignments: PadAssignment[];
@@ -38,6 +45,7 @@ type PadMemory = {
   action: boolean;
   secondary: boolean;
   pause: boolean;
+  profile: InputProfile;
 };
 export type PadInputState = { pads: Map<number, PadMemory> };
 export type PadNavigationState = {
@@ -104,8 +112,10 @@ export function mapGamepads(
   state: PadInputState,
   raw: readonly (PadLike | null)[],
   players = 1,
+  profile: InputProfile = 'game',
 ): PadFrame {
-  const count = Math.min(3, Math.max(1, Math.floor(players) || 1));
+  const count =
+    profile === 'city' ? 1 : Math.min(3, Math.max(1, Math.floor(players) || 1));
   const connected = raw
     .filter((pad): pad is PadLike => !!pad?.connected)
     .sort((a, b) => a.index - b.index);
@@ -117,6 +127,7 @@ export function mapGamepads(
     if (!live.has(index)) state.pads.delete(index);
   const frame: PadFrame = {
     keys: new Set(),
+    ...(profile === 'city' ? { drive: neutralDrive() } : {}),
     primaryActionPressed: false,
     pausePressed: false,
     assignments: [],
@@ -128,7 +139,12 @@ export function mapGamepads(
   standard.forEach((pad, ordinal) => {
     const player = count > 1 && standard.length === 1 ? 1 : ordinal;
     let memory = state.pads.get(pad.index);
-    if (!memory || memory.id !== pad.id || memory.player !== player) {
+    if (
+      !memory ||
+      memory.id !== pad.id ||
+      memory.player !== player ||
+      memory.profile !== profile
+    ) {
       memory = {
         id: pad.id,
         player,
@@ -138,6 +154,7 @@ export function mapGamepads(
         action: false,
         secondary: false,
         pause: false,
+        profile,
       };
       state.pads.set(pad.index, memory);
     }
@@ -146,7 +163,13 @@ export function mapGamepads(
       Math.abs(axisValue(pad, 1)) <= 0.25 &&
       !pad.buttons[6]?.pressed &&
       buttonValue(pad, 6) <= 0.25 &&
-      [0, 1, 5, 9, 12, 13, 14, 15].every((index) => !pushed(pad, index));
+      [0, 1, 5, 9, 12, 13, 14, 15, ...(profile === 'city' ? [2, 7] : [])].every(
+        (index) => !pushed(pad, index),
+      ) &&
+      (profile !== 'city' ||
+        (buttonValue(pad, 7) <= 0.05 &&
+          buttonValue(pad, 6) <= 0.05 &&
+          Math.abs(axisValue(pad, 0)) <= 0.15));
     const identity = identifyGamepad(pad.id);
     if (!memory.ready) {
       memory.ready = neutral;
@@ -167,12 +190,27 @@ export function mapGamepads(
     const actionPressed = action && !memory.action,
       pausePressed = pause && !memory.pause;
     const keys = PLAYER_BINDINGS[player];
-    if (memory.x < 0) frame.keys.add(keys.left);
-    if (memory.x > 0) frame.keys.add(keys.right);
-    if (memory.y < 0) frame.keys.add(keys.up);
-    if (memory.y > 0) frame.keys.add(keys.down);
+    if (profile === 'game') {
+      if (memory.x < 0) frame.keys.add(keys.left);
+      if (memory.x > 0) frame.keys.add(keys.right);
+      if (memory.y < 0) frame.keys.add(keys.up);
+      if (memory.y > 0) frame.keys.add(keys.down);
+    } else {
+      const trigger = (index: number) =>
+        analogAxis(
+          buttonValue(pad, index) || Number(!!pad.buttons[index]?.pressed),
+          0.05,
+        );
+      frame.drive = {
+        steer: horizontal || analogAxis(axisValue(pad, 0)),
+        throttle: trigger(7) - trigger(6),
+      };
+    }
     if (action) frame.keys.add(keys.action);
-    memory.secondary = secondaryHeld(pad, memory.secondary);
+    memory.secondary =
+      profile === 'city'
+        ? pushed(pad, 2)
+        : secondaryHeld(pad, memory.secondary);
     if (memory.secondary) frame.keys.add(keys.secondary);
     if (pushed(pad, 5)) frame.keys.add('KeyQ'); // Shared screwdriver; the engine determines its current owner.
     if (player === 0 && actionPressed) frame.primaryActionPressed = true;
@@ -304,20 +342,29 @@ export type InputControl =
   | 'secondary'
   | 'throw'
   | 'pause';
-export function keyPrompt(code: string): string {
-  const physical = getControlSettings().keys[code as CanonicalKey] ?? code;
+export function keyPrompt(
+  code: string,
+  profile: InputProfile = 'game',
+): string {
+  const physical =
+    getPhysicalBinding(getControlSettings(), code as CanonicalKey, profile) ||
+    code;
   return physicalKeyLabel(physical);
 }
-export function keyboardPrompt(player: number, control: InputControl): string {
+export function keyboardPrompt(
+  player: number,
+  control: InputControl,
+  profile: InputProfile = 'game',
+): string {
+  const prompt = (code: string) => keyPrompt(code, profile);
   const keys = PLAYER_BINDINGS[player];
   if (!keys) return '';
   if (control === 'move')
-    return [keys.up, keys.left, keys.down, keys.right].map(keyPrompt).join('');
+    return [keys.up, keys.left, keys.down, keys.right].map(prompt).join('');
   if (control === 'horizontal')
-    return `${keyPrompt(keys.left)}/${keyPrompt(keys.right)}`;
-  if (control === 'vertical')
-    return `${keyPrompt(keys.up)}/${keyPrompt(keys.down)}`;
-  return keyPrompt(
+    return `${prompt(keys.left)}/${prompt(keys.right)}`;
+  if (control === 'vertical') return `${prompt(keys.up)}/${prompt(keys.down)}`;
+  return prompt(
     control === 'throw'
       ? 'KeyQ'
       : control === 'pause'
@@ -330,13 +377,18 @@ export function gamepadPrompt(
   frame: Pick<PadFrame, 'assignments'>,
   player: number,
   control: InputControl,
+  profile: InputProfile = 'game',
 ): string | null {
   const assignment = frame.assignments.find((pad) => pad.player === player);
   if (!assignment) return null;
   if (control === 'move') return 'левый стик / крестовина';
   if (control === 'horizontal') return 'стик ←/→';
-  if (control === 'vertical') return 'стик ↑/↓';
+  if (control === 'vertical')
+    return profile === 'city'
+      ? `${padButtonLabel(assignment.brand, 7)} / ${padButtonLabel(assignment.brand, 6)}`
+      : 'стик ↑/↓';
   const label = (button: number) => padButtonLabel(assignment.brand, button);
+  if (profile === 'city' && control === 'secondary') return label(2);
   if (control === 'pause') return `${label(1)} / ${label(9)}`;
   return label(control === 'action' ? 0 : control === 'secondary' ? 6 : 5);
 }

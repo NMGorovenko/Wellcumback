@@ -11,7 +11,12 @@ import {
   type PadFrame,
 } from '@/lib/game/input/gamepads';
 
-import { isControlInputBlocked } from '@/lib/game/input/settings-store';
+import {
+  getControlSettings,
+  isControlInputBlocked,
+} from '@/lib/game/input/settings-store';
+import { canonicalKeyForPhysical } from '@/lib/game/input/settings';
+import { PLAYER_BINDINGS } from '@/lib/game/input/bindings';
 
 /** Lobby-only polling. Inside a running game use useGameLoop.padMenu instead,
  * so only one owner dispatches controller actions for the current surface. */
@@ -49,6 +54,44 @@ export function useGamepadNavigation({
       focused = true;
       resetPadInput(state);
     };
+    const keydown = (event: KeyboardEvent) => {
+      if (
+        isControlInputBlocked() ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey
+      )
+        return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]'))
+        return;
+      if (event.code === 'Escape') {
+        event.preventDefault();
+        if (!event.repeat) callbacks.current.onBack();
+        return;
+      }
+      // Tab-focused buttons keep their native Enter/Space activation.
+      if (
+        target?.closest('button, [role="button"]') &&
+        ['Enter', 'Space'].includes(event.code)
+      )
+        return;
+      const key = canonicalKeyForPhysical(getControlSettings(), event.code);
+      for (const binding of PLAYER_BINDINGS) {
+        for (const direction of ['up', 'down', 'left', 'right'] as const) {
+          if (key === binding[direction]) {
+            event.preventDefault();
+            callbacks.current.onMove(direction);
+            return;
+          }
+        }
+        if (key === binding.action) {
+          event.preventDefault();
+          if (!event.repeat) callbacks.current.onConfirm();
+          return;
+        }
+      }
+    };
     const update = (now: number) => {
       const blocked = isControlInputBlocked();
       if (blocked !== previousBlocked) {
@@ -82,11 +125,13 @@ export function useGamepadNavigation({
     };
     window.addEventListener('blur', blur);
     window.addEventListener('focus', focus);
+    window.addEventListener('keydown', keydown);
     frame = requestAnimationFrame(update);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('blur', blur);
       window.removeEventListener('focus', focus);
+      window.removeEventListener('keydown', keydown);
     };
   }, [enabled]);
 }

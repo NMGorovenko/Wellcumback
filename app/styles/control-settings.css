@@ -25,7 +25,7 @@
   padding: 0;
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px;
   min-width: 0;
 }
@@ -40,6 +40,7 @@
   color: #bdcabd;
 }
 .control-player-tabs strong {
+  overflow-wrap: anywhere;
   font-size: 12px;
   font-weight: 500;
 }
@@ -109,9 +110,9 @@
 }
 .control-pad-info {
   display: grid;
-  gap: 7px;
-  border-block: 1px solid #75908735;
-  padding-block: 13px;
+  gap: 12px;
+  border: 0;
+  padding: 0;
   color: #9eafa8;
   font-size: 10px;
   line-height: 1.9;
@@ -182,5 +183,167 @@
   }
   .control-binding-list {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Driving and character bindings share the dialog, with one device visible at a time. */
+.control-device-tabs {
+  display: flex;
+  gap: 5px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid #71877b40;
+  border-radius: 8px;
+  background: #0c171a55;
+}
+.control-device-tabs button {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #aebfb6;
+  font-size: 12px;
+  background: transparent;
+}
+.control-device-tabs button[aria-pressed='true'] {
+  border-color: #8aab8555;
+  color: #f1f6df;
+  background: #425342;
+}
+.control-keyboard-section {
+  display: grid;
+  gap: 10px;
+}
+.control-binding-list > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+.control-section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+.control-section-heading > span {
+  font-size: 11px;
+  color: #b0c6b6;
+}
+.control-pad-mapping {
+  margin: 0;
+  display: grid;
+  gap: 0;
+}
+.control-pad-mapping > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid #81978325;
+}
+.control-pad-mapping dt {
+  color: #d4dfd0;
+  font-size: 12px;
+}
+.control-pad-mapping dd {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+  text-align: right;
+}
+.control-pad-mapping kbd {
+  font-size: 11px;
+  padding: 3px 7px;
+  white-space: normal;
+  line-height: 1.4;
+}
+.control-pad-devices {
+  padding: 10px 12px;
+  border: 1px solid #81978330;
+  border-radius: 7px;
+  background: #10222065;
+}
+.control-pad-devices p {
+  margin: 0;
+  line-height: 1.6;
+  font-size: 11px;
+}
+.control-pad-devices ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.control-pad-devices li {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 9px;
+  color: #b5cbb9;
+  line-height: 1.5;
+  font-size: 11px;
+}
+.control-pad-devices li strong {
+  font-size: inherit;
+}
+.control-pad-devices small {
+  color: #e6bd7e;
+  font-size: 10px;
+}
+.control-pad-devices li[data-ready='true'] small {
+  color: #b4d491;
+}
+.control-device-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e6bd7e;
+}
+.control-pad-devices li[data-ready='true'] .control-device-dot {
+  background: #b4d491;
+}
+.control-settings-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  color: #a6b8ac;
+  font-size: 10px;
+}
+.control-settings-shortcuts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.control-settings-shortcuts kbd {
+  color: #d9e6c2;
+  border: 1px solid #7e957760;
+  border-radius: 3px;
+  padding: 2px 5px;
+}
+@media (max-width: 540px) {
+  .control-player-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .control-player-tabs strong {
+    font-size: 12px;
+  }
+  .control-pad-mapping > div {
+    gap: 10px;
+  }
+  .control-pad-mapping dt {
+    font-size: 11px;
+  }
+  .control-pad-mapping kbd {
+    font-size: 10px;
+  }
+  .control-pad-devices li {
+    grid-template-columns: 7px minmax(0, 1fr);
+  }
+  .control-pad-devices small {
+    grid-column: 2;
   }
 }

@@ -139,7 +139,13 @@ export default function Home() {
       if (panel) setPanel(null);
       else play(episode.id);
     },
-    onBack: () => setPanel(null),
+    onBack: () => {
+      if (panel) setPanel(null);
+      else {
+        setHubMode('city');
+        city.current.paused = false;
+      }
+    },
     onGamepads: setPads,
   });
   useEffect(() => {
@@ -282,6 +288,10 @@ export default function Home() {
         />
       ) : hubMode === 'city' ? (
         <CityHub
+          onControls={() => setPanel('controls')}
+          onFullscreen={() => {
+            fullscreen.toggle();
+          }}
           onGamepads={setPads}
           game={city}
           onPlay={play}
@@ -448,6 +458,7 @@ export default function Home() {
         </DialogContent>
       </Dialog>
       <ControlSettings
+        profile={hubMode === 'city' ? 'city' : 'game'}
         open={panel === 'controls'}
         onOpenChange={(open) => setPanel(open ? 'controls' : null)}
         players={players}

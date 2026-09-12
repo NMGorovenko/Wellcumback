@@ -320,8 +320,7 @@ void test('E cannot launch a mission during handshake or failure; guest never be
   assert.equal(s.interaction, 'screen');
 });
 
-
-void test("first ICE failure reports a direct-route failure, without inventing a prior connection or exposing candidates", async () => {
+void test('first ICE failure reports a direct-route failure, without inventing a prior connection or exposing candidates', async () => {
   const statuses = [];
   const peer = new DrivingPeer({
     onStatus: (status, message) => statuses.push({ status, message }),
@@ -330,11 +329,11 @@ void test("first ICE failure reports a direct-route failure, without inventing a
   await peer.answer(offer);
   const pc = last();
   pc.localDescription.sdp +=
-    "a=candidate:2 1 udp 1234 203.0.113.17 12345 typ srflx raddr 10.0.0.5 rport 54321\r\n";
-  pc.iceConnectionState = "failed";
-  pc.state("failed");
+    'a=candidate:2 1 udp 1234 203.0.113.17 12345 typ srflx raddr 10.0.0.5 rport 54321\r\n';
+  pc.iceConnectionState = 'failed';
+  pc.state('failed');
   const final = statuses.at(-1);
-  assert.equal(final.status, "failed");
+  assert.equal(final.status, 'failed');
   assert.equal(pc.closed, true);
   assert.match(final.message, /STUN-адрес получен/);
   assert.match(final.message, /TURN-сервер/);
@@ -343,7 +342,7 @@ void test("first ICE failure reports a direct-route failure, without inventing a
   peer.close();
 });
 
-void test("failure after an opened data channel is reported as an interrupted connection", async () => {
+void test('failure after an opened data channel is reported as an interrupted connection', async () => {
   const statuses = [];
   const peer = new DrivingPeer({
     onStatus: (status, message) => statuses.push({ status, message }),
@@ -352,32 +351,32 @@ void test("failure after an opened data channel is reported as an interrupted co
   await peer.offer();
   const pc = last();
   pc.channel.open();
-  pc.iceConnectionState = "failed";
-  pc.state("failed");
-  assert.equal(statuses.at(-1).status, "failed");
+  pc.iceConnectionState = 'failed';
+  pc.state('failed');
+  assert.equal(statuses.at(-1).status, 'failed');
   assert.match(statuses.at(-1).message, /Связь прервалась/);
   assert.doesNotMatch(statuses.at(-1).message, /не установилось/);
   peer.close();
 });
 
-void test("native failure during answer gathering preserves the useful failure reason through the async session catch", async () => {
+void test('native failure during answer gathering preserves the useful failure reason through the async session catch', async () => {
   const pending = joinNetworkInvite(offer);
   const pc = last();
-  pc.iceGatheringState = "gathering";
+  pc.iceGatheringState = 'gathering';
   for (let i = 0; i < 6; i++) await Promise.resolve();
-  assert.equal(pc.localDescription?.type, "answer");
-  pc.iceConnectionState = "failed";
-  pc.state("failed");
+  assert.equal(pc.localDescription?.type, 'answer');
+  pc.iceConnectionState = 'failed';
+  pc.state('failed');
   const primary = networkSnapshot().message;
   await pending;
-  assert.equal(networkSnapshot().status, "failed");
+  assert.equal(networkSnapshot().status, 'failed');
   assert.equal(networkSnapshot().message, primary);
   assert.match(primary, /Прямое соединение не установилось/);
-  assert.notEqual(primary, "Соединение закрыто.");
+  assert.notEqual(primary, 'Соединение закрыто.');
   assert.equal(pc.closed, true);
 });
 
-void test("closing an unopened channel is not described as a friend disconnecting", async () => {
+void test('closing an unopened channel is not described as a friend disconnecting', async () => {
   const statuses = [];
   const peer = new DrivingPeer({
     onStatus: (status, message) => statuses.push({ status, message }),
@@ -386,9 +385,120 @@ void test("closing an unopened channel is not described as a friend disconnectin
   await peer.offer();
   const pc = last();
   pc.channel.onclose();
-  assert.equal(statuses.at(-1).status, "failed");
+  assert.equal(statuses.at(-1).status, 'failed');
   assert.match(statuses.at(-1).message, /Прямое соединение не установилось/);
   assert.doesNotMatch(statuses.at(-1).message, /Друг отключился/);
   assert.equal(pc.closed, true);
   peer.close();
+});
+
+void test('host analog controls need a fresh neutral frame after stale recovery, not a neutral frame during the outage', async () => {
+  const channel = await host(),
+    s = freshCity();
+  const held = { throttle: 0.7, steer: 0.3 },
+    neutral = { throttle: 0, steer: 0 };
+  channel.receive(input(1));
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.ok(s.speed > 0);
+  now = 2001;
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.equal(networkSnapshot().status, 'connecting');
+  // Releasing and pressing again while the app is stale must not arm a later
+  // recovery: the player has not seen the recovered connection yet.
+  tickNetworkCity(s, 0.1, new Set(), neutral);
+  tickNetworkCity(s, 0.1, new Set(), held);
+  channel.receive(input(2));
+  const coasting = { ...s };
+  tickCity(coasting, 0.1, new Set());
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.equal(networkSnapshot().status, 'connected');
+  for (const field of ['x', 'z', 'vx', 'vz', 'speed', 'steering'])
+    assert.equal(
+      s[field],
+      coasting[field],
+      `held recovery input must not affect ${field}`,
+    );
+  tickNetworkCity(s, 0.1, new Set(), neutral);
+  const afterRelease = { ...s };
+  tickCity(afterRelease, 0.1, new Set());
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.ok(
+    s.speed > afterRelease.speed + 0.3,
+    'gas works after a fresh neutral frame',
+  );
+  assert.ok(s.steering > afterRelease.steering, 'steering also rearms');
+});
+
+void test('missing or stale remote analog input becomes neutral and old ownership cannot restore it', async () => {
+  const channel = await host(),
+    s = freshCity();
+  passNetworkWheel();
+  channel.receive({ ...input(2, [], 1), drive: { throttle: 0.6, steer: 0.4 } });
+  tickNetworkCity(s, 0.1, new Set());
+  assert.ok(s.speed > 0 && s.steering > 0);
+  now = 351;
+  const coasting = { ...s };
+  tickCity(coasting, 0.1, new Set());
+  tickNetworkCity(s, 0.1, new Set());
+  for (const field of ['x', 'z', 'vx', 'vz', 'speed', 'steering'])
+    assert.equal(
+      s[field],
+      coasting[field],
+      `350 ms clears the remote ${field} contribution`,
+    );
+  // A fresh old-client packet has no drive field. It must clear axes instead of
+  // inheriting the last analog sample; a previous epoch must still be ignored.
+  channel.receive(input(3, [], 1));
+  channel.receive({ ...input(999, [], 0), drive: { throttle: 1, steer: -1 } });
+  const stillCoasting = { ...s };
+  tickCity(stillCoasting, 0.1, new Set());
+  tickNetworkCity(s, 0.1, new Set());
+  assert.equal(s.speed, stillCoasting.speed);
+  assert.equal(s.steering, stillCoasting.steering);
+  channel.receive({ ...input(4, [], 1), drive: { throttle: 0.6, steer: 0.4 } });
+  tickNetworkCity(s, 0.1, new Set());
+  assert.ok(
+    s.speed > stillCoasting.speed,
+    'a current ownership sample restores remote control',
+  );
+});
+
+void test('guest sends neutral axes after stale recovery and handoff until both throttle and steering are released', async () => {
+  const channel = await guest(),
+    s = freshCity();
+  const held = { throttle: 0.6, steer: -0.3 },
+    neutral = { throttle: 0, steer: 0 };
+  channel.receive(city(1, 'guest', 1));
+  tickNetworkCity(s, 0.1, new Set(), neutral);
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.deepEqual(channel.sent.at(-1).drive, held);
+  now = 2001;
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.deepEqual(channel.sent.at(-1).drive, neutral);
+  channel.receive(city(2, 'guest', 1));
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.deepEqual(channel.sent.at(-1).drive, neutral);
+  tickNetworkCity(s, 0.1, new Set(), { throttle: 0, steer: -0.3 });
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.deepEqual(
+    channel.sent.at(-1).drive,
+    neutral,
+    'released gas alone does not rearm a held steering stick',
+  );
+  tickNetworkCity(s, 0.1, new Set(), neutral);
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.deepEqual(channel.sent.at(-1).drive, held);
+  channel.receive(city(3, 'host', 2));
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.deepEqual(channel.sent.at(-1).drive, neutral);
+  channel.receive(city(4, 'guest', 3));
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.deepEqual(
+    channel.sent.at(-1).drive,
+    neutral,
+    'taking the wheel again requires a new neutral frame',
+  );
+  tickNetworkCity(s, 0.1, new Set(), neutral);
+  tickNetworkCity(s, 0.1, new Set(), held);
+  assert.deepEqual(channel.sent.at(-1).drive, held);
 });

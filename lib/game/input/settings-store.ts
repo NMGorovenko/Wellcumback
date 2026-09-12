@@ -7,6 +7,7 @@ import {
   saveControlSettings,
   type CanonicalKey,
   type ControlSettings,
+  type InputProfile,
 } from './settings.ts';
 
 const initial = {
@@ -58,8 +59,12 @@ function update(settings: ControlSettings) {
   }
   publish(settings, warning);
 }
-export function setControlBinding(canonical: CanonicalKey, physical: string) {
-  const result = rebindControl(snapshot.settings, canonical, physical);
+export function setControlBinding(
+  canonical: CanonicalKey,
+  physical: string,
+  profile: InputProfile = 'game',
+) {
+  const result = rebindControl(snapshot.settings, canonical, physical, profile);
   if (result.ok) update(result.settings);
   return result;
 }

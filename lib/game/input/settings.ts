@@ -4,9 +4,29 @@ export type PlayerControl = keyof (typeof PLAYER_BINDINGS)[number];
 export type CanonicalKey =
   | (typeof PLAYER_BINDINGS)[number][PlayerControl]
   | 'KeyQ';
+export type InputProfile = 'game' | 'city';
+export const CITY_KEYS = [
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'KeyE',
+  'ShiftLeft',
+  'KeyQ',
+] as const;
+export type CityKey = (typeof CITY_KEYS)[number];
+export const CITY_CONTROL_NAMES: Record<PlayerControl, string> = {
+  up: 'Газ',
+  down: 'Тормоз / назад',
+  left: 'Руль влево',
+  right: 'Руль вправо',
+  action: 'Начать историю',
+  secondary: 'Дрифт',
+};
 export type ControlSettings = {
   version: 1;
   keys: Record<CanonicalKey, string>;
+  cityKeys: Record<CityKey, string>;
   showWorldPrompts: boolean;
 };
 export const CONTROL_STORAGE_KEY = 'wellcum.controls.v1';
@@ -29,6 +49,9 @@ export function defaultControlSettings(): ControlSettings {
     keys: Object.fromEntries(
       CANONICAL_KEYS.map((key) => [key, key]),
     ) as ControlSettings['keys'],
+    cityKeys: Object.fromEntries(
+      CITY_KEYS.map((key) => [key, key === 'ShiftLeft' ? 'Space' : key]),
+    ) as ControlSettings['cityKeys'],
     showWorldPrompts: true,
   };
 }
@@ -64,7 +87,26 @@ export function physicalKeyLabel(code: string): string {
       .replace(/^Numpad/, 'Num ')
   );
 }
-export function bindingName(key: CanonicalKey): string {
+export function getPhysicalBinding(
+  settings: ControlSettings,
+  key: CanonicalKey,
+  profile: InputProfile = 'game',
+): string {
+  return profile === 'city'
+    ? (settings.cityKeys[key as CityKey] ?? '')
+    : settings.keys[key];
+}
+export function bindingName(
+  key: CanonicalKey,
+  profile: InputProfile = 'game',
+): string {
+  if (profile === 'city') {
+    if (key === 'KeyQ') return 'Машина · сигнал';
+    const control = Object.entries(PLAYER_BINDINGS[0]).find(
+      ([, value]) => value === key,
+    )?.[0] as PlayerControl | undefined;
+    return control ? `Машина · ${CITY_CONTROL_NAMES[control]}` : 'Машина';
+  }
   if (key === 'KeyQ') return 'Общее · бросок / смена инструмента';
   for (let player = 0; player < PLAYER_BINDINGS.length; player++)
     for (const [control, canonical] of Object.entries(PLAYER_BINDINGS[player]))
@@ -89,31 +131,38 @@ export function rebindControl(
   settings: ControlSettings,
   canonical: CanonicalKey,
   physical: string,
+  profile: InputProfile = 'game',
 ): RebindResult {
-  if (!CANONICAL_KEYS.includes(canonical))
+  const supported: readonly CanonicalKey[] =
+    profile === 'city' ? CITY_KEYS : CANONICAL_KEYS;
+  if (!supported.includes(canonical))
     return { ok: false, reason: 'Неизвестное действие.' };
   const problem = keyProblem(physical);
   if (problem) return { ok: false, reason: problem };
-  if (physical === 'Space' && canonical !== 'KeyE')
+  if (profile === 'game' && physical === 'Space' && canonical !== 'KeyE')
     return {
       ok: false,
       reason:
         'Пробел — дополнительное действие первого игрока и подтверждение в меню.',
     };
-  const conflict = CANONICAL_KEYS.find(
-    (key) => key !== canonical && settings.keys[key] === physical,
+  const conflict = supported.find(
+    (key) =>
+      key !== canonical &&
+      getPhysicalBinding(settings, key, profile) === physical,
   );
   if (conflict)
     return {
       ok: false,
       conflict,
-      reason: `${physicalKeyLabel(physical)} уже занята: ${bindingName(conflict)}. Сначала переназначь это действие.`,
+      reason: `${physicalKeyLabel(physical)} уже занята: ${bindingName(conflict, profile)}. Сначала переназначь это действие.`,
     };
   return {
     ok: true,
     settings: {
       ...settings,
-      keys: { ...settings.keys, [canonical]: physical },
+      ...(profile === 'city'
+        ? { cityKeys: { ...settings.cityKeys, [canonical]: physical } }
+        : { keys: { ...settings.keys, [canonical]: physical } }),
     },
   };
 }
@@ -122,7 +171,10 @@ export function rebindControl(
 export function canonicalKeyForPhysical(
   settings: ControlSettings,
   physical: string,
+  profile: InputProfile = 'game',
 ): CanonicalKey | null {
+  if (profile === 'city')
+    return CITY_KEYS.find((key) => settings.cityKeys[key] === physical) ?? null;
   return (
     CANONICAL_KEYS.find((key) => settings.keys[key] === physical) ??
     (physical === 'Space' ? 'KeyE' : null)
@@ -131,10 +183,11 @@ export function canonicalKeyForPhysical(
 export function mapPhysicalKeys(
   settings: ControlSettings,
   physical: Iterable<string>,
+  profile: InputProfile = 'game',
 ): Set<string> {
   const mapped = new Set<string>();
   for (const code of physical) {
-    const canonical = canonicalKeyForPhysical(settings, code);
+    const canonical = canonicalKeyForPhysical(settings, code, profile);
     if (canonical) mapped.add(canonical);
   }
   return mapped;
@@ -161,9 +214,25 @@ export function parseControlSettings(raw: string | null): ControlSettings {
     }
     if (new Set(Object.values(keys)).size !== CANONICAL_KEYS.length)
       return defaults;
+    let cityKeys = defaults.cityKeys;
+    // v1 saves predate vehicle controls. Keep their keyboard preferences and add
+    // vehicle defaults; a corrupt vehicle subsection does not erase game keys.
+    if (obj.cityKeys && typeof obj.cityKeys === 'object') {
+      const values = CITY_KEYS.map((key) => obj.cityKeys![key]);
+      if (
+        values.every(
+          (value) => typeof value === 'string' && !keyProblem(value),
+        ) &&
+        new Set(values).size === CITY_KEYS.length
+      )
+        cityKeys = Object.fromEntries(
+          CITY_KEYS.map((key, i) => [key, values[i]]),
+        ) as ControlSettings['cityKeys'];
+    }
     return {
       version: 1,
       keys,
+      cityKeys,
       showWorldPrompts:
         typeof obj.showWorldPrompts === 'boolean' ? obj.showWorldPrompts : true,
     };
