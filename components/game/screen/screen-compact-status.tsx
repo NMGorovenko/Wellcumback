@@ -9,6 +9,7 @@ import {
 import { chairBalanceCue } from '@/lib/game/screen/prompts';
 import { ACTION_LABELS, NAMES, SIDES } from './screen-hud-data';
 import { Fill, Meter } from './screen-hud-primitives';
+import { screenDrillStatus } from './screen-drill-status';
 
 /** The playing HUD shows state. Detailed instructions and pointer controls live
  * in the explicitly opened help drawer, never over the play surface. */
@@ -152,6 +153,7 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
     }
     case 'drill': {
       const balance = chairBalanceCue(view);
+      const status = screenDrillStatus(view);
       return (
         <>
           <div className="hud-compact-title">
@@ -176,14 +178,23 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
               value={view.drillMode === 'climb' ? view.climb : 1 - view.climb}
             />
           ) : view.drillMode === 'handoff' ? (
-            <Fill
-              label={
-                view.drillGear === 'none'
-                  ? 'Передаём дрель'
-                  : 'Передаём пылесос'
-              }
-              value={view.handoffProgress}
-            />
+            status.transfer ? (
+              <Fill
+                label={
+                  status.transfer === 'drill'
+                    ? 'Передаём дрель'
+                    : 'Передаём пылесос'
+                }
+                value={view.handoffProgress}
+              />
+            ) : status.pickup ? (
+              <Fill
+                label={`Никита ${status.assistant}`}
+                value={view.drillAssistant.pickupProgress}
+              />
+            ) : (
+              <div className="hud-compact-alert">Никита {status.assistant}</div>
+            )
           ) : view.drillMode === 'fallen' ? (
             <Fill label="Без паники. Встаём." value={view.fallProgress} />
           ) : (
@@ -216,11 +227,17 @@ export function ScreenCompactStatus({ view }: { view: GameState }) {
           )}
           {view.drillMode !== 'position' && view.drillMode !== 'fallen' && (
             <Meter
-              label={view.players === 1 ? 'Никита страхует сам' : balance.text}
+              label={
+                !status.braced
+                  ? 'Ярик держит равновесие'
+                  : view.players === 1
+                    ? 'Никита страхует стулья'
+                    : balance.text
+              }
               value={view.balance}
               min={-1}
               max={1}
-              target={[-.14, .14]}
+              target={[-0.14, 0.14]}
               danger={balance.emphasis === 'danger'}
             />
           )}

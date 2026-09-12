@@ -1,4 +1,5 @@
 import {
+  NETWORK_CHANNEL,
   decodeInvite,
   encodeInvite,
   readPeerPacket,
@@ -66,7 +67,7 @@ export class DrivingPeer {
     return pc;
   }
   private attach(pc: RTCPeerConnection, channel: RTCDataChannel) {
-    if (this.pc !== pc || channel.label !== 'wellcum-city-v1' || this.channel) {
+    if (this.pc !== pc || channel.label !== NETWORK_CHANNEL || this.channel) {
       channel.close();
       return;
     }
@@ -176,7 +177,7 @@ export class DrivingPeer {
     try {
       this.attach(
         pc,
-        pc.createDataChannel('wellcum-city-v1', {
+        pc.createDataChannel(NETWORK_CHANNEL, {
           ordered: false,
           maxRetransmits: 0,
         }),

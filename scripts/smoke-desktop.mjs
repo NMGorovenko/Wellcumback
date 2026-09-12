@@ -1,4 +1,4 @@
-/** Launches the real Electron main twice with an isolated disposable profile. No Playwright/server dependency. */
+/** Launches the real Electron main three times with an isolated disposable profile. No Playwright/server dependency. */
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -45,7 +45,7 @@ try {
     path.join(temporary, 'entry.cjs'),
     `require(${JSON.stringify(path.join(root, 'desktop/smoke.cjs'))});\n`,
   );
-  for (const phase of ['write', 'read']) {
+  for (const phase of ['write', 'read', 'moving']) {
     const env = {
       ...process.env,
       WELLCUM_SMOKE_APP: appDir,

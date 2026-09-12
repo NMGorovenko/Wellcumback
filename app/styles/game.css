@@ -263,3 +263,52 @@
   outline: 1px solid #d6e5aa;
   outline-offset: 3px;
 }
+
+/* World dialogue: a single comic balloon, tied to the person rather than a HUD panel. */
+.world-speech {
+  position: absolute;
+  z-index: 6;
+  width: max-content;
+  max-width: min(292px, calc(100% - 24px));
+  padding: 11px 14px 12px;
+  border: 2px solid #303c32;
+  border-radius: 16px 18px 14px 17px;
+  color: #26332a;
+  background: #fff8df;
+  box-shadow: 3px 4px 0 #303c3259;
+  pointer-events: none;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.world-speech[hidden] {
+  display: none;
+}
+.world-speech strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #7a5b36;
+}
+.world-speech .speech-text {
+  display: block;
+  margin: 0;
+}
+.world-speech i {
+  position: absolute;
+  left: var(--speech-tail, 40px);
+  bottom: -9px;
+  width: 15px;
+  height: 15px;
+  background: #fff8df;
+  border-right: 2px solid #303c32;
+  border-bottom: 2px solid #303c32;
+  transform: rotate(45deg);
+}
+@media (max-width: 640px) {
+  .world-speech {
+    max-width: 245px;
+    padding: 9px 11px;
+    font-size: 12px;
+  }
+}

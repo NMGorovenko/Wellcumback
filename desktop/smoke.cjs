@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const appDir = process.env.WELLCUM_SMOKE_APP;
 const profile = process.env.WELLCUM_SMOKE_PROFILE;
 const phase = process.env.WELLCUM_SMOKE_PHASE;
-if (!appDir || !profile || !['write', 'read'].includes(phase))
+if (!appDir || !profile || !['write', 'read', 'moving'].includes(phase))
   throw new Error('Use scripts/smoke-desktop.mjs.');
 
 // Exercise the real main entry while keeping every test save in a disposable profile.
@@ -68,20 +68,20 @@ async function inspectCityInput(contents) {
   await contents.executeJavaScript(`window.__desktopSmokeSpace = false; window.addEventListener('keydown', (event) => {
     if (event.code === 'Space' && event.isTrusted) window.__desktopSmokeSpace = true;
   });`);
-  contents.sendInputEvent({ type: 'keyDown', keyCode: 'W' });
+  contents.sendInputEvent({ type: 'keyDown', keyCode: 'S' });
   await waitFor(
     contents,
     `Boolean(document.querySelector('.city-arrival button'))`,
     'driving to the first story',
   );
-  contents.sendInputEvent({ type: 'keyUp', keyCode: 'W' });
-  contents.sendInputEvent({ type: 'keyDown', keyCode: 'S' });
+  contents.sendInputEvent({ type: 'keyUp', keyCode: 'S' });
+  contents.sendInputEvent({ type: 'keyDown', keyCode: 'W' });
   await waitFor(
     contents,
     `Boolean(document.querySelector('.city-arrival button:not(:disabled)'))`,
     'braking at the story entrance',
   );
-  contents.sendInputEvent({ type: 'keyUp', keyCode: 'S' });
+  contents.sendInputEvent({ type: 'keyUp', keyCode: 'W' });
   await tapKey(contents, 'Space', 250);
   assert.equal(
     await contents.executeJavaScript(
@@ -294,7 +294,7 @@ async function inspect(window) {
       `localStorage.setItem('__wellcum_desktop_smoke', 'survives-cold-start')`,
     );
     contents.session.flushStorageData();
-  } else {
+  } else if (phase === 'read') {
     assert.equal(
       await contents.executeJavaScript(
         `localStorage.getItem('__wellcum_desktop_smoke')`,
@@ -303,6 +303,93 @@ async function inspect(window) {
     );
     await contents.executeJavaScript(
       `localStorage.removeItem('__wellcum_desktop_smoke')`,
+    );
+  } else {
+    await contents.executeJavaScript(
+      `Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Все истории')).click()`,
+      true,
+    );
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('.episode-tabs'))`,
+      'story selection',
+    );
+    await contents.executeJavaScript(
+      `document.querySelectorAll('.episode-tabs button')[2].click()`,
+      true,
+    );
+    await contents.executeJavaScript(
+      `document.querySelector('.hub-story .play-button').click()`,
+      true,
+    );
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('.moving-card .play-button'))`,
+      'moving introduction',
+    );
+    const brief = await contents.executeJavaScript(
+      `document.querySelector('.moving-card').textContent`,
+    );
+    assert.ok(
+      brief.includes('Настя') && !/алерт|шаурм|в минус/i.test(brief),
+      'Introduction should keep story surprises',
+    );
+    await tapKey(contents, 'Return');
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('.moving-day-clock')) && !document.querySelector('.moving-card')`,
+      'packing gameplay',
+    );
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('.world-speech:not([hidden])'))`,
+      'comic dialogue',
+    );
+    assert.ok(
+      await contents.executeJavaScript(
+        `document.querySelector('.world-speech').textContent.includes('Настя')`,
+      ),
+    );
+    const canvas = await contents.executeJavaScript(
+      `Boolean(document.querySelector('.moving-scene canvas')?.getContext('webgl2'))`,
+    );
+    // The scene uses a semantic container; fall back to its canvas, independent of class naming.
+    assert.equal(
+      canvas ||
+        (await contents.executeJavaScript(
+          `Boolean(document.querySelector('.moving-world canvas')?.getContext('webgl2'))`,
+        )),
+      true,
+    );
+    await tapKey(contents, 'Escape');
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('[role="dialog"]'))`,
+      'pause during dialogue',
+    );
+    const clock = await contents.executeJavaScript(
+      `document.querySelector('.moving-day-clock').textContent`,
+    );
+    await pause(700);
+    assert.equal(
+      await contents.executeJavaScript(
+        `document.querySelector('.moving-day-clock').textContent`,
+      ),
+      clock,
+      'Pause freezes the day',
+    );
+    assert.equal(
+      await contents.executeJavaScript(
+        `document.querySelector('.world-speech').hidden`,
+      ),
+      true,
+      'Pause hides the speech bubble',
+    );
+    await tapKey(contents, 'Escape');
+    await waitFor(
+      contents,
+      `Boolean(document.querySelector('.world-speech:not([hidden])'))`,
+      'comic dialogue after resume',
     );
   }
   await pause(200);
@@ -314,6 +401,7 @@ async function inspect(window) {
     JSON.stringify({
       phase,
       keyboardRoutes: phase === 'write',
+      movingComicDialogue: phase === 'moving',
       simulatedControllers: phase === 'write' ? ['Xbox', 'DualSense'] : [],
       ...startup,
       platform: process.platform,

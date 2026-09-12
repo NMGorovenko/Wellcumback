@@ -56,7 +56,7 @@ export default function CityHub({
   const shared = network.role !== null;
   const [view, setView] = useState(freshCity);
   const [target, setTarget] = useState(0);
-  const [closeView, setCloseView] = useState(false);
+  const [closeView, setCloseView] = useState(true);
   const [pauseSelected, setPauseSelected] = useState(0);
   const pauseButtons = useRef<(HTMLButtonElement | null)[]>([]);
   useEffect(() => {
@@ -216,7 +216,16 @@ export default function CityHub({
         <div className="city-heading">
           <span>КРАСНОЯРСК · КАРТА ИСТОРИЙ</span>
           <h1>Ну что, куда едем?</h1>
-          <p>Трое друзей. Один Mustang. Вечер воспоминаний.</p>
+          <p>
+            {cityStops[target].title} ·{' '}
+            {Math.round(
+              Math.hypot(
+                view.x - cityStops[target].x,
+                view.z - cityStops[target].z,
+              ),
+            )}{' '}
+            м по прямой
+          </p>
         </div>
         <div className="city-actions">
           <button

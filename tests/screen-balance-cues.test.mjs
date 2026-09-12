@@ -1,3 +1,4 @@
+import { equipDriller } from './screen-drill-controller.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { tick } from '../lib/game/screen/engine.ts';
@@ -20,6 +21,7 @@ function working(chairs = 2, balance = 0.78) {
     phaseTime: 0.8,
     cooldown: 0,
   });
+  equipDriller(s);
   return s;
 }
 function advance(s, seconds, keys) {
@@ -58,7 +60,10 @@ void test('Nikita cue names the exact correcting key, and correct feedback requi
     advance(s, DT, [key]);
     assert.equal(chairBalanceCue(s).held, false);
     assert.equal(chairBalanceCue(s).correcting, false);
-    assert.equal(screenPrompts(s)[0].prompts[0].emphasis, 'danger');
+    assert.ok(
+      screenPrompts(s)[1].prompts.some((p) => p.control === 'horizontal'),
+      'unbraced balance transfers to Yarik',
+    );
     advance(s, DT, ['KeyE', 'KeyA', 'KeyD']);
     assert.equal(
       chairBalanceCue(s).correcting,

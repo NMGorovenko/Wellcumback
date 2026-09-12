@@ -1,3 +1,4 @@
+import { announceScreenPhase } from './dialogue.ts';
 import { freshGame, phases, titles, type Phase } from './engine.ts';
 
 export type ScreenEpisode = Exclude<Phase, 'result'>;
@@ -24,7 +25,7 @@ export const screenEpisodes: {
   {
     id: 'drill',
     title: 'Стулья, дрель и пылесос',
-    description: 'Забраться, принять инструменты и просверлить',
+    description: 'Забраться, сходить за приборами и просверлить',
   },
   {
     id: 'lift',
@@ -47,6 +48,7 @@ export function createScreenEpisode(players: number, phase: ScreenEpisode) {
   s.practice = true;
   s.phase = phase;
   s.message = titles[phase];
+  announceScreenPhase(s, phase);
   if (stage >= 1) s.corners = 4;
   if (stage >= 2) s.rods = [1, 1, 1, 1];
   if (stage >= 3) {

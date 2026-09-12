@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -21,6 +21,7 @@ import {
   movingCrew,
   movingTick,
 } from '@/lib/game/moving/engine';
+import { mapMovingCameraKeys } from '@/lib/game/moving/camera-input';
 import type { Result } from '@/lib/game/types';
 import {
   gamepadHint,
@@ -35,6 +36,7 @@ import { ControlSettings } from '@/components/game/input/control-settings';
 import { MovingActionPrompts } from './action-prompts';
 import { useMovingSound } from './use-moving-sound';
 import MovingScene from './scene';
+import { SpeechBubble } from '../world/speech-bubble';
 
 export default function MovingGame({
   players,
@@ -64,8 +66,13 @@ export default function MovingGame({
     unsupported: [],
   });
   const cueRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const cameraAspect = useRef(1);
+  const updateCameraAspect = useCallback((aspect: number) => {
+    cameraAspect.current = aspect;
+  }, []);
+  const speechRef = useRef<HTMLOutputElement | null>(null);
   useGameInspection(game, keys);
-  useMovingSound(sound, view.score, view.delivered);
+  useMovingSound(sound, view.score, view.delivered, view.paused);
   const action = () => {
     movingAction(game.current);
     setView({ ...game.current });
@@ -99,7 +106,8 @@ export default function MovingGame({
   useGameLoop({
     game,
     keys,
-    tick: movingTick,
+    tick: (state, delta, held) =>
+      movingTick(state, delta, mapMovingCameraKeys(held, cameraAspect.current)),
     action,
     pause: () => setPause(!game.current.paused),
     snapshot: setView,
@@ -171,39 +179,94 @@ export default function MovingGame({
   return (
     <section
       className="game-layout moving-game-layout"
-      aria-label="Переезд Ярика — ранняя глава"
+      aria-label="Переезд Ярика и Насти"
     >
       <div className="game-world moving-world">
-        <MovingScene game={game} cueRefs={cueRefs} />
+        <MovingScene
+          game={game}
+          cueRefs={cueRefs}
+          onCameraAspect={updateCameraAspect}
+          speechRef={speechRef}
+        />
+        <SpeechBubble
+          bubbleRef={speechRef}
+          speaker={view.speaker}
+          text={view.message}
+          visible={
+            !!view.dialogueId &&
+            view.phase === 'moving' &&
+            !view.paused &&
+            view.messageUntil > view.elapsed
+          }
+        />
         {settings.showWorldPrompts && (
           <MovingActionPrompts state={view} pads={pads} cueRefs={cueRefs} />
         )}
         <div className="world-heading">
-          <span>03 / ПЕРВАЯ ХОДКА · В РАЗРАБОТКЕ</span>
-          <strong>Переезд Ярика</strong>
+          <span>
+            03 /{' '}
+            {view.chapter === 'packing'
+              ? 'СОБИРАЕМ КВАРТИРУ'
+              : 'ПОСЛЕДНИЙ РЫВОК'}
+          </span>
+          <strong>Переезд Ярика и Насти</strong>
         </div>
+        {view.phase === 'moving' && (
+          <div
+            className={`moving-day-clock${view.dayRemaining < 60 ? ' is-late' : ''}`}
+            aria-label="Время до конца дня"
+          >
+            <small>
+              {view.dayRemaining >= 0 ? 'ДО КОНЦА ДНЯ' : 'ЕЩЁ ЧУТЬ-ЧУТЬ'}
+            </small>
+            <strong>
+              {view.dayRemaining < 0 ? '−' : ''}
+              {Math.floor(Math.abs(view.dayRemaining) / 60)
+                .toString()
+                .padStart(2, '0')}
+              :
+              {Math.floor(Math.abs(view.dayRemaining) % 60)
+                .toString()
+                .padStart(2, '0')}
+            </strong>
+          </div>
+        )}
+        {view.phase === 'moving' && view.alert.active && !view.paused && (
+          <output className="moving-alert">
+            <span className="moving-alert-dot" />
+            <strong>Прод зовёт</strong>
+            <span>
+              {view.actors[0].activity === 'laptop'
+                ? 'Ярик чинит инцидент'
+                : 'Ярику нужен ноутбук'}
+            </span>
+            <progress
+              max={1}
+              value={view.alert.progress}
+              aria-label="Инцидент"
+            />
+          </output>
+        )}
         {view.phase === 'brief' && (
           <div className="moving-overlay">
             <div className="moving-card">
-              <span className="tiny-label">ИГРАЕМАЯ РАННЯЯ ГЛАВА</span>
+              <span className="tiny-label">
+                ОДНА КВАРТИРА · ДВОЕ · ЦЕЛЫЙ ДЕНЬ
+              </span>
               <h2>Как оно вообще здесь помещалось?</h2>
               <p>
                 Кухня ещё на месте. Балкон тоже. Между ними — всё остальное.
               </p>
-              <ol>
-                <li>Подними вещь и уложи её в открытую жёлтую сумку.</li>
-                <li>
-                  В сумку входит 12 кг. Удерживай действие у наполненной сумки,
-                  чтобы застегнуть молнию.
-                </li>
-                <li>
-                  Подними закрытую сумку и донеси к зелёному коврику у двери.
-                </li>
-              </ol>
+              <p>
+                Сначала соберите все вещи в жёлтые сумки. Поднимите вещь,
+                донесите до сумки и удерживайте действие, чтобы аккуратно
+                уложить. Потом застегните молнии и отнесите сумки к двери.
+              </p>
               <p className="quiet">
-                Вдвоём тяжёлую сумку нести быстрее: второй игрок берёт вторую
-                ручку, затем оба идут вместе. Устал — постой. Одному тоже можно
-                справиться.
+                {view.players === 1
+                  ? 'Ты — Ярик. Настя собирает вещи сама и помогает с переездом.'
+                  : 'Первый игрок — Ярик, второй — Настя. У каждого свои руки и запас сил.'}{' '}
+                Силы берегите: диван пока никуда не уехал.
               </p>
               <div className="moving-brief-bindings">
                 {movingCrew.slice(0, view.players).map((person, i) => (
@@ -258,8 +321,7 @@ export default function MovingGame({
                 </div>
               </dl>
               <p className="quiet">
-                Это ранняя глава переезда. Лифт, машина и следующая квартира
-                пока впереди.
+                Лифт, машина и новая квартира — следующие главы переезда.
               </p>
               <button
                 className={`play-button${choice === 0 ? ' pad-selected' : ''}`}
@@ -311,17 +373,21 @@ export default function MovingGame({
         )}
       </div>
       <footer className="game-footer moving-footer">
-        <div className="footer-message" aria-live="polite">
-          <span>МЕЖДУ СУМКАМИ</span>
+        <div
+          className="footer-message"
+          aria-live="polite"
+          hidden={!!view.dialogueId}
+        >
+          <span>{view.speaker || 'МЕЖДУ СУМКАМИ'}</span>
           <p>{view.message}</p>
         </div>
         <details className="moving-help">
           <summary>Подсказки и кнопки на экране</summary>
           <p>{gamepadHint(pads)}</p>
           <p>
-            Жёлтая сумка: до 12 кг. Поднять и уложить — отдельные нажатия;
-            молния — удержание. Закрытую сумку можно снова открыть
-            дополнительной кнопкой. Запасные сумки появляются по мере выноса.
+            Жёлтая сумка: до 18 кг. Поднять — нажатие, уложить и застегнуть —
+            удержание. Закрытую сумку можно снова открыть дополнительной
+            кнопкой. Чтобы отдохнуть, подойди к дивану и нажми действие.
           </p>
           <div className="touch-row">
             {hold(PLAYER_BINDINGS[0].up, '↑')}
@@ -346,8 +412,8 @@ export default function MovingGame({
         <DialogContent className="help-dialog">
           <DialogTitle>Короткий привал</DialogTitle>
           <DialogDescription>
-            На паузе время и усталость не меняются. В самой комнате силы
-            восстанавливаются, если остановиться.
+            На паузе время и усталость не меняются. Для отдыха в самой комнате
+            сядьте на диван; короткая остановка возвращает силы очень медленно.
           </DialogDescription>
           <button
             className={`play-button${choice === 0 ? ' pad-selected' : ''}`}

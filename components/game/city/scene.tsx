@@ -2,19 +2,19 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
 import type { CityState } from '@/lib/game/city/engine';
-import { CITY_BOUNDS } from '@/lib/game/city/layout';
 import { RenderKit } from '../world/render-kit';
 import { createCityEnvironment } from './environment';
 import { createMustang } from './mustang';
+import { cityDriveCamera, cityOverviewCamera } from './camera';
 
 const SKID_CAPACITY = 160,
   SMOKE_CAPACITY = 20;
-/** Fixed isometric miniature. The complete driving map stays visible, so a
- * destination never moves off screen just because the driver starts drifting. */
+/** Close driving camera follows the car and its travel path. The full
+ * isometric map remains available through the existing overview toggle. */
 export default function CityScene({
   game,
   targetStop = -1,
-  closeView = false,
+  closeView = true,
 }: {
   game: RefObject<CityState>;
   targetStop?: number;
@@ -59,10 +59,27 @@ export default function CityScene({
       'Красный Mustang с Никитой, Яриком и Ромой на вечерней карте Красноярска: Енисей, два моста и жилые кварталы.',
     );
     element.appendChild(renderer.domElement);
-    const camera = new THREE.OrthographicCamera(-35, 35, 25, -25, 0.1, 180);
-    const look = new THREE.Vector3(0, 0, -2),
-      outward = new THREE.Vector3(0.39, 0.75, 0.55).normalize();
-    camera.position.copy(look).addScaledVector(outward, 90);
+    const overview = cityOverviewCamera(1),
+      cameraDistance = overview.distance;
+    const camera = new THREE.OrthographicCamera(
+      -35,
+      35,
+      25,
+      -25,
+      0.1,
+      overview.far,
+    );
+    const look = new THREE.Vector3(
+        overview.look.x,
+        overview.look.y,
+        overview.look.z,
+      ),
+      outward = new THREE.Vector3(
+        overview.outward.x,
+        overview.outward.y,
+        overview.outward.z,
+      );
+    camera.position.copy(look).addScaledVector(outward, cameraDistance);
     camera.lookAt(look);
     camera.updateMatrixWorld();
     const sun = new THREE.DirectionalLight('#ffe4b0', 3.0);
@@ -73,9 +90,10 @@ export default function CityScene({
     sun.shadow.camera.right = 42;
     sun.shadow.camera.top = 37;
     sun.shadow.camera.bottom = -37;
-    sun.shadow.camera.far = 120;
+    sun.shadow.camera.far = 360;
     sun.shadow.normalBias = 0.05;
     sun.shadow.bias = -0.00008;
+    scene.add(sun.target);
     scene.add(sun, new THREE.HemisphereLight('#d4ecff', '#91a083', 2.1));
     const evening = new THREE.DirectionalLight('#a9c8ff', 1.25);
     evening.position.set(23, 16, -15);
@@ -142,29 +160,43 @@ export default function CityScene({
       raf = 0,
       lastElapsed = game.current.elapsed;
     const projected = new THREE.Vector3();
-    const currentLook = look.clone();
+    const currentLook = look.clone(),
+      currentOutward = outward.clone();
+    let aspect = 1,
+      viewportHeight = 1,
+      overviewHalfHeight = 25,
+      currentHalfHeight = 0;
     const resize = () => {
-      camera.position.copy(look).addScaledVector(outward, 90);
+      camera.position.copy(look).addScaledVector(outward, cameraDistance);
       camera.lookAt(look);
       camera.updateMatrixWorld();
       const width = Math.max(1, element.clientWidth),
-        height = Math.max(1, element.clientHeight),
-        aspect = width / height;
-      // Fit the game boundary, tall buildings, and scenic northern hills.
-      let extentX = 0,
-        extentY = 0;
-      for (const x of [CITY_BOUNDS.minX - 5, CITY_BOUNDS.maxX + 5])
-        for (const z of [CITY_BOUNDS.minZ - 10, CITY_BOUNDS.maxZ + 2])
-          for (const y of [0, 8]) {
-            projected.set(x, y, z).applyMatrix4(camera.matrixWorldInverse);
-            extentX = Math.max(extentX, Math.abs(projected.x));
-            extentY = Math.max(extentY, Math.abs(projected.y));
-          }
-      const halfHeight = Math.max(extentY, extentX / aspect) * 1.045;
-      camera.left = -halfHeight * aspect;
-      camera.right = halfHeight * aspect;
-      camera.top = halfHeight;
-      camera.bottom = -halfHeight;
+        height = Math.max(1, element.clientHeight);
+      aspect = width / height;
+      viewportHeight = height;
+      overviewHalfHeight = cityOverviewCamera(aspect).halfHeight;
+      if (!currentHalfHeight) {
+        const driveView = cityDriveCamera(game.current, aspect);
+        currentHalfHeight = following.current
+          ? driveView.halfHeight
+          : overviewHalfHeight;
+        if (following.current) {
+          currentLook.set(driveView.look.x, driveView.look.y, driveView.look.z);
+          currentOutward.set(
+            driveView.outward.x,
+            driveView.outward.y,
+            driveView.outward.z,
+          );
+        }
+      }
+      camera.left = -currentHalfHeight * aspect;
+      camera.right = currentHalfHeight * aspect;
+      camera.top = currentHalfHeight;
+      camera.bottom = -currentHalfHeight;
+      camera.position
+        .copy(currentLook)
+        .addScaledVector(currentOutward, cameraDistance);
+      camera.lookAt(currentLook);
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
     };
@@ -184,18 +216,51 @@ export default function CityScene({
       lastElapsed = s.elapsed;
       const cameraDelta = Math.min((now - lastCameraTime) / 1000, 0.05);
       lastCameraTime = now;
+      const driveView = cityDriveCamera(s, aspect);
+      const smoothCamera = 1 - Math.exp(-cameraDelta * 5);
       const desiredLook = following.current
-        ? projected.set(s.x, 0.5, s.z)
+        ? projected.set(driveView.look.x, driveView.look.y, driveView.look.z)
         : look;
-      currentLook.lerp(desiredLook, 1 - Math.exp(-cameraDelta * 4));
-      camera.position.copy(currentLook).addScaledVector(outward, 90);
+      currentLook.lerp(desiredLook, smoothCamera);
+      const desiredOutward = following.current
+        ? projected.set(
+            driveView.outward.x,
+            driveView.outward.y,
+            driveView.outward.z,
+          )
+        : outward;
+      currentOutward.lerp(desiredOutward, smoothCamera).normalize();
+      const halfHeight = following.current
+        ? driveView.halfHeight
+        : overviewHalfHeight;
+      currentHalfHeight += (halfHeight - currentHalfHeight) * smoothCamera;
+      camera.position
+        .copy(currentLook)
+        .addScaledVector(currentOutward, cameraDistance);
       camera.lookAt(currentLook);
-      camera.zoom +=
-        ((following.current ? 2.5 : 1) - camera.zoom) *
-        (1 - Math.exp(-cameraDelta * 4));
+      camera.left = -currentHalfHeight * aspect;
+      camera.right = currentHalfHeight * aspect;
+      camera.top = currentHalfHeight;
+      camera.bottom = -currentHalfHeight;
       camera.updateProjectionMatrix();
-      car.update(s, dt);
-      city.update(s.elapsed, selectedStop.current, s.nearStop);
+      car.update(s, dt, following.current);
+      city.update(
+        s.elapsed,
+        selectedStop.current,
+        s.nearStop,
+        !following.current && currentHalfHeight > overviewHalfHeight * 0.65,
+        (currentHalfHeight * 2 * 150) / viewportHeight,
+      );
+      // Spend the shadow map on the nearby street when driving; overview covers both banks.
+      const shadowSize = following.current ? 27 : 160;
+      const shadowTarget = following.current ? currentLook : look;
+      sun.target.position.copy(shadowTarget);
+      sun.position.copy(shadowTarget).add(projected.set(-55, 135, 45));
+      sun.shadow.camera.left = -shadowSize;
+      sun.shadow.camera.right = shadowSize;
+      sun.shadow.camera.top = shadowSize;
+      sun.shadow.camera.bottom = -shadowSize;
+      sun.shadow.camera.updateProjectionMatrix();
       emitClock += dt;
       if (s.drifting && emitClock > 0.075) {
         emitClock = 0;

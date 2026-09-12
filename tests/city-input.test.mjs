@@ -1,3 +1,4 @@
+import { cityStops } from '../lib/game/city/layout.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -39,7 +40,8 @@ void test('Space drifts on the map and never enters a nearby mission; game actio
   assert.equal(mapPhysicalKeys(settings, ['ShiftLeft'], 'city').size, 0);
   assert.deepEqual([...mapPhysicalKeys(settings, ['Space'])], ['KeyE']);
   const city = freshCity();
-  city.z = 10;
+  city.x = cityStops[0].x;
+  city.z = cityStops[0].z;
   tickCity(city, 0.1, keys);
   assert.equal(city.interaction, null);
   tickCity(city, 0.1, mapPhysicalKeys(settings, ['KeyE'], 'city'));
@@ -132,7 +134,7 @@ void test('neutral pad does not cancel keyboard axes and simultaneous opposite k
 void test('network accepts bounded analog axes and rejects malformed driving values', () => {
   const packet = {
     type: 'input',
-    version: 1,
+    version: 2,
     seq: 2,
     epoch: 1,
     keys: [],

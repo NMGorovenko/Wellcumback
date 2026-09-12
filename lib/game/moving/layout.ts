@@ -11,12 +11,15 @@ export const obstacles = [
   { x: 45, y: 865, w: 190, h: 150, kind: 'kitchen', label: 'КУХНЯ' },
   { x: 465, y: 840, w: 90, h: 185, kind: 'wardrobe', label: 'ШКАФ' },
   { x: 480, y: 580, w: 68, h: 108, kind: 'boxes', label: 'КОРОБКИ' },
+  { x: 55, y: 50, w: 75, h: 75, kind: 'toilet', label: 'ТУАЛЕТ' },
 ] as const;
 export const bagAnchors = [
   { x: 220, y: 460 },
   { x: 375, y: 535 },
   { x: 220, y: 655 },
   { x: 375, y: 745 },
+  { x: 235, y: 230 },
+  { x: 375, y: 125 },
 ] as const;
 export const itemAnchors = [
   { x: 200, y: 155, label: 'Книги', weight: 6, kind: 'books' },
@@ -27,31 +30,44 @@ export const itemAnchors = [
   { x: 435, y: 650, label: 'Ещё книги', weight: 6, kind: 'books' },
   { x: 285, y: 580, label: 'Постельное', weight: 4, kind: 'clothes' },
   { x: 340, y: 835, label: 'Последняя коробка', weight: 6, kind: 'box' },
+  { x: 300, y: 130, label: 'Полотенца', weight: 2, kind: 'clothes' },
+  { x: 350, y: 330, label: 'Кружки', weight: 4, kind: 'box' },
+  { x: 420, y: 465, label: 'Зарядки', weight: 2, kind: 'cables' },
+  { x: 305, y: 695, label: 'Обувь', weight: 2, kind: 'box' },
+  { x: 265, y: 870, label: 'Кастрюли', weight: 4, kind: 'box' },
+  { x: 285, y: 795, label: 'Сковородки', weight: 4, kind: 'box' },
+  { x: 435, y: 315, label: 'Клавиатура', weight: 2, kind: 'cables' },
+  { x: 175, y: 520, label: 'Подушки', weight: 2, kind: 'clothes' },
+  { x: 410, y: 810, label: 'Зимняя обувь', weight: 4, kind: 'box' },
+  { x: 270, y: 390, label: 'Папки', weight: 4, kind: 'books' },
+  { x: 400, y: 580, label: 'Пледы', weight: 4, kind: 'clothes' },
+  { x: 290, y: 490, label: 'Колонки', weight: 6, kind: 'box' },
+  { x: 200, y: 835, label: 'Зимние вещи', weight: 4, kind: 'clothes' },
+  { x: 270, y: 75, label: 'Мелочи из ящика', weight: 2, kind: 'cables' },
 ] as const;
 
-export function movingOverview(aspect: number, fov = 43) {
-  const halfWidth = (bounds.maxX - bounds.minX) / 140 + 0.5;
-  const halfDepth = (bounds.maxY - bounds.minY) / 140 + 0.55;
-  const pitch = Math.PI * 0.32,
-    sin = Math.sin(pitch),
-    cos = Math.cos(pitch);
-  const tanV = Math.tan((fov * Math.PI) / 360),
-    tanH = tanV * Math.max(0.25, aspect);
-  let distance = 0;
-  for (const x of [-halfWidth, halfWidth])
-    for (const z of [-halfDepth, halfDepth])
-      for (const h of [-0.2, 2.7]) {
-        const y = h - 0.8,
-          depth = y * sin + z * cos;
-        distance = Math.max(
-          distance,
-          depth + Math.abs(x) / (tanH * 0.9),
-          depth + Math.abs(y * cos - z * sin) / (tanV * 0.9),
-        );
-      }
-  return {
-    look: { x: 0, y: 0.8, z: 0 },
-    position: { x: 0, y: 0.8 + distance * sin, z: distance * cos },
-    far: distance + halfDepth + 12,
-  };
-}
+export { movingOverview } from './camera.ts';
+
+/** Walk targets remain outside collision furniture; seatWorld is a seated render anchor. */
+const station = (x: number, y: number, facing: number) => ({
+  x,
+  y,
+  facing,
+  world: {
+    x: (x - 300) / MAP_UNITS_PER_METRE,
+    y: 0,
+    z: (y - 540) / MAP_UNITS_PER_METRE,
+  },
+});
+export const movingStations = {
+  sofa: [440, 555].map((y) => ({
+    ...station(152, y, -Math.PI / 2),
+    seatWorld: {
+      x: (102 - 300) / MAP_UNITS_PER_METRE,
+      y: 0,
+      z: (y - 540) / MAP_UNITS_PER_METRE,
+    },
+  })),
+  laptop: station(435, 240, Math.PI / 2),
+  toilet: station(160, 90, -Math.PI / 2),
+};

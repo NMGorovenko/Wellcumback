@@ -1,116 +1,88 @@
-import { PLAYER_BINDINGS } from '../input/gamepads.ts';
+import { PLAYER_BINDINGS } from '../input/bindings.ts';
 import {
-  MAP_UNITS_PER_METRE,
   bagAnchors,
-  bounds,
   entry,
   itemAnchors,
-  obstacles,
+  movingStations,
   spawn,
 } from './layout.ts';
-
+import { movingAssistantInput } from './assistant.ts';
+import { hasMovingDuty, movingDutyInput, movingWorkRate } from './duties.ts';
+import { movingIntent } from './intent.ts';
+import { movingHint, say } from './messages.ts';
+import { clearMovingRoute } from './navigation.ts';
+import {
+  bagById,
+  carrySetup,
+  clamp,
+  distance,
+  itemById,
+  nearest,
+  putDownItem,
+  releaseBag,
+  REACH,
+  walkGroup,
+  movingCarryPoint,
+} from './physics.ts';
+import type {
+  MovingActor,
+  MovingBag,
+  MovingInput,
+  MovingState,
+  Point,
+} from './types.ts';
+export type {
+  MovingActor,
+  MovingBag,
+  MovingItem,
+  MovingState,
+  MovingIntent,
+  MovingActivity,
+  MovingTaskTarget,
+  Point,
+} from './types.ts';
+export {
+  movingCanStand,
+  movingCarryPoint,
+  movingPositionClear,
+  ACTOR_RADIUS,
+  BAG_RADIUS,
+  SOLO_CARRY_OFFSET,
+  REACH,
+} from './physics.ts';
+export { movingPlanRoute } from './navigation.ts';
+export { movingIntent } from './intent.ts';
+export { MOVING_DIALOGUE } from './dialogue.ts';
 export const movingCrew = [
   { name: 'Ярик', preset: 'yaroslav' },
-  { name: 'Никита', preset: 'nikita' },
-  { name: 'Рома', preset: 'roma' },
+  { name: 'Настя', preset: 'anastasia' },
 ] as const;
-export const REACH = 66;
-export const ACTOR_RADIUS = 16;
-export const BAG_RADIUS = 27;
-export const SOLO_CARRY_OFFSET = 0.48 * MAP_UNITS_PER_METRE;
-export type Point = { x: number; y: number };
-export type MovingActor = Point & {
-  id: number;
-  vx: number;
-  vy: number;
-  facing: number;
-  stamina: number;
-  heldItem: number | null;
-  bagId: number | null;
-  zipping: number | null;
-  working: boolean;
-  bumpUntil: number;
-};
-export type MovingItem = Point & {
-  id: number;
-  label: string;
-  weight: number;
-  kind: string;
-  status: 'floor' | 'held' | 'packed';
-  carrier: number | null;
-  bagId: number | null;
-};
-export type MovingBag = Point & {
-  id: number;
-  weight: number;
-  capacity: number;
-  zip: number;
-  status: 'open' | 'closed' | 'carried' | 'delivered';
-  carriers: number[];
-};
-export type MovingState = {
-  players: number;
-  phase: 'brief' | 'moving' | 'result';
-  paused: boolean;
-  elapsed: number;
-  score: number;
-  actors: MovingActor[];
-  items: MovingItem[];
-  bags: MovingBag[];
-  message: string;
-  messageUntil: number;
-  teamwork: number;
-  bumps: number;
-  delivered: number;
-  previousAction: boolean[];
-  previousSecondary: boolean[];
-};
-export type MovingIntent = {
-  kind:
-    | 'item'
-    | 'pack'
-    | 'zip'
-    | 'carry'
-    | 'join'
-    | 'travel'
-    | 'blocked'
-    | 'search';
-  target: number | null;
-  label: string;
-  hold?: boolean;
-};
-const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
-const clamp = (n: number, lo: number, hi: number) =>
-  Math.max(lo, Math.min(hi, n));
-const bagById = (s: MovingState, id: number | null) =>
-  s.bags.find((bag) => bag.id === id);
-const itemById = (s: MovingState, id: number | null) =>
-  s.items.find((item) => item.id === id);
-const say = (s: MovingState, message: string) => {
-  s.message = message;
-  s.messageUntil = s.elapsed + 5;
-};
+export const MOVING_DAY_SECONDS = 480;
+export const PACK_SECONDS = 1.6;
+export const ZIP_SECONDS = 2;
 const emptyBag = (id: number, p: Point): MovingBag => ({
   ...p,
   id,
   weight: 0,
-  capacity: 12,
+  capacity: 18,
   zip: 0,
   status: 'open',
   carriers: [],
 });
-
 export function freshMoving(players = 1): MovingState {
-  const count = clamp(Math.floor(Number.isFinite(players) ? players : 1), 1, 3);
+  const count = clamp(Math.floor(Number.isFinite(players) ? players : 1), 1, 2);
   return {
     players: count,
+    actorCount: count,
     phase: 'brief',
+    chapter: 'packing',
     paused: false,
     elapsed: 0,
+    dayRemaining: MOVING_DAY_SECONDS,
     score: 0,
-    actors: Array.from({ length: count }, (_, id) => ({
+    actors: Array.from({ length: 2 }, (_, id) => ({
       id,
-      x: spawn.x + (id - (count - 1) / 2) * spawn.spacing,
+      x: spawn.x + (id - 0.5) * spawn.spacing,
       y: spawn.y,
       vx: 0,
       vy: 0,
@@ -121,6 +93,13 @@ export function freshMoving(players = 1): MovingState {
       zipping: null,
       working: false,
       bumpUntil: 0,
+      activity: 'free',
+      activityProgress: 0,
+      taskTarget: null,
+      packingBag: null,
+      route: [],
+      routeKey: '',
+      routeBlocked: 0,
     })),
     items: itemAnchors.map((item, id) => ({
       ...item,
@@ -129,269 +108,100 @@ export function freshMoving(players = 1): MovingState {
       carrier: null,
       bagId: null,
     })),
-    bags: bagAnchors.map((point, id) => emptyBag(id, point)),
+    bags: bagAnchors.map((p, id) => emptyBag(id, p)),
     message: 'Как оно вообще здесь помещалось?',
-    messageUntil: 6,
+    messageUntil: 0,
+    messageSeq: 0,
+    speaker: 'Ярик',
+    dialogueId: null,
     teamwork: 0,
     bumps: 0,
     delivered: 0,
-    previousAction: [false, false, false],
-    previousSecondary: [false, false, false],
+    alert: { active: false, count: 0, progress: 0, nextAt: 42 },
+    toilet: { active: false, count: 0, progress: 0, nextAt: 105 },
+    dutyGraceUntil: 0,
+    previousAction: [false, false],
+    previousSecondary: [false, false],
   };
 }
 export function movingAction(s: MovingState) {
   if (s.phase !== 'brief' || s.paused) return;
   s.phase = 'moving';
-  say(s, 'Собираем вещи в жёлтые сумки. Вход — у кухни. Ярик считает коробки.');
+  say(s, 'start');
 }
-
-export function movingCanStand(
-  s: MovingState,
-  p: Point,
-  radius = ACTOR_RADIUS,
-  ignoreBag: number | null = null,
-) {
-  if (
-    p.x < bounds.minX + radius ||
-    p.x > bounds.maxX - radius ||
-    p.y < bounds.minY + radius ||
-    p.y > bounds.maxY - radius
-  )
-    return false;
-  if (
-    obstacles.some(
-      (o) =>
-        Math.hypot(
-          p.x - clamp(p.x, o.x, o.x + o.w),
-          p.y - clamp(p.y, o.y, o.y + o.h),
-        ) < radius,
-    )
-  )
-    return false;
-  return !s.bags.some(
-    (bag) =>
-      bag.id !== ignoreBag &&
-      bag.status !== 'delivered' &&
-      bag.status !== 'carried' &&
-      distance(p, bag) < radius + BAG_RADIUS,
-  );
-}
-/** The bag held in front of one person occupies the same point in physics
- * and rendering. With two carriers it hangs between their actual positions. */
-export function movingCarryPoint(
-  members: readonly (Point & { facing: number })[],
-): Point {
-  if (members.length === 1) {
-    const actor = members[0];
-    return {
-      x: actor.x + Math.sin(actor.facing) * SOLO_CARRY_OFFSET,
-      y: actor.y + Math.cos(actor.facing) * SOLO_CARRY_OFFSET,
-    };
+function stopWork(actor: MovingActor) {
+  actor.packingBag = null;
+  actor.zipping = null;
+  if (actor.activity === 'packing') {
+    actor.activity = 'free';
+    actor.activityProgress = 0;
+    actor.taskTarget = null;
   }
-  return {
-    x: members.reduce((sum, actor) => sum + actor.x, 0) / members.length,
-    y: members.reduce((sum, actor) => sum + actor.y, 0) / members.length,
-  };
-}
-const carrySpacePrompt = 'Подойди к ручке со свободной стороны.';
-function carrySetup(s: MovingState, actor: MovingActor, bag: MovingBag) {
-  const facing = Math.atan2(bag.x - actor.x, bag.y - actor.y);
-  const proposed = { ...actor, facing };
-  const members = [...bag.carriers.map((id) => s.actors[id]), proposed];
-  const center = movingCarryPoint(members);
-  const clear =
-    movingCanStand(s, actor, BAG_RADIUS, bag.id) &&
-    movingCanStand(s, center, BAG_RADIUS, bag.id) &&
-    s.actors.every(
-      (other) =>
-        members.some((member) => member.id === other.id) ||
-        distance(center, other) >= ACTOR_RADIUS + BAG_RADIUS,
-    );
-  return { facing, clear };
-}
-function nearest<T extends Point>(p: Point, values: T[]): T | undefined {
-  return values
-    .filter((v) => distance(p, v) <= REACH)
-    .sort((a, b) => distance(p, a) - distance(p, b))[0];
-}
-export function movingIntent(s: MovingState, index: number): MovingIntent {
-  const actor = s.actors[index];
-  if (!actor) return { kind: 'search', target: null, label: 'Подойди к вещам' };
-  if (actor.bagId !== null)
-    return {
-      kind: 'travel',
-      target: actor.bagId,
-      label: 'К двери · стой, чтобы отдохнуть',
-    };
-  if (actor.heldItem !== null) {
-    const item = itemById(s, actor.heldItem)!;
-    const bag = nearest(
-      actor,
-      s.bags.filter((b) => b.status === 'open'),
-    );
-    if (!bag)
-      return { kind: 'search', target: null, label: 'К открытой жёлтой сумке' };
-    return {
-      kind: bag.weight + item.weight <= bag.capacity ? 'pack' : 'blocked',
-      target: bag.id,
-      label:
-        bag.weight + item.weight <= bag.capacity
-          ? `Уложить: ${bag.weight + item.weight}/${bag.capacity} кг`
-          : `Не влезает · ${bag.weight}/${bag.capacity} кг`,
-    };
-  }
-  if (actor.zipping !== null)
-    return {
-      kind: 'zip',
-      target: actor.zipping,
-      label: 'Застегнуть молнию',
-      hold: true,
-    };
-  const choices = [
-    ...s.items
-      .filter((v) => v.status === 'floor')
-      .map((v) => ({
-        ...v,
-        intent: {
-          kind: 'item' as const,
-          target: v.id,
-          label: `${v.label} · ${v.weight} кг`,
-        },
-      })),
-    ...s.bags
-      .filter(
-        (v) =>
-          v.weight > 0 && v.status !== 'delivered' && v.carriers.length < 2,
-      )
-      .map((v) => ({
-        ...v,
-        intent: {
-          kind:
-            v.status === 'open'
-              ? ('zip' as const)
-              : v.status === 'carried'
-                ? ('join' as const)
-                : ('carry' as const),
-          target: v.id,
-          label:
-            v.status === 'open'
-              ? `Молния · ${v.weight}/${v.capacity} кг`
-              : v.status === 'carried'
-                ? 'Взять вторую ручку'
-                : `Поднять сумку · ${v.weight} кг`,
-          hold: v.status === 'open',
-        },
-      })),
-  ];
-  const intent = nearest(actor, choices)?.intent;
-  if (
-    intent &&
-    (intent.kind === 'carry' || intent.kind === 'join') &&
-    !carrySetup(s, actor, bagById(s, intent.target)!).clear
-  )
-    return { kind: 'search', target: intent.target, label: carrySpacePrompt };
-  return (
-    intent ?? {
-      kind: 'search',
-      target: null,
-      label: 'Подойди к вещи или сумке',
-    }
-  );
-}
-function putDownItem(s: MovingState, actor: MovingActor) {
-  const item = itemById(s, actor.heldItem);
-  if (!item) return;
-  item.status = 'floor';
-  item.carrier = null;
-  item.x = actor.x;
-  item.y = actor.y;
-  actor.heldItem = null;
-}
-function releaseBag(s: MovingState, actor: MovingActor) {
-  const bag = bagById(s, actor.bagId);
-  if (!bag) return;
-  if (bag.carriers.length === 1) {
-    const point = Array.from({ length: 8 }, (_, i) => {
-      const angle = actor.facing + (i * Math.PI) / 4;
-      return {
-        x: actor.x + Math.sin(angle) * 49,
-        y: actor.y + Math.cos(angle) * 49,
-      };
-    }).find(
-      (p) =>
-        movingCanStand(s, p, BAG_RADIUS, bag.id) &&
-        s.actors.every((a) => distance(a, p) >= ACTOR_RADIUS + BAG_RADIUS),
-    );
-    if (!point) {
-      say(s, 'Здесь тесно. Чуть отойди и опусти сумку.');
-      return;
-    }
-    bag.x = point.x;
-    bag.y = point.y;
-    bag.status = 'closed';
-  }
-  const remaining = bag.carriers.filter((id) => id !== actor.id);
-  if (remaining.length) {
-    const point = movingCarryPoint(remaining.map((id) => s.actors[id]));
-    if (
-      !movingCanStand(s, point, BAG_RADIUS, bag.id) ||
-      s.actors.some(
-        (other) =>
-          !remaining.includes(other.id) &&
-          distance(other, point) < ACTOR_RADIUS + BAG_RADIUS,
-      )
-    ) {
-      say(s, 'Чуть отойдите вместе — сумке нужно место у второй ручки.');
-      return;
-    }
-    bag.x = point.x;
-    bag.y = point.y;
-  }
-  bag.carriers = remaining;
-  actor.bagId = null;
 }
 function act(s: MovingState, actor: MovingActor) {
   const intent = movingIntent(s, actor.id);
   if (intent.kind === 'item') {
     const item = itemById(s, intent.target)!;
+    if (item.status !== 'floor') return;
     item.status = 'held';
     item.carrier = actor.id;
     actor.heldItem = item.id;
+    clearMovingRoute(actor);
   } else if (intent.kind === 'pack') {
-    const bag = bagById(s, intent.target)!,
-      item = itemById(s, actor.heldItem)!;
-    bag.weight += item.weight;
-    bag.zip = 0;
-    item.status = 'packed';
-    item.bagId = bag.id;
-    item.carrier = null;
-    actor.heldItem = null;
-    s.score += 30;
-    actor.working = true;
-    say(
-      s,
-      `${item.label} внутри. Сумка ${bag.id + 1}: ${bag.weight}/${bag.capacity} кг.`,
-    );
-  } else if (intent.kind === 'blocked')
-    say(s, 'Молния не аргумент. Возьми другую сумку — здесь уже тяжело.');
-  else if (intent.kind === 'zip') actor.zipping = intent.target;
-  else if (intent.kind === 'carry' || intent.kind === 'join') {
+    actor.packingBag = intent.target;
+    actor.activity = 'packing';
+    actor.activityProgress = 0;
     const bag = bagById(s, intent.target)!;
-    const { facing, clear } = carrySetup(s, actor, bag);
-    if (!clear) {
-      say(s, carrySpacePrompt);
-      return;
+    actor.taskTarget = { kind: 'bag', id: bag.id, x: bag.x, y: bag.y };
+    actor.facing = Math.atan2(bag.x - actor.x, bag.y - actor.y);
+  } else if (intent.kind === 'blocked')
+    movingHint(s, 'Возьми другую сумку: в эту вещь не помещается.');
+  else if (intent.kind === 'zip') actor.zipping = intent.target;
+  else if (intent.kind === 'reopen') {
+    const bag = bagById(s, intent.target)!;
+    if (bag.status !== 'closed') return;
+    bag.status = 'open';
+    bag.zip = 0;
+    movingHint(s, 'Открыли сумку. Здесь ещё есть место.');
+  } else if (intent.kind === 'rest') {
+    if (actor.activity === 'rest') {
+      actor.activity = 'free';
+      actor.activityProgress = 0;
+      actor.taskTarget = null;
+    } else {
+      const station = movingStations.sofa[actor.id];
+      actor.activity = 'rest';
+      actor.facing = station.facing;
+      actor.activityProgress = actor.stamina / 100;
+      actor.taskTarget = {
+        kind: 'sofa',
+        id: actor.id,
+        x: station.x,
+        y: station.y,
+      };
+      say(s, actor.id === 0 ? 'yarikRest' : 'nastyaRest');
     }
-    actor.facing = facing;
+    clearMovingRoute(actor);
+  } else if (intent.kind === 'carry' || intent.kind === 'join') {
+    if (s.chapter !== 'carrying') return;
+    const bag = bagById(s, intent.target)!,
+      setup = carrySetup(s, actor, bag);
+    if (!setup.clear) return;
+    actor.facing = setup.facing;
     actor.bagId = bag.id;
     bag.carriers.push(actor.id);
     bag.status = 'carried';
-    if (bag.carriers.length === 2)
-      say(s, 'Раз, два… Вместе легче. Идите в одну сторону.');
+    clearMovingRoute(actor);
+    if (bag.carriers.length === 2) say(s, 'together');
   }
 }
 function secondary(s: MovingState, actor: MovingActor) {
-  actor.zipping = null;
+  stopWork(actor);
+  if (actor.activity === 'rest') {
+    actor.activity = 'free';
+    actor.activityProgress = 0;
+    actor.taskTarget = null;
+  }
   if (actor.heldItem !== null) putDownItem(s, actor);
   else if (actor.bagId !== null) releaseBag(s, actor);
   else {
@@ -402,121 +212,146 @@ function secondary(s: MovingState, actor: MovingActor) {
     if (bag) {
       bag.status = 'open';
       bag.zip = 0;
-      say(s, 'Открыли снова. Место ещё найдётся.');
+      movingHint(s, 'Открыли сумку. Здесь ещё есть место.');
     }
   }
+  clearMovingRoute(actor);
 }
-function spareBag(s: MovingState) {
-  if (
-    !s.items.some((item) => item.status !== 'packed') ||
-    s.bags.some((bag) => bag.status === 'open' && bag.weight === 0) ||
-    s.bags.filter((bag) => bag.status !== 'delivered').length >=
-      bagAnchors.length
-  )
-    return;
-  const anchor = bagAnchors.find(
-    (p) =>
-      movingCanStand(s, p, BAG_RADIUS) &&
-      s.actors.every((a) => distance(p, a) > BAG_RADIUS + ACTOR_RADIUS),
-  );
-  if (anchor) s.bags.push(emptyBag(s.bags.length, anchor));
-}
-function walkGroup(
+function progressWork(
   s: MovingState,
-  members: MovingActor[],
-  dx: number,
-  dy: number,
-  bag?: MovingBag,
+  actor: MovingActor,
+  input: MovingInput,
+  dt: number,
 ) {
-  const ids = new Set(members.map((a) => a.id));
-  const valid = (x: number, y: number) => {
-    const center = movingCarryPoint(
-      members.map((actor) => ({
-        x: actor.x + x,
-        y: actor.y + y,
-        facing: x || y ? Math.atan2(x, y) : actor.facing,
-      })),
-    );
+  if (actor.activity === 'packing') {
+    const bag = bagById(s, actor.packingBag),
+      item = itemById(s, actor.heldItem);
     if (
-      bag &&
-      (!movingCanStand(s, center, BAG_RADIUS, bag.id) ||
-        s.actors.some(
-          (other) =>
-            !ids.has(other.id) &&
-            distance(center, other) < BAG_RADIUS + ACTOR_RADIUS,
-        ))
-    )
-      return false;
-    return members.every((actor) => {
-      const p = { x: actor.x + x, y: actor.y + y };
-      return (
-        movingCanStand(s, p, bag ? BAG_RADIUS : ACTOR_RADIUS, bag?.id) &&
-        s.actors.every(
-          (other) =>
-            ids.has(other.id) || distance(p, other) >= ACTOR_RADIUS * 2,
-        )
-      );
-    });
-  };
-  const x = valid(dx, 0) ? dx : 0,
-    y = valid(x, dy) ? dy : 0;
-  for (const actor of members) {
-    actor.x += x;
-    actor.y += y;
-    actor.vx = x;
-    actor.vy = y;
-    if (x || y) actor.facing = Math.atan2(x, y);
-    if (
-      ((Math.abs(dx) > 0.001 && !x) || (Math.abs(dy) > 0.001 && !y)) &&
-      s.elapsed >= actor.bumpUntil
+      !bag ||
+      !item ||
+      bag.status !== 'open' ||
+      distance(actor, bag) > REACH ||
+      !input.action ||
+      bag.weight + item.weight > bag.capacity
     ) {
-      actor.bumpUntil = s.elapsed + 1.5;
-      s.bumps++;
+      stopWork(actor);
+      return;
     }
-  }
-  return Math.hypot(x, y);
-}
-
-export function movingTick(s: MovingState, delta: number, keys: Set<string>) {
-  if (s.paused || s.phase !== 'moving' || !Number.isFinite(delta)) return;
-  const dt = clamp(delta, 0, 0.05);
-  if (!dt) return;
-  s.elapsed += dt;
-  const input = s.actors.map((actor, i) => {
-    const b = PLAYER_BINDINGS[i],
-      action = keys.has(b.action) || (i === 0 && keys.has('Space')),
-      alternate = keys.has(b.secondary);
-    actor.working = false;
-    actor.vx = 0;
-    actor.vy = 0;
-    if (alternate && !s.previousSecondary[i]) secondary(s, actor);
-    if (action && !s.previousAction[i] && !alternate) act(s, actor);
-    s.previousAction[i] = action;
-    s.previousSecondary[i] = alternate;
-    if (!action) actor.zipping = null;
-    const x = Number(keys.has(b.right)) - Number(keys.has(b.left)),
-      y = Number(keys.has(b.down)) - Number(keys.has(b.up)),
-      length = Math.hypot(x, y) || 1;
-    return { x: x / length, y: y / length, action };
-  });
-  for (const actor of s.actors) {
+    actor.working = true;
+    actor.activityProgress = Math.min(
+      1,
+      actor.activityProgress +
+        (dt * movingWorkRate(actor.stamina)) / PACK_SECONDS,
+    );
+    if (actor.activityProgress >= 1) {
+      bag.weight += item.weight;
+      bag.zip = 0;
+      item.status = 'packed';
+      item.bagId = bag.id;
+      item.carrier = null;
+      actor.heldItem = null;
+      s.score += 30;
+      stopWork(actor);
+      movingHint(
+        s,
+        `${item.label} внутри. Сумка ${bag.id + 1}: ${bag.weight}/${bag.capacity} кг.`,
+        movingCrew[actor.id].name,
+      );
+    }
+  } else if (actor.zipping !== null) {
     const bag = bagById(s, actor.zipping);
     if (
       !bag ||
       bag.status !== 'open' ||
       distance(actor, bag) > REACH ||
-      !input[actor.id].action
+      !input.action
     ) {
       actor.zipping = null;
-      continue;
+      return;
     }
     actor.working = true;
-    bag.zip = Math.min(1, bag.zip + dt / 1.3);
+    actor.facing = Math.atan2(bag.x - actor.x, bag.y - actor.y);
+    bag.zip = Math.min(
+      1,
+      bag.zip + (dt * movingWorkRate(actor.stamina)) / ZIP_SECONDS,
+    );
     if (bag.zip >= 1) {
       bag.status = 'closed';
       actor.zipping = null;
-      say(s, 'Молния сошлась. Отпусти кнопку, затем подними сумку.');
+      movingHint(s, 'Молния закрыта. Отпусти кнопку.');
     }
+  }
+}
+function inputFor(index: number, keys: ReadonlySet<string>): MovingInput {
+  const b = PLAYER_BINDINGS[index],
+    x = Number(keys.has(b.right)) - Number(keys.has(b.left)),
+    y = Number(keys.has(b.down)) - Number(keys.has(b.up)),
+    length = Math.hypot(x, y) || 1;
+  return {
+    x: x / length,
+    y: y / length,
+    action: keys.has(b.action) || (index === 0 && keys.has('Space')),
+    alternate: keys.has(b.secondary),
+  };
+}
+function fatigue(
+  actor: MovingActor,
+  load: number,
+  bag: boolean,
+  walked: number,
+  dt: number,
+) {
+  let rate = 0.28;
+  if (actor.activity === 'rest') rate = 3.6;
+  else if (actor.working)
+    rate = -(actor.activity === 'laptop'
+      ? 2.1
+      : actor.activity === 'packing'
+        ? 2.6
+        : 1.9);
+  else if (walked > 0.001)
+    rate = -(load * (bag ? 0.2 : 0.14) + (bag ? 0.7 : 0.42));
+  else if (bag) rate = -0.2; // Holding luggage is not a rest station.
+  if (rate < 0 && actor.id === 1) rate *= 1.35;
+  actor.stamina = clamp(actor.stamina + rate * dt, 0, 100);
+  if (actor.activity === 'rest') actor.activityProgress = actor.stamina / 100;
+}
+export function movingTick(s: MovingState, delta: number, keys: Set<string>) {
+  if (s.paused || s.phase !== 'moving' || !Number.isFinite(delta)) return;
+  const dt = clamp(delta, 0, 0.05);
+  if (!dt) return;
+  s.elapsed += dt;
+  s.dayRemaining = MOVING_DAY_SECONDS - s.elapsed;
+  for (const actor of s.actors) {
+    actor.working = false;
+    actor.vx = 0;
+    actor.vy = 0;
+  }
+  const input = s.actors.map((_, i) => inputFor(i, keys));
+  const human = input[0];
+  const forced = movingDutyInput(s, dt, human);
+  if (forced) input[0] = forced;
+  if (s.players === 1) input[1] = movingAssistantInput(s, dt);
+  for (const actor of s.actors) {
+    const control = input[actor.id],
+      duty = actor.id === 0 && (forced !== null || hasMovingDuty(s));
+    if (!duty) {
+      if (actor.activity === 'rest' && (control.x || control.y)) {
+        actor.activity = 'free';
+        actor.activityProgress = 0;
+        actor.taskTarget = null;
+      }
+      if (control.alternate && !s.previousSecondary[actor.id])
+        secondary(s, actor);
+      else if (control.action && !s.previousAction[actor.id]) act(s, actor);
+      if (!control.action) stopWork(actor);
+      progressWork(s, actor, control, dt);
+    }
+    // A forced route suppresses actions, not the physical button state. The
+    // laptop hold must be released before it can become a new pickup press.
+    const physical = actor.id === 0 ? human : control;
+    s.previousAction[actor.id] = physical.action;
+    s.previousSecondary[actor.id] = physical.alternate;
   }
   const moved = new Set<number>();
   for (const actor of s.actors) {
@@ -526,57 +361,53 @@ export function movingTick(s: MovingState, delta: number, keys: Set<string>) {
     members.forEach((a) => moved.add(a.id));
     let x = 0,
       y = 0;
-    for (const a of members)
-      if (a.zipping === null) {
-        x += input[a.id].x / members.length;
-        y += input[a.id].y / members.length;
+    for (const member of members)
+      if (
+        member.zipping === null &&
+        !['packing', 'rest', 'laptop', 'toilet'].includes(member.activity)
+      ) {
+        x += input[member.id].x / members.length;
+        y += input[member.id].y / members.length;
       }
-    const stamina = Math.min(...members.map((a) => a.stamina));
-    const load = bag
-      ? bag.weight / members.length
-      : (itemById(s, actor.heldItem)?.weight ?? 0);
+    const stamina = Math.min(...members.map((a) => a.stamina)),
+      load = bag
+        ? bag.weight / members.length
+        : (itemById(s, actor.heldItem)?.weight ?? 0);
     const speed =
       118 *
       (bag
-        ? Math.max(0.38, 1 - load * 0.055)
+        ? Math.max(0.38, 1 - load * 0.045)
         : actor.heldItem !== null
           ? 0.88
           : 1) *
-      (0.3 + 0.7 * Math.min(1, stamina / 30));
+      (0.36 + 0.64 * Math.min(1, stamina / 30));
     const walked = walkGroup(s, members, x * speed * dt, y * speed * dt, bag);
-    for (const a of members)
-      a.stamina = clamp(
-        a.stamina +
-          dt *
-            (walked > 0.001
-              ? -load * 0.72 - (bag ? 1.2 : 0.3)
-              : a.working
-                ? 5
-                : bag
-                  ? 15
-                  : 24),
-        0,
-        100,
-      );
+    for (const member of members) {
+      if (Math.hypot(x, y) > 0.1)
+        member.routeBlocked =
+          walked < speed * dt * 0.08 ? member.routeBlocked + dt : 0;
+      fatigue(member, load, !!bag, walked, dt);
+    }
     if (bag) {
-      const carriedPoint = movingCarryPoint(members);
-      bag.x = carriedPoint.x;
-      bag.y = carriedPoint.y;
+      const point = movingCarryPoint(members);
+      bag.x = point.x;
+      bag.y = point.y;
       if (members.length > 1 && walked > 0.001) s.teamwork += dt;
-      if (distance(bag, entry) < entry.radius) {
+      if (
+        s.chapter === 'carrying' &&
+        bag.weight > 0 &&
+        distance(bag, entry) < entry.radius
+      ) {
         bag.status = 'delivered';
         bag.carriers = [];
         members.forEach((a) => {
           a.bagId = null;
+          clearMovingRoute(a);
         });
         s.score += bag.weight * 12;
         s.delivered++;
-        say(
-          s,
-          s.delivered === 1
-            ? 'Это ещё не всё.'
-            : 'Ещё одна сумка. Последняя. Предпоследняя.',
-        );
+        if (s.delivered === 1) say(s, 'firstBag');
+        else movingHint(s, `У двери: ${s.delivered} сумок.`);
       }
     }
   }
@@ -585,19 +416,24 @@ export function movingTick(s: MovingState, delta: number, keys: Set<string>) {
       item.x = s.actors[item.carrier].x;
       item.y = s.actors[item.carrier].y;
     }
-  spareBag(s);
   if (
+    s.chapter === 'packing' &&
+    s.items.every((item) => item.status === 'packed')
+  ) {
+    s.chapter = 'carrying';
+    say(s, 'packed');
+    for (const actor of s.actors) clearMovingRoute(actor);
+  }
+  if (
+    s.chapter === 'carrying' &&
     s.items.every((item) => item.status === 'packed') &&
-    s.bags.every((bag) => bag.weight === 0 || bag.status === 'delivered')
+    s.bags.every((bag) => bag.weight === 0 || bag.status === 'delivered') &&
+    !hasMovingDuty(s)
   ) {
     s.phase = 'result';
     s.score +=
-      Math.max(0, Math.round(300 - s.elapsed * 0.7)) +
+      Math.max(0, Math.round(300 - s.elapsed * 0.35)) +
       Math.min(150, Math.round(s.teamwork * 2));
-    say(s, 'Первая ходка готова. Квартира внезапно оказалась с полом.');
-  } else if (s.elapsed > s.messageUntil) {
-    s.message = s.actors.some((a) => a.stamina < 30)
-      ? 'Ноги помнят вес. Остановись на пару секунд — силы вернутся.'
-      : 'Вещь → открытая сумка → держи молнию → к двери. Тяжёлую сумку удобнее вдвоём.';
+    say(s, 'finish');
   }
 }

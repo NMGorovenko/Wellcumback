@@ -29,6 +29,9 @@ export function MovingActionPrompts({
       aria-label="Действия рядом с персонажами"
     >
       {state.actors.map((actor, i) => {
+        const automated = i >= state.players;
+        const travellingForTask =
+          actor.activity === 'alert-walk' || actor.activity === 'toilet-walk';
         const intent = movingIntent(state, i),
           bag = state.bags.find((b) => b.id === (actor.bagId ?? actor.zipping));
         const control: InputControl = ['travel', 'search', 'blocked'].includes(
@@ -52,11 +55,12 @@ export function MovingActionPrompts({
             ref={(node) => {
               cueRefs.current[i] = node;
             }}
-            className={`context-worker moving-worker${actor.stamina < 30 ? ' is-tired' : ''}`}
+            className={`context-worker moving-worker${automated ? ' is-assistant' : ''}${actor.stamina < 30 ? ' is-tired' : ''}`}
           >
             <div className="context-worker-name">
               <strong>
-                {i + 1} · {movingCrew[i].name}
+                {movingCrew[i].name}
+                {automated ? ' · сама' : ` · ${i + 1}`}
               </strong>
               <span>{Math.round(actor.stamina)}% сил</span>
             </div>
@@ -67,21 +71,33 @@ export function MovingActionPrompts({
             />
             <div className="context-cues">
               <span className={`context-cue${actor.working ? ' is-held' : ''}`}>
-                <kbd>{prompt(control)}</kbd>
+                {!automated &&
+                  !travellingForTask &&
+                  actor.activity !== 'toilet' && <kbd>{prompt(control)}</kbd>}
                 <span>
-                  {intent.hold && <small>держи</small>}
+                  {intent.hold && !automated && <small>держи</small>}
                   {intent.label}
                 </span>
               </span>
-              {(actor.heldItem !== null || actor.bagId !== null || canOpen) && (
-                <span className="context-cue">
-                  <kbd>{prompt('secondary')}</kbd>
-                  <span>{canOpen ? 'открыть сумку' : 'опустить'}</span>
-                </span>
-              )}
+              {!automated &&
+                (actor.heldItem !== null ||
+                  actor.bagId !== null ||
+                  canOpen) && (
+                  <span className="context-cue">
+                    <kbd>{prompt('secondary')}</kbd>
+                    <span>{canOpen ? 'открыть сумку' : 'опустить'}</span>
+                  </span>
+                )}
             </div>
             {actor.zipping !== null && bag && (
               <progress aria-label="Молния" max={1} value={bag.zip} />
+            )}
+            {['packing', 'laptop', 'toilet'].includes(actor.activity) && (
+              <progress
+                aria-label="Текущее действие"
+                max={1}
+                value={actor.activityProgress}
+              />
             )}
             {bag && actor.bagId !== null && (
               <small>
@@ -93,8 +109,12 @@ export function MovingActionPrompts({
                     : 'можно донести одному'}
               </small>
             )}
-            {actor.stamina < 30 && (
-              <small>Остановись ненадолго — силы вернутся</small>
+            {actor.stamina < 30 && actor.activity === 'free' && (
+              <small>
+                {automated
+                  ? 'Скоро понадобится передышка'
+                  : 'Можно передохнуть на диване'}
+              </small>
             )}
           </div>
         );

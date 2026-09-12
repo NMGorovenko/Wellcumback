@@ -2,6 +2,10 @@ import { resolveDrive, type DriveAxes } from '../input/drive.ts';
 import {
   BRIDGES,
   CITY_BOUNDS,
+  CITY_SPAWN,
+  ROUNDABOUT,
+  cityBarriers,
+  riverDistance,
   RIVER_HALF_WIDTH,
   cityBuildings,
   cityStops,
@@ -17,6 +21,8 @@ export type CityState = {
   steering: number;
   speed: number;
   drifting: boolean;
+  /** Rear grip eases back in after the handbrake is released. */
+  driftBlend?: number;
   elapsed: number;
   bumps: number;
   bumpCooldown: number;
@@ -33,14 +39,15 @@ export type CityState = {
 export const freshCity = (): CityState => ({
   paused: false,
   players: 1,
-  x: -12,
-  z: 14,
+  x: CITY_SPAWN.x,
+  z: CITY_SPAWN.z,
   vx: 0,
   vz: 0,
-  heading: 0,
+  heading: CITY_SPAWN.heading,
   steering: 0,
   speed: 0,
   drifting: false,
+  driftBlend: 0,
   elapsed: 0,
   bumps: 0,
   bumpCooldown: 0,
@@ -53,6 +60,7 @@ export const freshCity = (): CityState => ({
   radio: 'Никита: Все сели? Поехали вспоминать этот год.',
   radioUntil: 7,
 });
+const blockers = [...cityBuildings, ...cityBarriers];
 const RADIUS = 0.85,
   STEP = 1 / 60;
 export function cityBlocked(x: number, z: number) {
@@ -64,11 +72,20 @@ export function cityBlocked(x: number, z: number) {
   )
     return true;
   if (
-    Math.abs(x) < RIVER_HALF_WIDTH + RADIUS &&
-    !BRIDGES.some((bridge) => Math.abs(z - bridge) < 2.6 - RADIUS)
+    Math.abs(riverDistance(x, z)) < RIVER_HALF_WIDTH + RADIUS &&
+    !BRIDGES.some(
+      (bridge) =>
+        Math.abs(x - bridge.x) < bridge.w / 2 - RADIUS &&
+        Math.abs(z - bridge.z) < bridge.d / 2 - RADIUS,
+    )
   )
     return true;
-  return cityBuildings.some(
+  if (
+    Math.hypot(x - ROUNDABOUT.x, z - ROUNDABOUT.z) <
+    ROUNDABOUT.innerRadius + RADIUS
+  )
+    return true;
+  return blockers.some(
     (b) =>
       Math.abs(x - b.x) < b.w / 2 + RADIUS &&
       Math.abs(z - b.z) < b.d / 2 + RADIUS,
@@ -82,14 +99,15 @@ export function cityCarBlocked(x: number, z: number, heading: number) {
 }
 export function resetCityCar(s: CityState) {
   Object.assign(s, {
-    x: -12,
-    z: 14,
+    x: CITY_SPAWN.x,
+    z: CITY_SPAWN.z,
     vx: 0,
     vz: 0,
     speed: 0,
-    heading: 0,
+    heading: CITY_SPAWN.heading,
     steering: 0,
     drifting: false,
+    driftBlend: 0,
     nearStop: -1,
     interaction: null,
   });
@@ -107,29 +125,42 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
   s.previousHorn = horn;
   const { throttle: gas, steer: steering } = resolveDrive(keys, axes);
   const drift = keys.has('ShiftLeft');
+  const blend = s.driftBlend ?? 0;
+  s.driftBlend =
+    blend +
+    (Number(drift) - blend) * (1 - Math.exp(-STEP * (drift ? 11 : 2.8)));
   let fx = Math.sin(s.heading),
     fz = -Math.cos(s.heading);
   const forward = s.vx * fx + s.vz * fz;
-  s.steering += (steering - s.steering) * 0.16;
-  const turnSpeed = Math.min(1, Math.abs(forward) / 2.5);
+  s.steering += (steering - s.steering) * (1 - Math.exp(-STEP * 12));
+  const turnSpeed = Math.min(1, Math.abs(forward) / 2.2);
   const nextHeading =
     s.heading +
-    s.steering * (drift ? 1.9 : 1.45) * turnSpeed * Math.sign(forward) * STEP;
+    s.steering *
+      (1.7 + s.driftBlend * 1.1) *
+      turnSpeed *
+      Math.sign(forward) *
+      STEP;
   if (!cityCarBlocked(s.x, s.z, nextHeading)) s.heading = nextHeading;
   fx = Math.sin(s.heading);
   fz = -Math.cos(s.heading);
   const lateral = s.vx * -fz + s.vz * fx;
-  const grip = drift ? 1.2 : 7;
-  s.vx += (gas * fx * 8.8 - s.vx * 0.68 - lateral * -fz * grip) * STEP;
-  s.vz += (gas * fz * 8.8 - s.vz * 0.68 - lateral * fx * grip) * STEP;
-  if (gas && gas * forward < -1) {
-    s.vx *= 0.963;
-    s.vz *= 0.963;
-  }
+  const grip = 7.5 + (0.55 - 7.5) * s.driftBlend;
+  const opposing = gas * forward < 0 && Math.abs(forward) > 0.35;
+  const acceleration = opposing ? 24 : gas < 0 ? 10 : 14.5;
+  // Rolling resistance is mild: lifting the accelerator preserves momentum,
+  // while an opposite pedal gives controllable braking before reversing.
+  const speed = Math.hypot(s.vx, s.vz);
+  const resistance = 0.2 + 0.25 / Math.max(speed, 0.3);
+  s.vx +=
+    (gas * fx * acceleration - s.vx * resistance - lateral * -fz * grip) * STEP;
+  s.vz +=
+    (gas * fz * acceleration - s.vz * resistance - lateral * fx * grip) * STEP;
+  if (!gas && Math.hypot(s.vx, s.vz) < 0.08) s.vx = s.vz = 0;
   const magnitude = Math.hypot(s.vx, s.vz),
     // A brake request does not turn forward motion into reverse motion.
     // Apply the reverse cap only after the car actually starts moving back.
-    maxSpeed = s.vx * fx + s.vz * fz < 0 ? 6 : 12;
+    maxSpeed = s.vx * fx + s.vz * fz < 0 ? 6 : 18;
   if (magnitude > maxSpeed) {
     s.vx *= maxSpeed / magnitude;
     s.vz *= maxSpeed / magnitude;
@@ -156,7 +187,9 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
     s.radioUntil = s.elapsed + 5;
   }
   s.speed = Math.hypot(s.vx, s.vz);
-  s.drifting = drift && Math.abs(lateral) > 1.2 && s.speed > 3;
+  const finalLateral = s.vx * Math.cos(s.heading) + s.vz * Math.sin(s.heading);
+  s.drifting =
+    s.driftBlend > 0.08 && Math.abs(finalLateral) > 0.8 && s.speed > 2.4;
   if (s.drifting) s.driftDistance += s.speed * STEP;
   s.nearStop = cityStops.findIndex(
     (p) => Math.hypot(s.x - p.x, s.z - p.z) < 2.8,

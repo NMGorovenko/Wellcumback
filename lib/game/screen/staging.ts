@@ -22,7 +22,8 @@ export type DrillStagingState = Pick<
   | 'fallProgress'
   | 'balance'
   | 'aim'
->;
+> &
+  Partial<Pick<GameState, 'drillAssistant'>>;
 export type DrillStage = {
   stools: [StagedStool, StagedStool];
   workers: [StagedWorker, StagedWorker, StagedWorker];
@@ -126,10 +127,16 @@ export function drillStaging(s: DrillStagingState): DrillStage {
     crouch: 0,
     lean: 0,
   };
+  if (s.drillAssistant) {
+    assistant.x = s.drillAssistant.x;
+    assistant.z = s.drillAssistant.z;
+    assistant.rotation = s.drillAssistant.rotation;
+    assistant.crouch = s.drillAssistant.activity === 'pickup' ? 0.35 : 0;
+  }
   const third: StagedWorker = {
-    x: Math.min(3.5, cx + 1.5),
+    x: 2.65,
     y: 0,
-    z: -2.5,
+    z: 2.25,
     rotation: Math.PI,
     crouch: 0,
     lean: 0,

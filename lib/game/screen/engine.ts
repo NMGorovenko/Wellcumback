@@ -1,3 +1,5 @@
+import { announceScreenPhase, screenSay, SCREEN_DIALOGUE } from './dialogue.ts';
+import { freshDrillTools, freshDrillAssistant } from './drill-tools.ts';
 import { CARRY_SHIFT_LIMIT } from './carrier-staging.ts';
 /** Pure, deterministic screen story simulation. Coordinates are logical metres;
  * renderers may uniformly scale the floor scene. No DOM, Three.js, or timers. */
@@ -290,6 +292,14 @@ export function freshGame(players = 1): GameState {
     springTarget: 0.64,
     tension: [0, 0, 0, 0],
     recommendedSide: 2,
+    drillTools: freshDrillTools(),
+    drillAssistant: freshDrillAssistant(),
+    toolsRemembered: false,
+    handoffTool: null,
+    speechText: SCREEN_DIALOGUE.frame.text,
+    messageSpeaker: SCREEN_DIALOGUE.frame.speaker,
+    messageUntil: 5.5,
+    messageSeq: 1,
     drillMode: 'position',
     chairX: -4.4,
     drillGear: 'none',
@@ -355,6 +365,7 @@ export function transition(s: GameState, phase: Phase, message: string) {
   s.phase = phase;
   s.phaseTime = 0;
   s.message = message;
+  announceScreenPhase(s, phase);
   s.hold = 0;
   s.cooldown = 0.35;
   emit(s, 'phase');
@@ -828,9 +839,10 @@ function frameStep(s: GameState, dt: number, input: Input[]) {
         s.message = [
           'Щёлк. Пока всё даже по инструкции.',
           'Есть! У нас совпали уже два мнения.',
-          'Рамка большая. Специалистов — трое.',
+          'Рамка большая. Место для неё — теоретическое.',
           'Рамка готова. Полотно пока отдельно, на полу.',
         ][s.corners - 1];
+        screenSay(s, s.message, s.corners % 2 ? 0 : 1, 3.6);
         s.frameStage = 'align';
         s.frameFit = [0.48, -0.38, 0.55, -0.46][s.corners % 4];
         s.frameTwist = [-0.3, 0.42, -0.36, 0.28][s.corners % 4];
@@ -1011,6 +1023,13 @@ function toolStep(
         t.owner = t.target;
         t.status = 'held';
         t.catches++;
+        if (t.catches === 1)
+          screenSay(
+            s,
+            'Поймал! Всё, дружба проверена.',
+            t.owner as 0 | 1 | 2,
+            3.6,
+          );
         t.needsPass = false;
         s.simulation.tossCooldown = 0.3;
         emit(s, 'catch', t.owner, target.side);
@@ -1224,6 +1243,7 @@ function liftStep(s: GameState, dt: number, input: Input[]) {
         p === 0
           ? 'Левый зацепился. Правый ещё живёт своей жизнью.'
           : 'Правый зацепился. Держим второй край.';
+      screenSay(s, s.message, p as 0 | 1, 3.6);
     }
   }
   s.liftLeft = heights[0];

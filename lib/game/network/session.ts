@@ -5,7 +5,7 @@ import {
   type DriveAxes,
 } from '../input/drive.ts';
 import { DrivingPeer, type PeerStatus } from './peer.ts';
-import { drivingKeys, type PeerPacket } from './protocol.ts';
+import { NETWORK_VERSION, drivingKeys, type PeerPacket } from './protocol.ts';
 import { tickCity, type CityState } from '../city/engine.ts';
 export type SessionView = {
   role: 'host' | 'guest' | null;
@@ -259,7 +259,7 @@ export function tickNetworkCity(
     if (sendClock >= 0.05 && transportConnected) {
       peer?.send({
         type: 'input',
-        version: 1,
+        version: NETWORK_VERSION,
         seq: sequence++,
         epoch,
         keys: canDrive ? pressed : [],
@@ -312,7 +312,7 @@ export function tickNetworkCity(
   if (sendClock >= 0.06 && transportConnected) {
     peer?.send({
       type: 'city',
-      version: 1,
+      version: NETWORK_VERSION,
       seq: sequence++,
       epoch,
       driver: view.driver,

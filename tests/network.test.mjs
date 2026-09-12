@@ -1,3 +1,4 @@
+import { cityStops } from '../lib/game/city/layout.ts';
 import test, { afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -8,6 +9,7 @@ import {
 import { DrivingPeer } from '../lib/game/network/peer.ts';
 import {
   createNetworkInvite,
+  acceptNetworkAnswer,
   joinNetworkInvite,
   disconnectNetwork,
   networkSnapshot,
@@ -21,7 +23,7 @@ const SDP =
 const offer = encodeInvite({ type: 'offer', sdp: SDP }),
   answer = encodeInvite({ type: 'answer', sdp: SDP });
 class Channel {
-  label = 'wellcum-city-v1';
+  label = 'wellcum-city-v2';
   readyState = 'connecting';
   bufferedAmount = 0;
   sent = [];
@@ -103,14 +105,14 @@ process.on('exit', () => {
 const last = () => Connection.instances.at(-1);
 const input = (seq, keys = [], epoch = 0) => ({
   type: 'input',
-  version: 1,
+  version: 2,
   seq,
   epoch,
   keys,
 });
 const city = (seq, driver = 'host', epoch = 0, state = freshCity()) => ({
   type: 'city',
-  version: 1,
+  version: 2,
   seq,
   epoch,
   driver,
@@ -131,11 +133,11 @@ async function guest() {
 }
 
 void test('invite codes are ASCII and Unicode SDP round-trips; malformed codes and packet fields are rejected', () => {
-  assert.match(offer, /^WCB1\.[A-Za-z0-9+/=]+$/);
+  assert.match(offer, /^WCB2\.[A-Za-z0-9+/=]+$/);
   assert.equal(decodeInvite(`  ${offer}\n`, 'offer').sdp, SDP);
   assert.throws(() => decodeInvite(answer, 'offer'));
-  assert.throws(() => decodeInvite('WCB1.%%%', 'offer'));
-  assert.throws(() => decodeInvite('WCB1.' + 'a'.repeat(60000), 'offer'));
+  assert.throws(() => decodeInvite('WCB2.%%%', 'offer'));
+  assert.throws(() => decodeInvite('WCB2.' + 'a'.repeat(60000), 'offer'));
   assert.equal(readPeerPacket(JSON.stringify(input(1, ['KeyE']))), null);
   assert.equal(
     readPeerPacket(JSON.stringify({ ...input(1), epoch: -1 })),
@@ -166,6 +168,70 @@ void test('invite codes are ASCII and Unicode SDP round-trips; malformed codes a
   );
   assert.ok(clean);
   assert.equal('injected' in clean.state, false);
+});
+
+const legacyInvite = (type) =>
+  'WCB1.' +
+  btoa(
+    JSON.stringify({
+      version: 1,
+      type,
+      sdp: 'v=0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n',
+    }),
+  );
+const mismatch = /Версии игры различаются\. Обновите игру/;
+
+void test('version 2 invites reject old offers and answers before applying remote descriptions', async () => {
+  assert.deepEqual(decodeInvite(offer, 'offer'), {
+    version: 2,
+    type: 'offer',
+    sdp: SDP,
+  });
+  assert.deepEqual(decodeInvite(answer, 'answer'), {
+    version: 2,
+    type: 'answer',
+    sdp: SDP,
+  });
+  for (const type of ['offer', 'answer']) {
+    const old = legacyInvite(type);
+    assert.throws(() => decodeInvite(old, type), mismatch);
+    assert.throws(
+      () => decodeInvite(old.replace('WCB1.', 'WCB2.'), type),
+      mismatch,
+    );
+  }
+  await joinNetworkInvite(legacyInvite('offer'));
+  assert.equal(networkSnapshot().status, 'failed');
+  assert.match(networkSnapshot().message, mismatch);
+  assert.equal(Connection.instances.length, 0);
+  await createNetworkInvite();
+  const pc = last();
+  await acceptNetworkAnswer(legacyInvite('answer'));
+  assert.equal(networkSnapshot().status, 'failed');
+  assert.match(networkSnapshot().message, mismatch);
+  assert.equal(pc.signalingState, 'have-local-offer');
+});
+
+void test('old packets cannot route snapshots or reserve sequence numbers in a current session', async () => {
+  const channel = await guest(),
+    local = freshCity();
+  const remote = { ...freshCity(), x: 0, z: 0, speed: 3 };
+  assert.equal(
+    readPeerPacket(JSON.stringify({ ...input(10), version: 1 })),
+    null,
+  );
+  const old = { ...city(10, 'host', 0, remote), version: 1 };
+  assert.equal(readPeerPacket(JSON.stringify(old)), null);
+  channel.receive(old);
+  tickNetworkCity(local, 1 / 60, new Set());
+  assert.equal(local.x, freshCity().x);
+  assert.equal(local.z, freshCity().z);
+  assert.equal(local.speed, 0);
+  channel.receive(city(10, 'host', 0, remote));
+  tickNetworkCity(local, 1 / 60, new Set());
+  assert.equal(local.x, remote.x);
+  assert.equal(local.z, remote.z);
+  assert.equal(local.speed, remote.speed);
 });
 
 void test('ICE connected is insufficient; only current data-channel open/messages can connect or deliver', async () => {
@@ -299,21 +365,23 @@ void test('stale snapshots at timestamp zero stop guest controls, update status 
 void test('E cannot launch a mission during handshake or failure; guest never becomes local authority without leaving', async () => {
   await createNetworkInvite();
   const waiting = freshCity();
-  waiting.z = 10;
+  waiting.x = cityStops[0].x;
+  waiting.z = cityStops[0].z;
   waiting.interaction = 'screen';
   tickNetworkCity(waiting, 0.1, new Set(['KeyE']));
   assert.equal(waiting.interaction, null);
   disconnectNetwork();
   const channel = await guest(),
     s = freshCity();
-  s.z = 10;
+  s.x = cityStops[0].x;
+  s.z = cityStops[0].z;
   channel.onclose();
   assert.equal(networkSnapshot().status, 'closed');
   assert.equal(isNetworkDrive(), true);
   tickNetworkCity(s, 0.1, new Set(['KeyE', 'KeyW']));
   assert.equal(s.interaction, null);
   assert.equal(s.speed, 0);
-  assert.equal(s.z, 10);
+  assert.equal(s.z, cityStops[0].z);
   disconnectNetwork();
   assert.equal(isNetworkDrive(), false);
   tickNetworkCity(s, 0.1, new Set(['KeyE']));

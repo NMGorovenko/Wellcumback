@@ -1,0 +1,81 @@
+import { CITY_BOUNDS } from '../../../lib/game/city/layout.ts';
+import type { CityState } from '../../../lib/game/city/engine.ts';
+
+/** A front-quarter cutaway view shows the real cabin faces. The target leads
+ * actual travel, including lateral drift and reverse, rather than only the bonnet. */
+export function cityDriveCamera(
+  state: Pick<CityState, 'x' | 'z' | 'vx' | 'vz' | 'heading' | 'speed'>,
+  aspect: number,
+) {
+  const speed = Math.max(0, Math.min(18, state.speed));
+  const lead = 0.65 + speed * 0.16;
+  const travelX =
+    speed > 0.4
+      ? state.vx / Math.max(state.speed, 0.4)
+      : Math.sin(state.heading);
+  const travelZ =
+    speed > 0.4
+      ? state.vz / Math.max(state.speed, 0.4)
+      : -Math.cos(state.heading);
+  const x = 0.45,
+    y = 1.5,
+    z = -0.86;
+  const length = Math.hypot(x, y, z);
+  const outwardX =
+    (x * Math.cos(state.heading) - z * Math.sin(state.heading)) / length;
+  const outwardZ =
+    (x * Math.sin(state.heading) + z * Math.cos(state.heading)) / length;
+  const horizontalLength = Math.hypot(outwardX, outwardZ);
+  // A sideways slide needs extra horizontal room on portrait displays.
+  const acrossView = Math.abs(
+    (travelX * outwardZ - travelZ * outwardX) / horizontalLength,
+  );
+  const halfWidth = 3.15 + lead * acrossView;
+  return {
+    look: { x: state.x + travelX * lead, y: 0.72, z: state.z + travelZ * lead },
+    outward: {
+      x: outwardX,
+      y: y / length,
+      z: outwardZ,
+    },
+    halfHeight: Math.max(
+      4.25 + speed * 0.055,
+      halfWidth / Math.max(0.3, aspect),
+    ),
+  };
+}
+
+/** Full-city overview has its own fit and clipping range; zooming out never
+ * changes the comfortable driving scale. The scenic southern ridges fit too. */
+export function cityOverviewCamera(aspect: number) {
+  const look = { x: 0, y: 0, z: 3 };
+  const norm = Math.hypot(0.39, 0.75, 0.55);
+  const outward = { x: 0.39 / norm, y: 0.75 / norm, z: 0.55 / norm };
+  const horizontal = Math.hypot(outward.x, outward.z);
+  let extentX = 0,
+    extentY = 0;
+  for (const x of [CITY_BOUNDS.minX - 14, CITY_BOUNDS.maxX + 14])
+    for (const z of [CITY_BOUNDS.minZ - 4, CITY_BOUNDS.maxZ + 26])
+      for (const y of [0, 14]) {
+        const dz = z - look.z;
+        const cameraX = (x * outward.z - dz * outward.x) / horizontal;
+        const cameraY =
+          (-x * outward.x * outward.y) / horizontal +
+          y * horizontal -
+          (dz * outward.z * outward.y) / horizontal;
+        extentX = Math.max(extentX, Math.abs(cameraX));
+        extentY = Math.max(extentY, Math.abs(cameraY));
+      }
+  const distance =
+    Math.hypot(
+      CITY_BOUNDS.maxX - CITY_BOUNDS.minX,
+      CITY_BOUNDS.maxZ - CITY_BOUNDS.minZ,
+    ) + 45;
+  return {
+    look,
+    outward,
+    distance,
+    far: distance * 2,
+    halfHeight: Math.max(extentY, extentX / Math.max(0.25, aspect)) * 1.045,
+  };
+}

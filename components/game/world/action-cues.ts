@@ -12,12 +12,14 @@ export function placeActionCues(
   camera: THREE.Camera,
   host: HTMLElement,
   visible: boolean,
+  avoid: readonly { x: number; y: number; w: number; h: number }[] = [],
 ) {
   if (!refs) return;
   camera.updateMatrixWorld();
   const width = host.clientWidth,
     height = host.clientHeight;
   const occupied: { x: number; y: number; w: number; h: number }[] = [
+    ...avoid,
     { x: 12, y: 10, w: Math.min(260, width * 0.45), h: 72 },
     { x: width - 125, y: 10, w: 115, h: 44 },
   ];

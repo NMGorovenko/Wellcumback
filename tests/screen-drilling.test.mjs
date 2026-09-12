@@ -1,3 +1,4 @@
+import { equipDriller, drillControls } from './screen-drill-controller.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { freshGame, tick } from '../lib/game/screen/engine.ts';
@@ -45,14 +46,14 @@ function cooledSolo(s, vacuum = true) {
 void test('the driller cannot run either tool until the drill and vacuum have both been supplied', () => {
   for (const gear of ['none', 'drill']) {
     const s = atDrill();
-    s.drillGear = gear;
+    equipDriller(s, gear);
     advance(s, 1, () => ['KeyE', 'ShiftLeft']);
     assert.equal(s.drill, 0);
     assert.equal(s.drillHeat, 0);
     assert.equal(s.dustGenerated, 0);
     assert.equal(s.drillRunning, false);
     assert.equal(s.vacuumRunning, false);
-    s.drillGear = 'ready';
+    equipDriller(s);
     advance(s, DT, () => ['KeyE', 'ShiftLeft']);
     assert.ok(s.drill > 0);
     assert.equal(s.drillRunning, true);
@@ -76,7 +77,12 @@ void test('climbing needs a sustained hold and both players complete two ordered
   assert.equal(s.handoffProgress, 0, 'the climber must accept');
   advance(s, 0.3, () => ['Enter']);
   assert.equal(s.handoffProgress, 0, 'the assistant must supply');
-  until(s, (state) => state.drillGear === 'drill', both, 3);
+  until(
+    s,
+    (state) => state.drillGear === 'drill',
+    (state) => [...drillControls(state)],
+    30,
+  );
   assert.equal(s.drillMode, 'handoff');
   assert.equal(s.handoffProgress, 0);
   assert.equal(s.drillRunning, false);
@@ -86,7 +92,12 @@ void test('climbing needs a sustained hold and both players complete two ordered
     'drill',
     'waiting cannot silently supply the vacuum',
   );
-  until(s, (state) => state.drillGear === 'ready', both, 3);
+  until(
+    s,
+    (state) => state.drillGear === 'ready',
+    (state) => [...drillControls(state)],
+    4,
+  );
   assert.equal(s.drillMode, 'drill');
   advance(s, 0.4, (state) => braced(state));
   assert.equal(s.drill, 0, 'bracing alone does not drill');
@@ -99,7 +110,7 @@ void test('climbing needs a sustained hold and both players complete two ordered
 
 void test('a fall drops supplied tools and current work, preserves completed holes and dust, then recovers to the floor', () => {
   const s = atDrill(2);
-  s.drillGear = 'ready';
+  equipDriller(s);
   s.holes = [5.85];
   s.wallDust = [0.2, 0.4];
   s.dustGenerated = 0.8;
@@ -145,7 +156,8 @@ void test('a fall drops supplied tools and current work, preserves completed hol
 void test('the vacuum captures real drilling dust and leaves a cleaner wall for identical progress', () => {
   const dry = atDrill(),
     wet = atDrill();
-  dry.drillGear = wet.drillGear = 'ready';
+  equipDriller(dry);
+  equipDriller(wet);
   advance(dry, 2, () => ['KeyE']);
   advance(wet, 2, () => ['KeyE', 'ShiftLeft']);
   assert.equal(wet.drill, dry.drill);
@@ -161,7 +173,7 @@ void test('the vacuum captures real drilling dust and leaves a cleaner wall for 
 
 void test('solo keyboard input drills and reports falls for Yarik, worker 1, while Nikita braces', () => {
   const s = atDrill();
-  s.drillGear = 'ready';
+  equipDriller(s);
   advance(s, DT, () => ['KeyE', 'ShiftLeft']);
   assert.equal(s.workers[1].animation, 'drill');
   assert.equal(s.workers[0].animation, 'hold');
@@ -224,7 +236,7 @@ void test('finishing a practice episode earns no party score or awards', () => {
 
 void test('falling on the way down after the second hole recovers to lifting without drilling a third hole', () => {
   const s = atDrill(2);
-  s.drillGear = 'ready';
+  equipDriller(s);
   s.holes = [5.85];
   s.drill = 0.999;
   s.balance = 0.3;

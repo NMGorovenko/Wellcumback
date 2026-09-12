@@ -15,6 +15,10 @@ import { obstacles } from '../lib/game/moving/layout.ts';
 function carrying(players = 1) {
   const s = freshMoving(players);
   movingAction(s);
+  s.chapter = 'carrying';
+  s.items.forEach((item) => {
+    item.status = 'packed';
+  });
   const actor = s.actors[0],
     bag = s.bags[0];
   Object.assign(actor, { x: 380, y: 900, facing: Math.PI / 2, bagId: 0 });
@@ -71,6 +75,10 @@ void test('releasing one handle cannot shift the remaining carrier bag into a wa
 void test('pickup faces the real handle before calculating the same point used by the scene', () => {
   const s = freshMoving();
   movingAction(s);
+  s.chapter = 'carrying';
+  s.items.forEach((item) => {
+    item.status = 'packed';
+  });
   const bag = s.bags[0],
     actor = s.actors[0];
   Object.assign(actor, { x: 220, y: 405, facing: Math.PI });
@@ -86,6 +94,10 @@ void test('pickup faces the real handle before calculating the same point used b
 void test('pickup cue asks for movement beside the sofa until the real carrying footprint fits', () => {
   const s = freshMoving();
   movingAction(s);
+  s.chapter = 'carrying';
+  s.items.forEach((item) => {
+    item.status = 'packed';
+  });
   const actor = s.actors[0],
     bag = s.bags[0];
   Object.assign(actor, { x: 155, y: 460 });
@@ -118,6 +130,10 @@ void test('pickup cue asks for movement beside the sofa until the real carrying 
 void test('second-handle cue checks the joining carrier footprint by the sofa', () => {
   const s = freshMoving(2);
   movingAction(s);
+  s.chapter = 'carrying';
+  s.items.forEach((item) => {
+    item.status = 'packed';
+  });
   const [first, second] = s.actors,
     bag = s.bags[0];
   Object.assign(first, { x: 215, y: 405, facing: 0, bagId: bag.id });

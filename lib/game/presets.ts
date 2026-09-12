@@ -1,12 +1,12 @@
 export type PersonPreset = {
-  id: 'yaroslav' | 'nikita' | 'roma';
+  id: 'yaroslav' | 'nikita' | 'roma' | 'anastasia';
   name: string;
   role: string;
   color: string;
   skin: string;
   hair: string;
   eye: string;
-  hairstyle: 'curls' | 'parted' | 'buzz';
+  hairstyle: 'curls' | 'parted' | 'buzz' | 'long';
   beard: boolean;
   uniform: boolean;
   portrait: string;
@@ -54,6 +54,27 @@ export const people: PersonPreset[] = [
     portrait: '/characters/roma-v1.png',
   },
 ];
+
+/** The road trip keeps its original three friends; chapter guests live separately. */
+export const anastasia: PersonPreset = {
+  id: 'anastasia',
+  name: 'Анастасия',
+  role: 'Упакует даже этот переезд',
+  color: '#913f43',
+  skin: '#e5bba0',
+  hair: '#633821',
+  eye: '#697063',
+  hairstyle: 'long',
+  beard: false,
+  uniform: false,
+  portrait: '/characters/faces/anastasia.png',
+};
+
+export function getPersonPreset(id: PersonPreset['id']): PersonPreset {
+  return id === 'anastasia'
+    ? anastasia
+    : people.find((person) => person.id === id)!;
+}
 export const room = {
   wall: '#a8aaa0',
   floor: '#735444',

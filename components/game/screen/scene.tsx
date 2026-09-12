@@ -18,6 +18,8 @@ import { createRig, type Pose } from '../world/rig';
 import { createApartment } from '../world/apartment';
 import { makeLabel } from '../world/labels';
 import { placeActionCues, type ActionCueRefs } from '../world/action-cues';
+import { placeSpeechBubble } from '../world/speech-position';
+import type { SpeechBubbleRef } from '../world/speech-bubble';
 import {
   createScreenModel,
   FLOOR_SCALE,
@@ -33,6 +35,7 @@ type Props = {
   preview?: boolean;
   cameraMode?: CameraMode;
   cueRefs?: ActionCueRefs;
+  speechRef?: SpeechBubbleRef;
 };
 const poses: Record<WorkerAction, Pose> = {
   idle: 'idle',
@@ -54,13 +57,14 @@ export default function Scene({
   preview = !stateRef,
   cameraMode = 'auto',
   cueRefs,
+  speechRef,
 }: Props) {
   const host = useRef<HTMLDivElement>(null),
-    options = useRef({ stateRef, preview, cameraMode, cueRefs });
+    options = useRef({ stateRef, preview, cameraMode, cueRefs, speechRef });
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    options.current = { stateRef, preview, cameraMode, cueRefs };
-  }, [stateRef, preview, cameraMode, cueRefs]);
+    options.current = { stateRef, preview, cameraMode, cueRefs, speechRef };
+  }, [stateRef, preview, cameraMode, cueRefs, speechRef]);
   useEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -310,9 +314,7 @@ export default function Scene({
                   : s.drillMode === 'position'
                     ? poses[worker.animation]
                     : 'idle';
-          else
-            pose =
-              s.drillMode === 'position' ? poses[worker.animation] : 'idle';
+          else pose = poses[worker.animation];
           rig.root.rotation.z = staged.lean;
         }
         if (opt.cameraMode === 'faces') rotation = 0;
@@ -365,16 +367,61 @@ export default function Scene({
           rig.reach('right', grip.clone().add(new THREE.Vector3(-0.13, 0, 0)));
         } else if (drillPhase && opt.cameraMode !== 'faces') {
           rig.setCrouch(stage.workers[i].crouch);
-          if (s.drillMode === 'handoff') {
+          if (i === 0) {
+            const assistant = s.drillAssistant;
+            const picking =
+              assistant.activity === 'pickup' && assistant.pickupTool;
+            const pickedTool = picking ? s.drillTools[picking] : null;
+            const crouch = pickedTool
+              ? pickedTool.location === 'ground'
+                ? 0.72
+                : 0.27
+              : 0;
+            if (pickedTool) rig.setCrouch(crouch);
+            for (const kind of ['drill', 'vacuum'] as const) {
+              const side = kind === 'drill' ? 'left' : 'right';
+              if (s.drillTools[kind].location === 'assistant') {
+                temp.set(
+                  kind === 'drill' ? -0.2 : 0.2,
+                  1.04 - crouch * 0.65,
+                  0.31,
+                );
+                rig.root.localToWorld(temp);
+                rig.reach(side, temp);
+              }
+            }
+            if (pickedTool && picking) {
+              const side = picking === 'drill' ? 'left' : 'right';
+              (side === 'left' ? rig.leftHand : rig.rightHand).getWorldPosition(
+                hand,
+              );
+              temp.copy(pickedTool.position);
+              hand.lerp(
+                temp,
+                THREE.MathUtils.smoothstep(
+                  assistant.pickupProgress / 0.65,
+                  0,
+                  1,
+                ),
+              );
+              rig.reach(side, hand);
+            }
+          }
+          if (s.drillMode === 'handoff' && s.handoffProgress > 0) {
             temp.copy(stage.handoffTarget);
             if (i === 0) {
-              rig.reach('left', temp);
-              rig.reach(
-                'right',
-                new THREE.Vector3(stage.stools[0].x - 0.27, 1.05, -2.38),
-              );
+              rig.reach(s.handoffTool === 'drill' ? 'left' : 'right', temp);
+              if (
+                s.braceHeld &&
+                s.drillTools[s.handoffTool === 'drill' ? 'vacuum' : 'drill']
+                  .location !== 'assistant'
+              )
+                rig.reach(
+                  s.handoffTool === 'drill' ? 'right' : 'left',
+                  new THREE.Vector3(stage.stools[0].x - 0.27, 1.05, -2.38),
+                );
             } else if (i === 1)
-              rig.reach(s.drillGear === 'none' ? 'right' : 'left', temp);
+              rig.reach(s.handoffTool === 'drill' ? 'right' : 'left', temp);
           } else if (i === 1 && s.drillMode === 'drill') {
             temp.copy(stage.wallTarget);
             temp.z += 0.005;
@@ -415,6 +462,11 @@ export default function Scene({
             );
           }
         }
+        rig.speak(
+          s.messageSpeaker === i && s.messageUntil > s.elapsed
+            ? (Math.sin(time * 22) * 0.5 + 0.5) * 0.65
+            : 0,
+        );
         nameplates[i].visible =
           !opt.cueRefs && !isPreview && opt.cameraMode !== 'faces';
       });
@@ -536,15 +588,21 @@ export default function Scene({
         targetPosition.set(4.45, 5.25, 6.25);
         wantedLook.set(0, 0.55, -0.25);
       } else if (drillPhase) {
-        targetPosition.set(s.chairX * FLOOR_SCALE + 2.5, 3.45, 3.4);
-        wantedLook.set(s.chairX * FLOOR_SCALE, 1.72, -2.55);
+        const xs = [
+          s.chairX * FLOOR_SCALE,
+          ...rigs.slice(0, count).map((rig) => rig.root.position.x),
+          ...drillingProps.bounds().map((point) => point.x),
+        ];
+        const center = (Math.min(...xs) + Math.max(...xs)) * 0.5;
+        targetPosition.set(center + 2.5, 3.75, 4.1);
+        wantedLook.set(center, 1.5, -2.55);
       } else {
         targetPosition.set(3.4, 3.35, 6.6);
         wantedLook.set(0, 1.5, -2.4);
       }
       // AUTO stays close, then expands only enough to retain every participant,
       // the whole working frame, and a pending screwdriver arc inside the frustum.
-      if (floor && opt.cameraMode === 'auto') {
+      if ((floor || drillPhase) && opt.cameraMode === 'auto') {
         const forward = targetPosition.clone().sub(wantedLook).normalize();
         const right = new THREE.Vector3()
           .crossVectors(new THREE.Vector3(0, 1, 0), forward)
@@ -552,12 +610,14 @@ export default function Scene({
         const up = new THREE.Vector3().crossVectors(forward, right).normalize();
         const tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)),
           tanX = tanY * camera.aspect;
-        const bounds = [
-          new THREE.Vector3(-2.55, 0.1, FLOOR_Z - 1.5),
-          new THREE.Vector3(2.55, 0.1, FLOOR_Z - 1.5),
-          new THREE.Vector3(-2.55, 0.1, FLOOR_Z + 1.5),
-          new THREE.Vector3(2.55, 0.1, FLOOR_Z + 1.5),
-        ];
+        const bounds = floor
+          ? [
+              new THREE.Vector3(-2.55, 0.1, FLOOR_Z - 1.5),
+              new THREE.Vector3(2.55, 0.1, FLOOR_Z - 1.5),
+              new THREE.Vector3(-2.55, 0.1, FLOOR_Z + 1.5),
+              new THREE.Vector3(2.55, 0.1, FLOOR_Z + 1.5),
+            ]
+          : drillingProps.bounds().map((point) => point.clone());
         rigs.slice(0, count).forEach((rig) => {
           bounds.push(
             rig.root.position.clone(),
@@ -585,7 +645,7 @@ export default function Scene({
       if (
         camera.aspect < 1.3 &&
         opt.cameraMode !== 'faces' &&
-        !(floor && opt.cameraMode === 'auto')
+        !((floor || drillPhase) && opt.cameraMode === 'auto')
       )
         targetPosition
           .sub(wantedLook)
@@ -594,12 +654,23 @@ export default function Scene({
       camera.position.lerp(targetPosition, 1 - Math.exp(-dt * 3));
       lookAt.lerp(wantedLook, 1 - Math.exp(-dt * 3));
       camera.lookAt(lookAt);
+      const speechRect = placeSpeechBubble(
+        opt.speechRef,
+        s.messageSpeaker === null
+          ? null
+          : (rigs[s.messageSpeaker]?.head ?? null),
+        camera,
+        renderer.domElement,
+        !s.paused && !isPreview && s.messageUntil > s.elapsed,
+        rigs.filter((rig) => rig.root.visible).map((rig) => rig.head),
+      );
       placeActionCues(
         opt.cueRefs,
         rigs.map((rig) => rig.head),
         camera,
         renderer.domElement,
         !s.paused && !isPreview && opt.cameraMode !== 'faces',
+        speechRect ? [speechRect] : [],
       );
       renderer.render(world, camera);
       raf = requestAnimationFrame(render);

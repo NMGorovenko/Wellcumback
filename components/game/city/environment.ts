@@ -4,13 +4,19 @@ import {
   BRIDGES,
   CITY_BOUNDS,
   RIVER_HALF_WIDTH,
+  RIVER_SLOPE,
+  ROUNDABOUT,
   cityBuildings,
+  cityRoads,
   cityStops,
+  riverZ,
+  type CityPoint,
 } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { makeLabel } from '../world/labels.ts';
 
-/** Static city meshes share a handful of draws; signs and stop rings stay live. */
+/** Bake static boxes/windows into material groups once, including nested props.
+ * Source geometries are released after merging, rather than retained per window. */
 function batchCity(kit: RenderKit, root: THREE.Group) {
   root.updateMatrixWorld(true);
   const groups = new Map<THREE.Material, THREE.Mesh[]>();
@@ -32,9 +38,58 @@ function batchCity(kit: RenderKit, root: THREE.Group) {
     const merged = mergeGeometries(geometries, false);
     geometries.forEach((geometry) => geometry.dispose());
     if (!merged) continue;
-    meshes.forEach((mesh) => mesh.removeFromParent());
+    meshes.forEach((mesh) => {
+      mesh.removeFromParent();
+      kit.geometries.delete(mesh.geometry);
+      mesh.geometry.dispose();
+    });
     kit.mesh(merged, material, root);
   }
+}
+function ribbon(
+  kit: RenderKit,
+  parent: THREE.Object3D,
+  from: CityPoint,
+  to: CityPoint,
+  width: number,
+  y: number,
+  color: string,
+) {
+  const dx = to.x - from.x,
+    dz = to.z - from.z,
+    length = Math.hypot(dx, dz);
+  const nx = ((-dz / length) * width) / 2,
+    nz = ((dx / length) * width) / 2;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [
+        from.x + nx,
+        y,
+        from.z + nz,
+        to.x + nx,
+        y,
+        to.z + nz,
+        to.x - nx,
+        y,
+        to.z - nz,
+        from.x - nx,
+        y,
+        from.z - nz,
+      ],
+      3,
+    ),
+  );
+  geometry.setAttribute(
+    'uv',
+    new THREE.Float32BufferAttribute([0, 0, 0, 1, 1, 1, 1, 0], 2),
+  );
+  geometry.setIndex([0, 1, 2, 0, 2, 3]);
+  geometry.computeVertexNormals();
+  const mesh = kit.mesh(geometry, kit.material(color), parent);
+  mesh.castShadow = false;
+  return mesh;
 }
 
 export function createCityEnvironment(kit: RenderKit) {
@@ -44,261 +99,330 @@ export function createCityEnvironment(kit: RenderKit) {
   const { minX, maxX, minZ, maxZ } = CITY_BOUNDS;
   const width = maxX - minX,
     depth = maxZ - minZ;
-  kit.box(width + 1.1, 0.65, depth + 1.1, '#667b83', 0, -0.65, 0, root, 0.35);
-  for (const side of [-1, 1]) {
-    const bankWidth = width / 2 - RIVER_HALF_WIDTH;
-    kit.box(
-      bankWidth,
-      0.42,
-      depth,
-      '#98ae91',
-      side * (RIVER_HALF_WIDTH + bankWidth / 2),
-      -0.23,
-      0,
-      root,
-      0.02,
-    );
-    // A painted riverbank edge sits exactly against the engine's water boundary.
-    for (let z = minZ + 0.4; z < maxZ; z += 0.9) {
-      if (BRIDGES.some((bridge) => Math.abs(z - bridge) < 2.85)) continue;
-      kit.box(
-        0.22,
-        0.1,
-        0.65,
-        '#d4d7b7',
-        side * (RIVER_HALF_WIDTH + 0.12),
-        0.025,
-        z,
-        root,
-        0.015,
-      );
-    }
-    kit.box(5.2, 0.055, depth, '#4d6474', side * 12, 0.012, 0, root, 0);
-    for (let z = minZ + 1; z < maxZ; z += 2.2) {
-      if (BRIDGES.some((bridge) => Math.abs(z - bridge) < 3.2)) continue;
-      kit.box(0.075, 0.01, 1.05, '#eadca6', side * 12, 0.045, z, root, 0);
-    }
-  }
+  kit.box(width, 0.6, depth, '#708776', 0, -0.36, 0, root, 0);
+  kit.box(width, 0.06, depth, '#a5b397', 0, -0.045, 0, root, 0);
+  // Diagonal Yenisei: west/southwest upstream, east/northeast downstream.
+  const riverWidthZ = RIVER_HALF_WIDTH * Math.hypot(1, RIVER_SLOPE);
+  const waterGeometry = new THREE.BufferGeometry();
+  waterGeometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [
+        minX,
+        0.008,
+        riverZ(minX) - riverWidthZ,
+        maxX,
+        0.008,
+        riverZ(maxX) - riverWidthZ,
+        maxX,
+        0.008,
+        riverZ(maxX) + riverWidthZ,
+        minX,
+        0.008,
+        riverZ(minX) + riverWidthZ,
+      ],
+      3,
+    ),
+  );
+  waterGeometry.setIndex([0, 3, 2, 0, 2, 1]);
+  waterGeometry.computeVertexNormals();
   const water = kit.mesh(
-    new THREE.PlaneGeometry(RIVER_HALF_WIDTH * 2, depth),
+    waterGeometry,
     new THREE.MeshStandardMaterial({
-      color: '#327da0',
-      emissive: '#16476c',
-      emissiveIntensity: 0.42,
-      metalness: 0.35,
-      roughness: 0.26,
+      color: '#367f9e',
+      emissive: '#173d50',
+      emissiveIntensity: 0.28,
+      roughness: 0.32,
+      metalness: 0.2,
     }),
     root,
   );
-  water.rotation.x = -Math.PI / 2;
-  water.position.y = -0.12;
   water.castShadow = false;
-  for (const [bridgeIndex, z] of BRIDGES.entries()) {
-    kit.box(width, 0.055, 5.2, '#4d6474', 0, 0.012, z, root, 0);
-    kit.box(
-      RIVER_HALF_WIDTH * 2 + 1.1,
-      0.22,
-      5.2,
-      '#788c96',
-      0,
-      -0.075,
-      z,
+  for (const side of [-1, 1]) {
+    ribbon(
+      kit,
       root,
-      0.025,
+      { x: minX, z: riverZ(minX) + side * 14 },
+      { x: maxX, z: riverZ(maxX) + side * 14 },
+      3.5,
+      0.035,
+      '#d4d2b7',
     );
-    kit.box(
-      RIVER_HALF_WIDTH * 2 + 0.8,
-      0.02,
-      5.05,
-      '#526a79',
-      0,
-      0.05,
-      z,
-      root,
-      0,
-    );
-    for (let x = minX + 1; x < maxX; x += 2.2) {
-      if (Math.abs(Math.abs(x) - 12) < 3.1) continue;
-      kit.box(1.05, 0.01, 0.075, '#eadca6', x, 0.065, z, root, 0);
+    // Rail segments stop at bridge mouths. Water collision uses this same river line.
+    for (let x = minX + 2; x < maxX - 2; x += 4) {
+      if (BRIDGES.some((bridge) => Math.abs(x - bridge.x) < bridge.w / 2 + 3))
+        continue;
+      const a = {
+        x: x - 1.6,
+        z: riverZ(x - 1.6) + side * (riverWidthZ + 0.25),
+      };
+      const b = {
+        x: x + 1.6,
+        z: riverZ(x + 1.6) + side * (riverWidthZ + 0.25),
+      };
+      kit.rod(
+        new THREE.Vector3(a.x, 0.34, a.z),
+        new THREE.Vector3(b.x, 0.34, b.z),
+        0.07,
+        '#d8d5bb',
+        root,
+      );
     }
-    const bridgeColor = bridgeIndex ? '#d5af70' : '#cf775e';
-    for (const side of [-1, 1]) {
-      const railZ = z + side * 2.72;
-      kit.box(9.0, 0.12, 0.1, bridgeColor, 0, 0.85, railZ, root, 0.01);
-      for (let x = -4.4; x <= 4.4; x += 1.1) {
-        kit.box(0.07, 0.86, 0.07, '#d8c2a6', x, 0.43, railZ, root, 0);
-      }
-      if (!bridgeIndex) {
-        for (let n = 0; n < 16; n++) {
-          const a = -4.5 + (n * 9) / 16,
-            b = -4.5 + ((n + 1) * 9) / 16;
-          const arch = (x: number) => 0.65 + 2.3 * (1 - (x / 4.5) ** 2);
-          kit.rod(
-            new THREE.Vector3(a, arch(a), railZ),
-            new THREE.Vector3(b, arch(b), railZ),
-            0.1,
-            bridgeColor,
-            root,
-          );
-          if (n % 2 === 0)
-            kit.rod(
-              new THREE.Vector3(a, 0.85, railZ),
-              new THREE.Vector3(a, arch(a), railZ),
-              0.035,
-              '#e1c2a6',
-              root,
-            );
-        }
-      }
-    }
-    // Crosswalk paint is drivable and adds no unmodelled collision geometry.
-    for (const x of [-12, 12])
-      for (const side of [-1, 1])
-        for (let n = -2; n <= 2; n++) {
-          kit.box(
-            0.35,
-            0.009,
-            1.15,
-            '#d5ddce',
-            x + n * 0.65,
-            0.052,
-            z + side * 3.7,
-            root,
-            0,
-          );
-        }
   }
-
-  const windowMaterial = new THREE.MeshStandardMaterial({
-    color: '#ffd59b',
-    emissive: '#ffba60',
-    emissiveIntensity: 0.9,
-    roughness: 0.55,
+  for (const road of cityRoads) {
+    ribbon(kit, root, road.from, road.to, road.width + 1.2, 0.045, '#d0cdbc');
+    ribbon(kit, root, road.from, road.to, road.width, 0.058, '#536671');
+    const dx = road.to.x - road.from.x,
+      dz = road.to.z - road.from.z,
+      length = Math.hypot(dx, dz);
+    for (let distance = 2; distance < length - 2; distance += 5) {
+      const x = road.from.x + (dx * distance) / length,
+        z = road.from.z + (dz * distance) / length;
+      if (
+        Math.hypot(x - ROUNDABOUT.x, z - ROUNDABOUT.z) <
+        ROUNDABOUT.outerRadius + 1
+      )
+        continue;
+      ribbon(
+        kit,
+        root,
+        { x, z },
+        { x: x + (dx * 2.3) / length, z: z + (dz * 2.3) / length },
+        0.11,
+        0.071,
+        '#e8dca7',
+      );
+    }
+  }
+  for (const [index, bridge] of BRIDGES.entries()) {
+    kit.box(
+      bridge.w + 0.7,
+      0.4,
+      bridge.d,
+      '#869596',
+      bridge.x,
+      -0.12,
+      bridge.z,
+      root,
+      0,
+    );
+    kit.box(
+      bridge.w,
+      0.06,
+      bridge.d,
+      '#536671',
+      bridge.x,
+      0.056,
+      bridge.z,
+      root,
+      0,
+    );
+    for (const side of [-1, 1]) {
+      const x = bridge.x + side * (bridge.w / 2 + 0.16),
+        color = index ? '#c7b48c' : '#b76b55';
+      for (let j = -3; j <= 3; j++)
+        kit.box(0.2, 1.05, 0.2, color, x, 0.55, bridge.z + j * 4.5, root, 0);
+      kit.rod(
+        new THREE.Vector3(x, 1.05, bridge.z - 14.5),
+        new THREE.Vector3(x, 1.05, bridge.z + 14.5),
+        0.1,
+        color,
+        root,
+      );
+      if (index)
+        for (let j = 0; j < 18; j++) {
+          const z1 = -14 + (j * 28) / 18,
+            z2 = -14 + ((j + 1) * 28) / 18;
+          const arch = (z: number) => 1.05 + 3.4 * (1 - (z / 14) ** 2);
+          kit.rod(
+            new THREE.Vector3(x, arch(z1), bridge.z + z1),
+            new THREE.Vector3(x, arch(z2), bridge.z + z2),
+            0.16,
+            color,
+            root,
+          );
+        }
+    }
+  }
+  // The round island is a real circular collider; its surrounding 16 m lane is drivable.
+  const roundRoad = kit.mesh(
+    new THREE.CircleGeometry(ROUNDABOUT.outerRadius + 0.65, 80),
+    kit.material('#d2ccaf'),
+    root,
+  );
+  roundRoad.rotation.x = -Math.PI / 2;
+  roundRoad.position.set(ROUNDABOUT.x, 0.078, ROUNDABOUT.z);
+  const lane = kit.mesh(
+    new THREE.RingGeometry(ROUNDABOUT.innerRadius, ROUNDABOUT.outerRadius, 80),
+    kit.material('#536671'),
+    root,
+  );
+  lane.rotation.x = -Math.PI / 2;
+  lane.position.set(ROUNDABOUT.x, 0.087, ROUNDABOUT.z);
+  kit.cylinder(
+    ROUNDABOUT.innerRadius,
+    ROUNDABOUT.innerRadius,
+    0.38,
+    '#c9c9ad',
+    ROUNDABOUT.x,
+    0.19,
+    ROUNDABOUT.z,
+    root,
+  );
+  kit.cylinder(
+    ROUNDABOUT.innerRadius - 0.4,
+    ROUNDABOUT.innerRadius - 0.4,
+    0.07,
+    '#829966',
+    ROUNDABOUT.x,
+    0.4,
+    ROUNDABOUT.z,
+    root,
+  );
+  for (let j = 0; j < 32; j++) {
+    const dash = kit.mesh(
+      new THREE.RingGeometry(17.9, 18.05, 4, 1, (j * Math.PI) / 16, 0.1),
+      kit.material('#e8dca7'),
+      root,
+    );
+    dash.rotation.x = -Math.PI / 2;
+    dash.position.set(ROUNDABOUT.x, 0.099, ROUNDABOUT.z);
+  }
+  for (let j = 0; j < 8; j++) {
+    const angle = (j * Math.PI) / 4,
+      x = ROUNDABOUT.x + Math.cos(angle) * 5.7,
+      z = ROUNDABOUT.z + Math.sin(angle) * 5.7;
+    kit.cylinder(0.14, 0.2, 1.6, '#6c6650', x, 1.15, z, root);
+    kit.sphere(1.05, 1.65, 1.05, '#708858', x, 2.7, z, root, 12);
+  }
+  const lit = new THREE.MeshStandardMaterial({
+    color: '#f3d5a3',
+    emissive: '#e5b368',
+    emissiveIntensity: 0.65,
   });
-  const dimWindow = kit.material('#466879', 0.4, 0.15);
+  kit.materials.add(lit);
   for (const [index, building] of cityBuildings.entries()) {
     const { x, z, w, d, h, color } = building;
-    kit.box(w, h, d, color, x, h / 2, z, root, 0.025);
-    kit.box(w + 0.12, 0.16, d + 0.12, '#637681', x, h + 0.04, z, root, 0.015);
-    kit.box(w * 0.58, 0.26, d * 0.48, '#acb6ac', x, h + 0.21, z, root, 0.03);
-    const floors = Math.max(3, Math.floor(h / 0.66));
-    for (let floor = 0; floor < floors; floor++) {
-      const y = 0.45 + (floor * (h - 0.6)) / floors;
+    kit.box(w, h, d, color, x, h / 2, z, root, 0);
+    kit.box(w + 0.16, 0.16, d + 0.16, '#6e7e82', x, h + 0.08, z, root, 0);
+    const floors = Math.max(2, Math.floor(h / 1.7));
+    for (let floor = 0; floor < floors; floor++)
       for (const side of [-1, 1]) {
-        for (
-          let column = 0;
-          column < Math.max(2, Math.floor(w / 0.95));
-          column++
-        ) {
-          const count = Math.max(2, Math.floor(w / 0.95));
+        const y = 1 + (floor * (h - 1)) / floors;
+        for (let column = 0; column < Math.floor(w / 2); column++) {
           const pane = kit.box(
-            0.37,
-            0.35,
-            0.023,
-            '#ffd59b',
-            x - w / 2 + ((column + 0.5) * w) / count,
+            0.72,
+            0.88,
+            0.035,
+            '#f3d5a3',
+            x - w / 2 + 1.1 + column * 2,
             y,
-            z + side * (d / 2 + 0.014),
+            z + side * (d / 2 + 0.025),
             root,
             0,
           );
-          pane.material =
-            (floor * 7 + column * 3 + index) % 4 ? windowMaterial : dimWindow;
+          if ((column + floor + index) % 4) pane.material = lit;
         }
-        for (let column = 0; column < Math.floor(d / 1.1); column++) {
+        for (let column = 0; column < Math.floor(d / 2); column++) {
           const pane = kit.box(
-            0.023,
-            0.35,
-            0.42,
-            '#ffd59b',
-            x + side * (w / 2 + 0.014),
+            0.035,
+            0.88,
+            0.72,
+            '#f3d5a3',
+            x + side * (w / 2 + 0.025),
             y,
-            z - d / 2 + ((column + 0.5) * d) / Math.floor(d / 1.1),
+            z - d / 2 + 1.1 + column * 2,
             root,
             0,
           );
-          pane.material =
-            (floor + column * 5 + index) % 3 ? windowMaterial : dimWindow;
+          if ((column + floor + index) % 3) pane.material = lit;
         }
       }
-    }
-    // Panel seams and stairwell strips make these read as Russian apartment blocks.
-    for (let column = 1; column < Math.ceil(w / 1.9); column++) {
+    kit.box(1.1, 1.65, 0.12, '#3c5159', x, 0.825, z + d / 2 + 0.065, root, 0);
+    if (building.kind === 'station') {
+      // Pale symmetrical facade, central clock and roof sign distinguish the main station.
+      kit.box(4.6, 2.2, d + 0.4, '#dfe0c6', x, h + 0.8, z, root, 0);
+      const clock = kit.cylinder(
+        0.72,
+        0.72,
+        0.12,
+        '#f1eed8',
+        x,
+        h + 0.9,
+        z + d / 2 + 0.28,
+        root,
+      );
+      clock.rotation.x = Math.PI / 2;
       kit.box(
-        0.025,
-        h - 0.12,
-        0.034,
-        '#7b9295',
-        x - w / 2 + (column * w) / Math.ceil(w / 1.9),
-        h / 2,
-        z + d / 2 + 0.025,
+        0.08,
+        0.48,
+        0.04,
+        '#40545a',
+        x,
+        h + 1.05,
+        z + d / 2 + 0.36,
+        root,
+        0,
+      );
+      kit.box(
+        0.35,
+        0.08,
+        0.04,
+        '#40545a',
+        x + 0.13,
+        h + 0.9,
+        z + d / 2 + 0.37,
         root,
         0,
       );
     }
-    const entranceZ = z + d / 2;
-    kit.box(
-      0.8,
-      0.75,
-      0.06,
-      '#3c5a67',
-      x,
-      0.375,
-      entranceZ + 0.035,
-      root,
-      0.01,
-    );
-    kit.box(1.0, 0.08, 0.43, '#d7bf93', x, 0.81, entranceZ - 0.12, root, 0.01);
-    const plaque = makeLabel(
-      kit,
-      ['ДОМ С ИСТОРИЕЙ', 'НАШ ДВОР', 'ПАНЕЛЬНЫЙ РАЙ', 'ТИХИЙ ДВОР'][index % 4],
-      '#ecdfb9',
-      Math.min(w * 0.82, 3.1),
-    );
-    plaque.position.set(x, h + 0.75, z);
-    kit.scene.add(plaque);
   }
-  kit.materials.add(windowMaterial);
-
-  // Hills and the small chapel are outside driving bounds, so scenery cannot
-  // become an obstacle that the shared layout does not know about.
-  for (let i = 0; i < 11; i++) {
+  // Outlying green ridges frame the city without adding invisible driving obstacles.
+  for (let i = 0; i < 14; i++) {
     const hill = kit.mesh(
-      new THREE.ConeGeometry(4.8 + (i % 3), 4 + (i % 4), 5),
-      kit.material(i % 2 ? '#628482' : '#71928b'),
+      new THREE.ConeGeometry(10 + (i % 3) * 2, 8 + (i % 4), 5),
+      kit.material(i % 2 ? '#799684' : '#6f8a7c'),
       root,
     );
-    hill.position.set(minX - 4 + i * 6.5, 0.5 + (i % 2), minZ - 8 - (i % 3));
+    hill.position.set(minX + i * 18, 2, maxZ + 12 + (i % 3) * 3);
     hill.rotation.y = i;
   }
   const chapel = new THREE.Group();
-  chapel.position.set(-18, 1.2, minZ - 6);
+  chapel.position.set(-12, 1.0, minZ - 4);
   root.add(chapel);
-  kit.cylinder(1, 1.15, 2.1, '#eee0b8', 0, 1.05, 0, chapel);
-  kit.mesh(
-    new THREE.ConeGeometry(1.25, 1.3, 8),
-    kit.material('#486972'),
+  kit.cylinder(1.15, 1.3, 2.5, '#e4dfc0', 0, 1.25, 0, chapel);
+  const roof = kit.mesh(
+    new THREE.ConeGeometry(1.45, 1.6, 8),
+    kit.material('#536671'),
     chapel,
-  ).position.y = 2.72;
-  kit.sphere(0.22, 0.3, 0.22, '#e8c76f', 0, 3.6, 0, chapel, 12);
-  kit.box(0.055, 0.68, 0.055, '#f5d589', 0, 4.0, 0, chapel, 0);
-  kit.box(0.35, 0.055, 0.055, '#f5d589', 0, 4.12, 0, chapel, 0);
-  batchCity(kit, root);
-
-  const riverName = makeLabel(kit, 'Е Н И С Е Й', '#b4e5ed', 4.8);
-  riverName.position.set(0, 0.1, 0);
-  kit.scene.add(riverName);
-  const cityName = makeLabel(
-    kit,
-    'КРАСНОЯРСК · ВЕЧЕР НА РАЙОНЕ',
-    '#fff2c5',
-    12,
   );
-  cityName.position.set(0, 1.1, minZ - 3.2);
-  kit.scene.add(cityName);
-  const stops = cityStops.map((stop) => {
+  roof.position.y = 3.3;
+  kit.sphere(0.25, 0.35, 0.25, '#d6b46d', 0, 4.28, 0, chapel, 12);
+  kit.box(0.08, 0.85, 0.08, '#e8dca7', 0, 4.85, 0, chapel, 0);
+  kit.box(0.5, 0.08, 0.08, '#e8dca7', 0, 4.95, 0, chapel, 0);
+  batchCity(kit, root);
+  const labels: THREE.Sprite[] = [];
+  const label = (text: string, x: number, z: number, width: number, y = 3) => {
+    const sprite = makeLabel(kit, text, '#ede4bd', width);
+    sprite.position.set(x, y, z);
+    kit.scene.add(sprite);
+    labels.push(sprite);
+    return sprite;
+  };
+  label('КАРАУЛЬНАЯ ГОРА', -12, minZ - 4, 13, 7.2);
+  label('КРАСНОЯРСК · ЛЕВЫЙ БЕРЕГ', -18, -77, 21);
+  label('ПРАВЫЙ БЕРЕГ · АПРЕЛЬСКАЯ', 80, 73, 16);
+  label('СТУДГОРОДОК', -101, -18, 11, 6.7);
+  label('КРАСНОЯРСК-ПАССАЖИРСКИЙ', -70, -69, 20, 8.2);
+  label('Е Н И С Е Й', -8, riverZ(-8), 14, 0.3);
+  label('КОЛЬЦО · ДРИФТ', ROUNDABOUT.x, ROUNDABOUT.z, 10, 4.8);
+  BRIDGES.forEach((bridge) =>
+    label(bridge.title, bridge.x - 10, bridge.z, 12, 3.7),
+  );
+  const overviewNames = ['НИКИТА', 'ЯРИК', 'БАЙКИ РОМЫ', 'НОВЫЙ ДОМ'];
+  const stops = cityStops.map((stop, index) => {
     const ring = kit.mesh(
-      new THREE.RingGeometry(1.55, 1.7, 48),
+      new THREE.RingGeometry(2.5, 2.75, 48),
       new THREE.MeshBasicMaterial({
         color: stop.color,
         side: THREE.DoubleSide,
@@ -308,52 +432,80 @@ export function createCityEnvironment(kit: RenderKit) {
       }),
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(stop.x, 0.08, stop.z);
+    ring.position.set(stop.x, 0.1, stop.z);
     ring.castShadow = false;
-    const label = makeLabel(kit, stop.title, stop.color, 3.4);
-    label.position.set(stop.x, 2.4, stop.z);
-    kit.scene.add(label);
-    return { ring, label };
+    const sign = makeLabel(kit, stop.title, stop.color, 5.6);
+    sign.position.set(stop.x, 3, stop.z);
+    kit.scene.add(sign);
+    const overviewSign = makeLabel(kit, overviewNames[index], stop.color, 24);
+    const canvas = overviewSign.material.map!.image as HTMLCanvasElement;
+    const context = canvas.getContext('2d')!;
+    context.clearRect(0, 0, 512, 96);
+    context.fillStyle = '#171d20ee';
+    context.beginPath();
+    context.roundRect(2, 4, 508, 88, 20);
+    context.fill();
+    context.fillStyle = stop.color;
+    context.font = '600 72px system-ui';
+    context.fillText(overviewNames[index], 256, 48, 472);
+    overviewSign.material.map!.needsUpdate = true;
+    overviewSign.material.depthTest = false;
+    overviewSign.renderOrder = 20;
+    overviewSign.position.copy(sign.position);
+    overviewSign.visible = false;
+    kit.scene.add(overviewSign);
+    return { ring, label: sign, overviewLabel: overviewSign };
   });
-  const ripples = kit.mesh(
-    new THREE.PlaneGeometry(0.8, 0.04),
-    new THREE.MeshBasicMaterial({
-      color: '#9ecfd9',
-      transparent: true,
-      opacity: 0.35,
-      depthWrite: false,
-    }),
-  );
-  ripples.removeFromParent();
-  const flow = new THREE.InstancedMesh(ripples.geometry, ripples.material, 40);
+  const rippleGeometry = new THREE.PlaneGeometry(2.2, 0.08);
+  const rippleMaterial = new THREE.MeshBasicMaterial({
+    color: '#b4d9df',
+    transparent: true,
+    opacity: 0.38,
+    depthWrite: false,
+  });
+  kit.geometries.add(rippleGeometry);
+  kit.materials.add(rippleMaterial);
+  const flow = new THREE.InstancedMesh(rippleGeometry, rippleMaterial, 64);
   flow.castShadow = false;
   flow.frustumCulled = false;
   kit.scene.add(flow);
   const dummy = new THREE.Object3D();
-  dummy.rotation.x = -Math.PI / 2;
+  dummy.rotation.set(-Math.PI / 2, 0, -Math.atan(RIVER_SLOPE));
   return {
     root,
     stops,
-    update(time: number, targetStop = -1, nearStop = -1) {
-      stops.forEach(({ ring, label }, index) => {
-        const selected = index === targetStop || index === nearStop;
-        ring.scale.setScalar(selected ? 1.04 + Math.sin(time * 3) * 0.07 : 1);
-        (ring.material as THREE.MeshBasicMaterial).opacity = selected
-          ? 0.95
-          : 0.42;
-        label.scale.set(
-          selected ? 3.9 : 3.4,
-          ((selected ? 3.9 : 3.4) * 96) / 512,
-          1,
-        );
+    labels,
+    update(
+      time: number,
+      targetStop = -1,
+      nearStop = -1,
+      overview = false,
+      overviewLabelWidth = 32,
+    ) {
+      labels.forEach((sprite) => {
+        sprite.visible = overview || sprite.position.y > 3;
       });
-      for (let i = 0; i < 40; i++) {
+      stops.forEach(({ ring, label: sign, overviewLabel }, index) => {
+        const selected = index === targetStop || index === nearStop;
+        ring.scale.setScalar(selected ? 1.04 + Math.sin(time * 3) * 0.045 : 1);
+        (ring.material as THREE.MeshBasicMaterial).opacity = selected
+          ? 0.92
+          : 0.42;
+        sign.visible = !overview;
+        overviewLabel.visible = overview;
+        const width = selected ? 6.4 : 5.6;
+        sign.scale.set(width, (width * 96) / 512, 1);
+        const mapWidth = THREE.MathUtils.clamp(overviewLabelWidth, 18, 64);
+        overviewLabel.scale.set(mapWidth, (mapWidth * 96) / 512, 1);
+      });
+      for (let i = 0; i < 64; i++) {
+        const x = minX + ((i * 7.73 + time * 0.65) % width);
         dummy.position.set(
-          Math.sin(i * 13.3) * 3.6,
-          -0.1,
-          minZ + ((i * 5.73 + time * 0.32) % depth),
+          x,
+          0.016,
+          riverZ(x) + Math.sin(i * 13.3) * (riverWidthZ - 1.1),
         );
-        dummy.scale.set(0.65 + (i % 4) * 0.24, 1, 1);
+        dummy.scale.set(0.7 + (i % 4) * 0.24, 1, 1);
         dummy.updateMatrix();
         flow.setMatrixAt(i, dummy.matrix);
       }

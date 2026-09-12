@@ -1,3 +1,15 @@
+import { nearChairs } from './drill-space.ts';
+import {
+  assistantStep,
+  drillSay,
+  dropClimberTools,
+  nextHandoffTool,
+  syncDrillGear,
+  updateToolPositions,
+  type PhysicalDrillTool,
+  type DrillAssistant,
+  type DrillToolKind,
+} from './drill-tools.ts';
 import {
   award,
   emit,
@@ -11,6 +23,14 @@ import {
 /** The drilling beat keeps tool ownership and body movement explicit. Worker 0
  * is always Nikita (assistant), worker 1 always Yarik (climber), even in solo. */
 export type DrillingState = {
+  drillTools: Record<DrillToolKind, PhysicalDrillTool>;
+  drillAssistant: DrillAssistant;
+  toolsRemembered: boolean;
+  handoffTool: DrillToolKind | null;
+  speechText: string;
+  messageSpeaker: 0 | 1 | 2 | null;
+  messageUntil: number;
+  messageSeq: number;
   drillMode: 'position' | 'climb' | 'handoff' | 'drill' | 'descend' | 'fallen';
   drillGear: 'none' | 'drill' | 'ready';
   handoffProgress: number;
@@ -28,9 +48,9 @@ const clamp = (n: number, min: number, max: number) =>
 export const ASSISTANT = 0;
 export const CLIMBER = 1;
 
-function putToolsDown(s: GameState) {
-  s.drillGear = 'none';
+function stopTools(s: GameState) {
   s.handoffProgress = 0;
+  s.handoffTool = null;
   s.drillRunning = false;
   s.vacuumRunning = false;
 }
@@ -50,6 +70,20 @@ function fall(s: GameState) {
     'БУХ! Ярик цел. Никита: «Я же сказал — держу, а не приклеил!» Залезай заново, инструменты подадим ещё раз.',
     100,
   );
+  const lostDrill = s.drillTools.drill.location === 'climber';
+  const lostVacuum = s.drillTools.vacuum.location === 'climber';
+  dropClimberTools(s);
+  drillSay(
+    s,
+    lostDrill && lostVacuum
+      ? 'Я цел! Приборы на полу. Никита, подбери их там, где упали.'
+      : lostDrill
+        ? 'Я цел! А дрель… Никита, подбери её там, где упала.'
+        : lostVacuum
+          ? 'Я цел! Пылесос улетел. Никита, подбери его, пожалуйста.'
+          : 'Я цел! Давай снова залезу. Приборы хотя бы не уронил.',
+    1,
+  );
   s.balance = 0;
   s.drill = 0;
   s.drillMark = null;
@@ -58,22 +92,21 @@ function fall(s: GameState) {
   s.fallProgress = 0;
   s.drillMode = 'fallen';
   s.workers[CLIMBER].animation = 'fall';
-  putToolsDown(s);
+  stopTools(s);
   emit(s, 'fall', CLIMBER, s.holes.length);
 }
 
 function balanceStep(s: GameState, dt: number, input: Input[]) {
   const solo = s.players === 1;
-  const held = solo || input[ASSISTANT].held;
-  s.braceHeld = held;
-  const correction = solo
-    ? clamp(-s.balance * 2.4, -0.9, 0.9)
-    : held
-      ? input[ASSISTANT].x
-      : 0;
-  // Load grows as Yarik leaves the floor. Passing tools is calmer than drilling,
-  // so the first directional cue gives a human time to react. Correction stays
-  // fully responsive at every height; holding alone still cannot arrest a lean.
+  const held = s.braceHeld;
+  const climber = input[solo ? 0 : CLIMBER];
+  const correction = held
+    ? solo
+      ? clamp(-s.balance * 2.4, -0.9, 0.9)
+      : input[ASSISTANT].x
+    : climber.x * 0.85;
+  // Yarik can correct his own stance while Nikita fetches tools. The unbraced
+  // chair still becomes unstable if nobody reacts, especially with two seats.
   const load =
     s.drillMode === 'climb' || s.drillMode === 'descend'
       ? 0.16 + 0.84 * s.climb
@@ -82,13 +115,11 @@ function balanceStep(s: GameState, dt: number, input: Input[]) {
         : 1;
   const disturbance =
     Math.sin(s.phaseTime * 1.9) * 0.2 +
-    s.balance * (held ? 0.42 : 1.1) +
-    (!held ? 0.44 : 0) +
+    s.balance * (held ? 0.42 : 0.3) +
+    (!held ? 0.018 : 0) +
     (s.drillRunning ? Math.sin(s.phaseTime * 29) * 0.13 : 0);
   s.balance +=
     (disturbance * load + correction * 1.2) * dt * (s.chairs === 2 ? 1.65 : 1);
-  if (s.players === 3 && input[2].held) s.balance *= Math.exp(-dt * 1.3);
-  s.workers[ASSISTANT].animation = held ? 'hold' : 'idle';
   if (Math.abs(s.balance) > 1) {
     fall(s);
     return false;
@@ -99,6 +130,9 @@ function balanceStep(s: GameState, dt: number, input: Input[]) {
 export function drillStep(s: GameState, dt: number, input: Input[]) {
   const solo = s.players === 1;
   const climber = input[solo ? 0 : CLIMBER];
+  syncDrillGear(s);
+  updateToolPositions(s, dt);
+  assistantStep(s, dt, input[ASSISTANT]);
   s.drillRunning =
     s.drillMode === 'drill' &&
     s.drillGear === 'ready' &&
@@ -117,32 +151,37 @@ export function drillStep(s: GameState, dt: number, input: Input[]) {
     return;
   }
   if (s.drillMode === 'position') {
-    s.braceHeld = false;
     if (s.cooldown > 0) return;
-    if (input[0].y > 0 && s.chairs !== 2) setChairs(s, 2);
-    if (input[0].y < 0 && s.chairs !== 1) setChairs(s, 1);
-    s.chairX = clamp(s.chairX + input[0].x * dt * 2.7, -4.75, 4.75);
-    s.workers[0].animation = input[0].x ? 'walk' : 'idle';
-    s.workers[1].animation = input[0].x ? 'walk' : 'idle';
-    if (input[0].pressed || (!solo && climber.pressed)) {
+    const canMove = nearChairs(s) && (solo || input[0].held);
+    if (canMove) {
+      if (input[0].y > 0 && s.chairs !== 2) setChairs(s, 2);
+      if (input[0].y < 0 && s.chairs !== 1) setChairs(s, 1);
+      const before = s.chairX;
+      s.chairX = clamp(s.chairX + input[0].x * dt * 2.7, -4.75, 4.75);
+      s.drillAssistant.x += (s.chairX - before) * 0.49;
+      s.drillAssistant.target = null;
+      s.drillAssistant.route = [];
+      if (input[0].x) {
+        s.workers[0].animation = 'walk';
+        s.workers[1].animation = 'walk';
+        s.drillAssistant.activity = 'walk';
+      }
+    }
+    if (climber.pressed) {
       const target = s.holes.length === 0 ? -4.4 : 4.4;
-      if (Math.abs(s.chairX - target) > 0.35) {
-        s.message = 'Стулья — под отметку на стене. Ярик пока подождёт сбоку.';
+      if (Math.abs(s.chairX - target) > 0.12) {
+        drillSay(s, 'Стулья сначала под отметку. Я пока постою сбоку.', 1);
         return;
       }
-      if (!solo && !input[0].held) {
-        s.message =
-          'Никита, сначала держи E. Ярик, потом держи Enter и забирайся.';
+      if (!nearChairs(s) || (!solo && !s.braceHeld)) {
+        drillSay(s, 'Никита, подойди и подержи, пока я залезаю.', 1);
         return;
       }
-      s.chairX = target;
       s.drillMode = 'climb';
       s.climb = 0;
       s.balance = 0;
-      putToolsDown(s);
-      s.message = solo
-        ? 'Держи E — Ярик забирается. Никита страхует сам.'
-        : 'Никита: E держать. Клонит вправо — A, влево — D. Ровно — отпусти A/D. Ярик: Enter — наверх.';
+      stopTools(s);
+      drillSay(s, 'Держу. Забирайся!', 0);
     }
     return;
   }
@@ -151,31 +190,61 @@ export function drillStep(s: GameState, dt: number, input: Input[]) {
     if (climber.held) s.climb = Math.min(1, s.climb + dt * 0.48);
     s.workers[CLIMBER].animation = 'climb';
     if (s.climb === 1) {
-      s.drillMode = 'handoff';
-      s.message = solo
-        ? 'Держи E — прими дрель, потом пылесос. Никита подаёт по очереди.'
-        : 'Никита: E держать и следить за стрелкой баланса. Ярик: Enter — принять дрель, потом пылесос.';
+      if (s.drillGear === 'ready') s.drillMode = 'drill';
+      else {
+        s.drillMode = 'handoff';
+        if (!s.toolsRemembered) {
+          s.toolsRemembered = true;
+          drillSay(
+            s,
+            'Я залез. А дрель-то… на полке осталась! И пылесос захвати.',
+            1,
+          );
+        } else
+          drillSay(
+            s,
+            'Никита, подай приборы. Теперь постараюсь не уронить.',
+            1,
+          );
+      }
     }
     return;
   }
   if (s.drillMode === 'handoff') {
-    s.workers[CLIMBER].animation = 'handoff';
-    s.workers[ASSISTANT].animation = 'handoff';
-    if (climber.held && s.braceHeld && s.cooldown === 0)
-      s.handoffProgress = Math.min(1, s.handoffProgress + dt * 0.7);
-    if (s.handoffProgress === 1) {
-      s.handoffProgress = 0;
-      s.cooldown = 0.3;
-      if (s.drillGear === 'none') {
-        s.drillGear = 'drill';
-        s.message = 'Дрель у Ярика. Теперь пылесос — белую стену жалко.';
-      } else {
-        s.drillGear = 'ready';
-        s.drillMode = 'drill';
-        s.message = solo
-          ? 'E — дрель, левый Shift — пылесос. Держи вместе, делай перерывы для охлаждения.'
-          : 'Ярик: Enter — дрель, правый Shift — пылесос. Никита: E держать, A/D ловить баланс.';
+    s.workers[CLIMBER].animation = 'hold';
+    const kind = nextHandoffTool(s);
+    const passing =
+      kind !== null && s.braceHeld && climber.held && s.cooldown === 0;
+    if (passing) {
+      if (s.handoffTool !== kind) {
+        s.handoffTool = kind;
+        s.handoffProgress = 0;
       }
+      s.workers[CLIMBER].animation = 'handoff';
+      s.workers[ASSISTANT].animation = 'handoff';
+      s.drillAssistant.activity = 'handoff';
+      s.handoffProgress = Math.min(1, s.handoffProgress + dt / 0.9);
+      if (s.handoffProgress === 1) {
+        s.drillTools[kind].location = 'climber';
+        s.handoffTool = null;
+        s.handoffProgress = 0;
+        s.cooldown = 0.2;
+        syncDrillGear(s);
+        if (s.drillGear === 'ready') {
+          s.drillMode = 'drill';
+          drillSay(s, 'Всё, держу дрель и пылесос. Поехали.', 1);
+        } else
+          drillSay(
+            s,
+            kind === 'drill'
+              ? 'Дрель есть. Теперь пылесос.'
+              : 'Пылесос есть. Ещё дрель.',
+            1,
+          );
+      }
+    } else {
+      s.handoffTool = null;
+      s.handoffProgress = 0;
     }
     return;
   }
@@ -183,7 +252,7 @@ export function drillStep(s: GameState, dt: number, input: Input[]) {
     s.workers[CLIMBER].animation = 'climb';
     if (climber.held) s.climb = Math.max(0, s.climb - dt * 0.52);
     if (s.climb === 0) {
-      putToolsDown(s);
+      stopTools(s);
       s.balance = 0;
       if (s.holes.length === 2) {
         finishDrilling(s);
@@ -191,7 +260,7 @@ export function drillStep(s: GameState, dt: number, input: Input[]) {
         s.drillMode = 'position';
         s.aim = clamp(s.aim + 0.13, 4.6, 7);
         s.message =
-          'Ярик на полу. Никита, переставляй стулья направо. Потом снова забраться и подать инструменты.';
+          'Ярик на полу. Переставляем стулья направо. Приборы у Ярика на поясе.';
       }
     }
     return;

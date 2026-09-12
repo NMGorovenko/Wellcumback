@@ -85,7 +85,7 @@ export function NetworkDialog({
               id="peer-code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="Вставь полный код WCB1…"
+              placeholder="Вставь полный код WCB2…"
               spellCheck={false}
             />
             <button

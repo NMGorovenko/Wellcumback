@@ -1,6 +1,10 @@
+import { CITY_BOUNDS, cityStops } from '../city/layout.ts';
 import type { DriveAxes } from '../input/drive.ts';
 import type { CityState } from '../city/engine.ts';
-export const NETWORK_VERSION = 1;
+export const NETWORK_VERSION = 2;
+export const NETWORK_CHANNEL = `wellcum-city-v${NETWORK_VERSION}`;
+const VERSION_MISMATCH =
+  'Версии игры различаются. Обновите игру у обоих игроков и создайте новое приглашение.';
 export const DRIVE_KEYS = [
   'KeyW',
   'KeyA',
@@ -12,7 +16,7 @@ export const DRIVE_KEYS = [
 export type DriveKey = (typeof DRIVE_KEYS)[number];
 export type DrivePacket = {
   type: 'input';
-  version: 1;
+  version: typeof NETWORK_VERSION;
   seq: number;
   epoch: number;
   keys: DriveKey[];
@@ -20,7 +24,7 @@ export type DrivePacket = {
 };
 export type CityPacket = {
   type: 'city';
-  version: 1;
+  version: typeof NETWORK_VERSION;
   seq: number;
   epoch: number;
   driver: 'host' | 'guest';
@@ -70,7 +74,7 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
         return null;
       return {
         type: 'input',
-        version: 1,
+        version: NETWORK_VERSION,
         ...(drive
           ? { drive: { throttle: drive.throttle, steer: drive.steer } }
           : {}),
@@ -114,8 +118,10 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
     )
       return null;
     if (
-      Math.abs(Number(s.x)) > 35 ||
-      Math.abs(Number(s.z)) > 25 ||
+      Number(s.x) < CITY_BOUNDS.minX ||
+      Number(s.x) > CITY_BOUNDS.maxX ||
+      Number(s.z) < CITY_BOUNDS.minZ ||
+      Number(s.z) > CITY_BOUNDS.maxZ ||
       Math.abs(Number(s.vx)) > 20 ||
       Math.abs(Number(s.vz)) > 20 ||
       Number(s.speed) < 0 ||
@@ -135,7 +141,7 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
     if (
       !Number.isInteger(s.nearStop) ||
       Number(s.nearStop) < -1 ||
-      Number(s.nearStop) > 3
+      Number(s.nearStop) >= cityStops.length
     )
       return null;
     if (
@@ -167,7 +173,7 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
     });
     return {
       type: 'city',
-      version: 1,
+      version: NETWORK_VERSION,
       seq: Number(v.seq),
       epoch: Number(v.epoch),
       driver: v.driver as CityPacket['driver'],
@@ -177,7 +183,11 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
     return null;
   }
 }
-export type Invite = { version: 1; type: 'offer' | 'answer'; sdp: string };
+export type Invite = {
+  version: typeof NETWORK_VERSION;
+  type: 'offer' | 'answer';
+  sdp: string;
+};
 export function encodeInvite(description: { type: string; sdp?: string }) {
   if (
     !description.sdp ||
@@ -188,14 +198,14 @@ export function encodeInvite(description: { type: string; sdp?: string }) {
   // Escape Unicode before btoa: the copy/paste code is ASCII even if the browser
   // puts a non-Latin session name into SDP. atob+JSON.parse reverses this exactly.
   const json = JSON.stringify({
-    version: 1,
+    version: NETWORK_VERSION,
     type: description.type,
     sdp: description.sdp,
   }).replace(
     /[\u007f-\uffff]/g,
     (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'),
   );
-  const code = 'WCB1.' + btoa(json);
+  const code = `WCB${NETWORK_VERSION}.` + btoa(json);
   if (code.length > 60000)
     throw new Error('Приглашение слишком большое. Создайте новое соединение.');
   return code;
@@ -204,20 +214,22 @@ export function decodeInvite(
   code: string,
   expected: 'offer' | 'answer',
 ): Invite {
-  if (
-    typeof code !== 'string' ||
-    code.length > 60000 ||
-    !code.trim().startsWith('WCB1.')
-  )
+  if (typeof code !== 'string' || code.length > 60000)
+    throw new Error('Нужен полный код приглашения Wellcum back.');
+  const trimmed = code.trim(),
+    prefix = `WCB${NETWORK_VERSION}.`;
+  if (/^WCB\d+\./.test(trimmed) && !trimmed.startsWith(prefix))
+    throw new Error(VERSION_MISMATCH);
+  if (!trimmed.startsWith(prefix))
     throw new Error('Нужен полный код приглашения Wellcum back.');
   try {
-    const encoded = code.trim().slice(5).replace(/\s/g, '');
+    const encoded = trimmed.slice(prefix.length).replace(/\s/g, '');
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error();
     const v: unknown = JSON.parse(atob(encoded));
     if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error();
     const p = v as Record<string, unknown>;
+    if (p.version !== NETWORK_VERSION) throw new Error(VERSION_MISMATCH);
     if (
-      p.version !== 1 ||
       p.type !== expected ||
       typeof p.sdp !== 'string' ||
       p.sdp.length > 40000 ||
@@ -225,8 +237,10 @@ export function decodeInvite(
       !/^m=application /m.test(p.sdp)
     )
       throw new Error();
-    return { version: 1, type: expected, sdp: p.sdp };
-  } catch {
+    return { version: NETWORK_VERSION, type: expected, sdp: p.sdp };
+  } catch (error) {
+    if (error instanceof Error && error.message === VERSION_MISMATCH)
+      throw error;
     throw new Error(
       expected === 'offer'
         ? 'Это не приглашение от водителя.'

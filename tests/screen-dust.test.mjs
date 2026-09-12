@@ -5,7 +5,24 @@ import { RenderKit } from '../components/game/world/render-kit.ts';
 import { createDrillProps } from '../components/game/screen/drill-props.ts';
 import { freshGame } from '../lib/game/screen/engine.ts';
 
-void test('animated brick particles stay millimetres across and persistent stains stay flat against the wall', () => {
+void test('animated brick particles stay millimetres across and persistent stains stay flat against the wall', (t) => {
+  // Labels need a canvas texture; this test inspects geometry, not font rasterization.
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    // oxlint-disable-next-line typescript/no-deprecated -- Canvas-only test double; no deprecated tag is created.
+    createElement: () => ({
+      getContext: () => ({
+        beginPath() {},
+        roundRect() {},
+        fill() {},
+        fillText() {},
+      }),
+    }),
+  };
+  t.after(() => {
+    if (previousDocument) globalThis.document = previousDocument;
+    else delete globalThis.document;
+  });
   const kit = new RenderKit(new THREE.Scene());
   const props = createDrillProps(kit);
   const rig = () => ({

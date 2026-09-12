@@ -6,6 +6,7 @@ export function useMovingSound(
   enabled: boolean,
   score: number,
   delivered: number,
+  paused = false,
 ) {
   const audio = useRef<AudioContext | null>(null),
     previous = useRef({ score, delivered });
@@ -30,6 +31,7 @@ export function useMovingSound(
     const context = audio.current;
     if (
       enabled &&
+      !paused &&
       context?.state === 'running' &&
       score > previous.current.score
     ) {
@@ -53,7 +55,7 @@ export function useMovingSound(
       };
     }
     previous.current = { score, delivered };
-  }, [score, delivered, enabled]);
+  }, [score, delivered, enabled, paused]);
   useEffect(
     () => () => {
       if (audio.current) void audio.current.close().catch(() => {});

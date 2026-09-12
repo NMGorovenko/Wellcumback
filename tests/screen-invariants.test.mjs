@@ -1,3 +1,4 @@
+import { equipDriller } from './screen-drill-controller.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -114,7 +115,7 @@ void test('two chair loss of balance preserves finished hole and resets current 
   const s = freshGame(2);
   s.phase = 'drill';
   s.drillMode = 'drill';
-  s.drillGear = 'ready';
+  equipDriller(s);
   s.climb = 1;
   s.holes = [5.85];
   s.balance = 0.99;
@@ -134,7 +135,7 @@ void test('overheating cannot finish a hole by holding action forever', () => {
   const s = freshGame();
   s.phase = 'drill';
   s.drillMode = 'drill';
-  s.drillGear = 'ready';
+  equipDriller(s);
   s.climb = 1;
   step(s, 4.1, ['KeyE']);
   assert.ok(s.drillOverheats > 0);

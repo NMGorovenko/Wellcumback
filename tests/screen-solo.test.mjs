@@ -1,3 +1,4 @@
+import { drillControls } from './screen-drill-controller.mjs';
 import assert from 'node:assert/strict';
 import {
   freshGame,
@@ -83,24 +84,7 @@ function keysFor(s) {
       }
     }
   } else if (s.phase === 'drill') {
-    if (s.drillMode === 'position') {
-      const target = s.holes.length === 0 ? -4.4 : 4.4;
-      add(signKey(target - s.chairX, 'KeyD', 'KeyA', 0.04));
-      if (
-        Math.abs(s.chairX - target) < 0.08 &&
-        !s.simulation.previousActions[0]
-      )
-        add('KeyE');
-    } else if (s.drillMode === 'drill') {
-      add('ShiftLeft');
-      add(signKey(5.9 - s.aim, 'KeyW', 'KeyS', 0.01));
-      if (
-        s.drillHeat < 0.73 &&
-        (!s.simulation.previousActions[0] ? s.drillHeat < 0.25 : true)
-      )
-        add('KeyE');
-    } else if (['climb', 'handoff', 'descend'].includes(s.drillMode))
-      add('KeyE');
+    return drillControls(s);
   } else if (s.phase === 'lift') {
     add(
       signKey(

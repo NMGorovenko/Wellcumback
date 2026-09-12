@@ -13,7 +13,13 @@ export type Pose =
   | 'carry'
   | 'fall'
   | 'celebrate'
-  | 'mop';
+  | 'mop'
+  | 'pack'
+  | 'sit'
+  | 'phone'
+  | 'type'
+  | 'toilet'
+  | 'talk';
 export type CharacterRig = {
   root: THREE.Group;
   head: THREE.Group;
@@ -25,6 +31,7 @@ export type CharacterRig = {
   rightHand: THREE.Object3D;
   setCrouch: (depth: number) => void;
   reach: (side: 'left' | 'right', worldTarget: THREE.Vector3) => number;
+  speak: (amount: number) => void;
   update: (time: number, pose: Pose, effort?: number) => void;
 };
 const crops: Record<
@@ -42,6 +49,10 @@ const crops: Record<
   roma: {
     url: '/characters/faces/roma.png',
     rect: [0.303, 0.203, 0.292, 0.548],
+  },
+  anastasia: {
+    url: '/characters/faces/anastasia.png',
+    rect: [0.424, 0.122, 0.168, 0.174],
   },
 };
 
@@ -259,6 +270,33 @@ export function createRig(
       kit.sphere(0.035, 0.105, 0.095, p.hair, sign * 0.13, 0.062, -0.043, head);
     }
     kit.sphere(0.125, 0.13, 0.06, p.hair, 0, 0.07, -0.12, head);
+  } else if (p.hairstyle === 'long') {
+    kit.sphere(0.154, 0.07, 0.139, p.hair, 0, 0.177, -0.035, head);
+    kit.sphere(0.151, 0.32, 0.09, p.hair, 0, -0.067, -0.119, head);
+    for (const sign of [-1, 1]) {
+      const lock = kit.sphere(
+        0.041,
+        0.255,
+        0.075,
+        p.hair,
+        sign * 0.139,
+        -0.054,
+        -0.018,
+        head,
+      );
+      lock.rotation.z = -sign * 0.09;
+      const fringe = kit.sphere(
+        0.105,
+        0.039,
+        0.069,
+        p.hair,
+        sign * 0.06,
+        0.171,
+        0.085,
+        head,
+      );
+      fringe.rotation.z = sign * 0.26;
+    }
   } else kit.sphere(0.143, 0.05, 0.126, p.hair, 0, 0.177, -0.01, head);
   if (anonymous) {
     kit.cylinder(0.16, 0.16, 0.07, '#59664e', 0, 0.209, -0.005, head);
@@ -401,6 +439,7 @@ export function createRig(
     gaitPose = pose;
     arms.forEach((arm) => arm.elbow.quaternion.identity());
     setCrouch(0);
+    speak(0);
     const sway = Math.sin(time * 2.1) * 0.012,
       walk = pose === 'walk' ? Math.sin(time * 8) : 0;
     torso.rotation.z = sway;
@@ -408,6 +447,68 @@ export function createRig(
     leftArm.rotation.set(-walk * 0.28, 0, -0.08);
     rightArm.rotation.set(walk * 0.28, 0, 0.08);
     torso.rotation.x = 0;
+    if (pose === 'pack') {
+      setCrouch(0.56 + Math.sin(time * 3) * 0.025);
+      torso.rotation.x = 0.3;
+      head.rotation.x = 0.38;
+      arms.forEach((arm, index) => {
+        solve(
+          arm.joint,
+          arm.elbow,
+          new THREE.Vector3(
+            -arm.sign * 0.12,
+            -0.42,
+            0.3 + Math.sin(time * 5 + index) * 0.07,
+          ),
+          0.31,
+          0.32,
+          new THREE.Vector3(arm.sign, 0, 0.2),
+        );
+      });
+    }
+    if (['sit', 'phone', 'type', 'toilet'].includes(pose)) {
+      // Lower the hips onto a seat; knees bend forward and feet stay on the floor.
+      upperBody.position.set(0, -0.34, 0);
+      for (const leg of legs) {
+        leg.joint.position.set(leg.sign * 0.105, 0.59, 0);
+        leg.foot.position.set(leg.sign * 0.13, 0.07, 0.39);
+        solve(
+          leg.joint,
+          leg.knee,
+          new THREE.Vector3(
+            leg.sign * 0.025,
+            leg.foot.position.y + 0.085 - leg.joint.position.y,
+            0.35,
+          ),
+          0.4,
+          0.4,
+          new THREE.Vector3(0, 0, 1),
+        );
+      }
+      torso.rotation.x = pose === 'type' ? 0.2 : 0.04;
+      head.rotation.x = pose === 'phone' ? 0.33 : 0.12;
+      arms.forEach((arm, index) => {
+        const typing = pose === 'type';
+        solve(
+          arm.joint,
+          arm.elbow,
+          new THREE.Vector3(
+            -arm.sign * (typing ? 0.09 : 0.15),
+            typing ? -0.34 : -0.3,
+            (typing ? 0.43 : 0.23) +
+              (typing ? Math.sin(time * 18 + index * 2) * 0.014 : 0),
+          ),
+          0.31,
+          0.32,
+          new THREE.Vector3(arm.sign, 0, 0),
+        );
+      });
+    }
+    if (pose === 'talk') {
+      rightArm.rotation.x = -0.55 + Math.sin(time * 4) * 0.18;
+      arms[1].elbow.rotation.x = -0.65;
+      head.rotation.z = Math.sin(time * 3) * 0.035;
+    }
     if (pose === 'work' || pose === 'pull' || pose === 'mop') {
       torso.rotation.x = 0.16;
       head.rotation.x = 0.2;
@@ -443,6 +544,18 @@ export function createRig(
     }
     root.scale.y = 1;
   };
+  // A restrained jaw deformation preserves the photo UVs and keeps speech readable.
+  const speak = (amount: number) => {
+    const opening = THREE.MathUtils.clamp(amount, 0, 1) * 0.014;
+    const attribute = faceGeo.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < attribute.count; i++) {
+      const px = positions[i * 3],
+        py = positions[i * 3 + 1];
+      const weight = Math.exp(-((px * px) / 0.004 + (py + 0.103) ** 2 / 0.003));
+      attribute.setY(i, py - opening * weight);
+    }
+    attribute.needsUpdate = true;
+  };
   return {
     root,
     head,
@@ -454,6 +567,7 @@ export function createRig(
     rightHand,
     setCrouch,
     reach,
+    speak,
     update,
   };
 }

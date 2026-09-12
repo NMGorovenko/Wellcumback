@@ -4,6 +4,7 @@ import type { PadFrame } from '@/lib/game/input/gamepads';
 import type { GameState } from '@/lib/game/screen/engine';
 import { screenPrompts, screenPromptInput } from '@/lib/game/screen/prompts';
 import { NAMES } from './screen-hud-data';
+import { screenDrillStatus, drillBalanceText } from './screen-drill-status';
 
 export function ContextPrompts({
   state,
@@ -15,6 +16,7 @@ export function ContextPrompts({
   cueRefs?: RefObject<(HTMLDivElement | null)[]>;
 }) {
   if (state.phase === 'result' || state.paused) return null;
+  const drill = state.phase === 'drill' ? screenDrillStatus(state) : null;
   return (
     <div className="world-action-cues">
       {screenPrompts(state).map(({ worker, player, role, prompts }) => (
@@ -27,13 +29,37 @@ export function ContextPrompts({
         >
           <div className="context-worker-name">
             <strong>{NAMES[worker]}</strong>
-            <span>{player === null ? 'помогает сам' : role}</span>
+            <span>
+              {drill
+                ? worker === 0
+                  ? drill.assistant
+                  : worker === 1
+                    ? drill.climber
+                    : role
+                : player === null
+                  ? 'помогает сам'
+                  : role}
+            </span>
           </div>
           <div className="context-cues">
             {prompts.map((prompt) => {
               if (player === null) return null;
               const { control, text, mode, direction, emphasis, satisfied } =
                 prompt;
+              const balance =
+                !!drill &&
+                control === 'horizontal' &&
+                (!!direction || mode === 'release');
+              if (balance && !direction)
+                return (
+                  <span
+                    key={control}
+                    className="context-cue"
+                    data-emphasis={emphasis}
+                  >
+                    {drillBalanceText(worker)}
+                  </span>
+                );
               const { label, held } = screenPromptInput(
                 pads,
                 player,
@@ -50,7 +76,7 @@ export function ContextPrompts({
                 >
                   <kbd>{label}</kbd>
                   <span>
-                    {mode && (
+                    {mode && !balance && (
                       <small>
                         {mode === 'hold'
                           ? 'держи'
@@ -59,7 +85,7 @@ export function ContextPrompts({
                             : 'нажми'}
                       </small>
                     )}
-                    {text}
+                    {balance ? drillBalanceText(worker, direction) : text}
                   </span>
                 </span>
               );

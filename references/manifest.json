@@ -134,6 +134,16 @@
       "path": "references/moving/original-comment.png",
       "bytes": 19425,
       "sha256": "92fd4c87df55eed88d24934f61272a7599033bfff5ec5d540144a2a5bdc69f7d"
+    },
+    {
+      "path": "references/characters/anastasia/portrait-coat.png",
+      "bytes": 4519485,
+      "sha256": "295fd5277bfe300e6f2bbb398b88613ce8ed60d41e962681eced808eee0d9097"
+    },
+    {
+      "path": "references/characters/anastasia/portrait-red.png",
+      "bytes": 6185565,
+      "sha256": "32f14964b2555e9a9d8eda970602ff6f62c97e2edc5d73ccacd5707dbb104257"
     }
   ]
 }

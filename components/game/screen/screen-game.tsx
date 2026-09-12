@@ -52,6 +52,7 @@ import {
   type ScreenEpisode,
 } from '@/lib/game/screen/episodes';
 import { ContextPrompts } from './context-prompts';
+import { SpeechBubble } from '../world/speech-bubble';
 import Scene, { type CameraMode } from './scene';
 import { NAMES, clock, actNumber, progress } from './screen-hud-data';
 import { ScreenPhasePanel } from './screen-phase-panel';
@@ -83,6 +84,7 @@ export default function ScreenGame({
   const game = useRef<GameState>(view);
   const keys = useRef(new Set<string>());
   const cueRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const speechRef = useRef<HTMLOutputElement | null>(null);
   useGameInspection(game, keys);
   const [briefOpen, setBriefOpen] = useState(true);
   const [cameraMode, setCameraMode] = useState<CameraMode>('auto');
@@ -96,7 +98,10 @@ export default function ScreenGame({
   const saved = useRef(false);
   const [pads, setPads] = useState<
     Pick<PadFrame, 'assignments' | 'unsupported'>
-  >({ assignments: [], unsupported: [] });
+  >({
+    assignments: [],
+    unsupported: [],
+  });
   const [pauseChoice, setPauseChoice] = useState(0);
   const [resultChoice, setResultChoice] = useState(0);
   const resultMenu = screenResultMenu(!!onNext);
@@ -338,7 +343,25 @@ export default function ScreenGame({
       aria-label="Экран на полстены — игра"
     >
       <div className="game-world">
-        <Scene stateRef={game} cameraMode={cameraMode} cueRefs={cueRefs} />
+        <Scene
+          stateRef={game}
+          cameraMode={cameraMode}
+          cueRefs={cueRefs}
+          speechRef={speechRef}
+        />
+        <SpeechBubble
+          bubbleRef={speechRef}
+          speaker={
+            view.messageSpeaker === null ? '' : NAMES[view.messageSpeaker]
+          }
+          text={view.speechText}
+          visible={
+            !view.paused &&
+            view.phase !== 'result' &&
+            view.messageSpeaker !== null &&
+            view.messageUntil > view.elapsed
+          }
+        />
         {settings.showWorldPrompts && (
           <ContextPrompts state={view} pads={pads} cueRefs={cueRefs} />
         )}

@@ -1,3 +1,5 @@
+import { nearChairs } from './drill-space.ts';
+import { pickupCandidate, nextHandoffTool } from './drill-tools.ts';
 import type { GameState } from './engine.ts';
 import {
   gamepadPrompt,
@@ -29,15 +31,20 @@ export function chairBalanceCue(s: GameState) {
   const direction: 'left' | 'right' | null =
     magnitude <= 0.14 ? null : s.balance > 0 ? 'left' : 'right';
   const held = s.braceHeld;
+  const controller = PLAYER_BINDINGS[held || s.players === 1 ? 0 : 1];
   const x =
-    Number(s.heldKeys.includes('KeyD')) - Number(s.heldKeys.includes('KeyA'));
+    Number(s.heldKeys.includes(controller.right)) -
+    Number(s.heldKeys.includes(controller.left));
   const correcting =
-    held &&
-    (direction === null ? x === 0 : x === (direction === 'left' ? -1 : 1));
+    direction === null ? x === 0 : x === (direction === 'left' ? -1 : 1);
   const emphasis: NonNullable<ScreenPrompt['emphasis']> =
-    !held || magnitude >= 0.72 ? 'danger' : direction ? 'correct' : 'safe';
+    magnitude >= 0.72 ? 'danger' : direction ? 'correct' : 'safe';
   const text = !held
-    ? 'Стулья отпущены!'
+    ? direction === 'left'
+      ? 'Ярик, вес влево'
+      : direction === 'right'
+        ? 'Ярик, вес вправо'
+        : 'Никита отошёл — баланс у Ярика'
     : direction === 'left'
       ? 'Клонит вправо — тяни влево'
       : direction === 'right'
@@ -101,7 +108,17 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
           : null
       : worker;
     const role = drilling
-      ? ['страхует и подаёт', 'на стульях', 'помогает страховать'][worker]
+      ? [
+          s.drillAssistant.activity === 'walk'
+            ? 'идёт за приборами'
+            : s.drillAssistant.activity === 'pickup'
+              ? 'подбирает прибор'
+              : s.drillAssistant.activity === 'handoff'
+                ? 'подаёт прибор'
+                : 'страхует и подаёт',
+          'на стульях',
+          'наблюдает',
+        ][worker]
       : ['левый край', 'правый край', 'на подхвате'][worker];
     const row: WorkerPrompt = { worker, player, role, prompts: [] };
     const cue = (
@@ -154,42 +171,15 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
         cue('action', 'ловить отвёртку', 'hold');
       }
     } else if (drilling) {
-      if (s.drillMode === 'position') {
-        if (worker === 0 || solo) {
-          cue('horizontal', 'стулья к отметке');
-          cue('vertical', '2 / 1 стул');
-        }
-        cue(
-          'action',
-          worker === 0 && !solo ? 'страховать' : 'забраться',
-          'hold',
-        );
-      } else if (s.drillMode === 'fallen') {
-        // Recovery plays out before any new action can begin.
-      } else if (worker === 0) {
-        const balance = chairBalanceCue(s);
-        cue(
-          'action',
-          !balance.held
-            ? 'стулья отпущены!'
-            : s.drillMode === 'handoff'
-              ? s.drillGear === 'none'
-                ? 'держать + подать дрель'
-                : 'держать + подать пылесос'
-              : 'держать стулья',
-          'hold',
-          {
-            emphasis: balance.held ? 'safe' : 'danger',
-            satisfied: balance.held,
-          },
-        );
+      const balance = chairBalanceCue(s);
+      const balancePrompt = () =>
         cue(
           'horizontal',
           balance.direction
             ? balance.direction === 'left'
-              ? 'клонит вправо — тяни влево'
-              : 'клонит влево — тяни вправо'
-            : 'стулья ровно',
+              ? 'вес влево'
+              : 'вес вправо'
+            : 'держи равновесие',
           balance.direction ? 'hold' : 'release',
           {
             direction: balance.direction ?? undefined,
@@ -197,29 +187,85 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
             satisfied: balance.correcting,
           },
         );
+      if (worker === 0 && !solo) {
+        const pickup = pickupCandidate(s),
+          near = nearChairs(s);
+        if (pickup)
+          cue(
+            'action',
+            pickup === 'drill' ? 'подобрать дрель' : 'подобрать пылесос',
+            'hold',
+          );
+        else if (s.drillMode === 'position') {
+          if (near) {
+            cue('action', 'взяться за стулья', 'hold');
+            cue('horizontal', 'с E — передвинуть');
+            cue('vertical', 'с E — 2 / 1 стул');
+          } else cue('move', 'к стульям');
+        } else if (
+          s.drillMode !== 'fallen' &&
+          s.toolsRemembered &&
+          s.drillGear !== 'ready' &&
+          s.drillTools.drill.location !== 'assistant' &&
+          s.drillTools.vacuum.location !== 'assistant'
+        ) {
+          cue(
+            'move',
+            Object.values(s.drillTools).some(
+              (tool) => tool.location === 'ground',
+            )
+              ? 'к упавшему прибору'
+              : 'к полке за приборами',
+          );
+          if (near) cue('action', 'отпусти — можно идти', 'release');
+        } else if (near) {
+          cue(
+            'action',
+            s.drillMode === 'handoff' && nextHandoffTool(s)
+              ? 'подать прибор'
+              : 'держать стулья',
+            'hold',
+            { satisfied: s.braceHeld },
+          );
+          balancePrompt();
+        } else cue('move', nextHandoffTool(s) ? 'назад к Ярику' : 'к стульям');
       } else if (worker === 1) {
-        if (s.drillMode === 'climb' || s.drillMode === 'descend')
-          cue(
-            'action',
-            s.drillMode === 'climb' ? 'забираться' : 'спускаться',
-            'hold',
-          );
-        else if (s.drillMode === 'handoff')
-          cue(
-            'action',
-            s.drillGear === 'none' ? 'принять дрель' : 'принять пылесос',
-            'hold',
-          );
-        else {
-          cue('vertical', 'высота отверстия');
-          cue(
-            'action',
-            s.drillHeat > 0.75 ? 'остудить дрель' : 'сверлить',
-            s.drillHeat > 0.75 ? 'release' : 'hold',
-          );
-          cue('secondary', 'пылесосить', 'hold');
+        if (s.drillMode === 'position') {
+          if (solo) {
+            cue('horizontal', 'стулья к отметке');
+            cue('vertical', '2 / 1 стул');
+          }
+          cue('action', 'забраться', 'hold');
+        } else if (s.drillMode === 'fallen') {
+          // Actual recovery finishes before a fresh ascent can start.
+        } else {
+          if (!s.braceHeld) balancePrompt();
+          if (s.drillMode === 'climb' || s.drillMode === 'descend')
+            cue(
+              'action',
+              s.drillMode === 'climb' ? 'забираться' : 'спускаться',
+              'hold',
+            );
+          else if (s.drillMode === 'handoff') {
+            if (nearChairs(s) && nextHandoffTool(s))
+              cue(
+                'action',
+                nextHandoffTool(s) === 'drill'
+                  ? 'принять дрель'
+                  : 'принять пылесос',
+                'hold',
+              );
+          } else {
+            cue('vertical', 'высота отверстия');
+            cue(
+              'action',
+              s.drillHeat > 0.75 ? 'остудить дрель' : 'сверлить',
+              s.drillHeat > 0.75 ? 'release' : 'hold',
+            );
+            cue('secondary', 'пылесосить', 'hold');
+          }
         }
-      } else cue('action', 'страховать вместе', 'hold');
+      }
     } else if (s.phase === 'lift') {
       if (worker < 2) {
         cue(

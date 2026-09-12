@@ -264,13 +264,13 @@ export function createMustang(kit: RenderKit) {
     ],
     glass,
     body,
-  );
+  ).castShadow = false;
   panel(
     kit,
     [-0.57, 1.48, 0.48, 0.57, 1.48, 0.48, 0.73, 1.0, 1.2, -0.73, 1.0, 1.2],
     glass,
     body,
-  );
+  ).castShadow = false;
   for (const side of [-1, 1]) {
     panel(
       kit,
@@ -290,7 +290,7 @@ export function createMustang(kit: RenderKit) {
       ],
       glass,
       body,
-    );
+    ).castShadow = false;
     for (const [a, b] of [
       [
         [side * 0.74, 1.0, -0.67],
@@ -327,7 +327,7 @@ export function createMustang(kit: RenderKit) {
     [-0.58, 1.5, -0.15, 0.58, 1.5, -0.15, 0.58, 1.5, 0.5, -0.58, 1.5, 0.5],
     roofMaterial,
     body,
-  );
+  ).castShadow = false;
   painted(1.22, 0.045, 0.1, 0, 1.49, -0.14);
   painted(1.64, 0.05, 0.15, 0, 1.055, 1.82, 0.018);
   kit.box(1.59, 0.24, 0.075, '#17232c', 0, 0.75, 2.02, body, 0.035);
@@ -414,13 +414,25 @@ export function createMustang(kit: RenderKit) {
     body.attach(rig.head);
     rig.root.removeFromParent();
     const position = [
-      [-0.36, 1.19, -0.08],
-      [0.36, 1.19, -0.08],
-      [0.12, 1.19, 0.64],
+      [-0.36, 1.25, 0.04],
+      [0.36, 1.25, 0.04],
+      [0.08, 1.27, 0.66],
     ][index];
     rig.head.position.set(...(position as [number, number, number]));
-    rig.head.rotation.y = Math.PI;
-    rig.head.scale.setScalar(1.18);
+    rig.head.rotation.set(0.12, Math.PI, 0);
+    rig.head.scale.setScalar(1.32);
+    rig.head.traverse((object) => {
+      if (
+        object instanceof THREE.Mesh &&
+        object.material instanceof THREE.MeshStandardMaterial &&
+        object.material.map
+      ) {
+        object.material.color.set('#ffffff');
+        object.material.emissive.set('#ffffff');
+        object.material.emissiveMap = object.material.map;
+        object.material.emissiveIntensity = 0.18;
+      }
+    });
     rig.head.name = `passenger-${id}`;
     kit.sphere(
       0.21,
@@ -460,7 +472,9 @@ export function createMustang(kit: RenderKit) {
     body,
     wheels,
     passengers,
-    update(s: CityState, dt: number) {
+    update(s: CityState, dt: number, cabinView = true) {
+      glass.opacity = cabinView ? 0.055 : 0.18;
+      roofMaterial.opacity = cabinView ? 0.045 : 0.32;
       root.position.set(s.x, 0.025, s.z);
       root.rotation.y = -s.heading;
       const forward = s.vx * Math.sin(s.heading) - s.vz * Math.cos(s.heading);
