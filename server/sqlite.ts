@@ -19,6 +19,10 @@ export function createRoomDatabase(schema: string, filename = ':memory:') {
     sqlite.exec(
       'ALTER TABLE rooms ADD COLUMN pause_revision INTEGER NOT NULL DEFAULT 0; ALTER TABLE rooms ADD COLUMN pause_ack INTEGER NOT NULL DEFAULT 0;',
     );
+  if (!columns.some((column) => column.name === 'protocol_version'))
+    sqlite.exec(
+      'ALTER TABLE rooms ADD COLUMN protocol_version INTEGER NOT NULL DEFAULT 6;',
+    );
   const prepare = (
     sql: string,
     values: (string | number | null)[] = [],

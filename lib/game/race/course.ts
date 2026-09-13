@@ -1,4 +1,7 @@
-import { nordschleifePoints } from './nordschleife-data.ts';
+import {
+  nordschleifeArcadePoints,
+  NORDSCHLEIFE_GAME_HALF_WIDTH,
+} from './nordschleife-arcade.ts';
 export type TrackId = 'krasnoyarsk' | 'nordschleife';
 export type TrackPoint = { x: number; z: number; y: number; name?: string };
 export type Gate = TrackPoint & {
@@ -25,6 +28,10 @@ export type Course = {
   closest: (x: number, z: number) => TrackSample;
 };
 const modulo = (v: number, length: number) => ((v % length) + length) % length;
+export const NORDSCHLEIFE_VERGE = 1.2;
+export const raceBoundaryHalfWidth = (
+  course: Pick<Course, 'id' | 'halfWidth'>,
+) => course.halfWidth + (course.id === 'nordschleife' ? NORDSCHLEIFE_VERGE : 0);
 /** Metric, closed polyline. No spline overshoot across hairpins or road barriers. */
 export function makeCourse(
   id: TrackId,
@@ -129,7 +136,11 @@ export function makeCourse(
     distances,
     sample,
     closest,
-    gates: checkpoints.map((d) => ({ ...sample(d), halfWidth, distance: d })),
+    gates: checkpoints.map((d) => ({
+      ...sample(d),
+      halfWidth: raceBoundaryHalfWidth({ id, halfWidth }),
+      distance: d,
+    })),
   };
 }
 export const krasnoyarskCourse = makeCourse(
@@ -164,49 +175,11 @@ export function crossedGate(
 /** Compressed Nordschleife: retain topology/elevation character, shorten party races.
  * Around Karussell the two branches are spread apart so full-size cars fit. */
 export const NORDSCHLEIFE_SCALE = 0.18;
-function compressedNordschleife() {
-  const source = nordschleifePoints;
-  const distances = [0];
-  for (let i = 1; i < source.length; i++)
-    distances.push(
-      distances[i - 1] +
-        Math.hypot(
-          source[i][0] - source[i - 1][0],
-          source[i][1] - source[i - 1][1],
-        ),
-    );
-  const a = distances.reduce(
-    (best, d, i) =>
-      Math.abs(d - 11955.6) < Math.abs(distances[best] - 11955.6) ? i : best,
-    0,
-  );
-  const b = distances.reduce(
-    (best, d, i) =>
-      Math.abs(d - 12303.8) < Math.abs(distances[best] - 12303.8) ? i : best,
-    0,
-  );
-  const vx = source[a][0] - source[b][0],
-    vz = source[a][1] - source[b][1],
-    norm = Math.hypot(vx, vz);
-  return source.map(([x, z, y, name], i) => {
-    const weight = (at: number) =>
-      Math.abs(distances[i] - at) < 170
-        ? (1 + Math.cos((Math.PI * (distances[i] - at)) / 170)) * 0.5
-        : 0;
-    const spread = (weight(distances[a]) - weight(distances[b])) * 5.2;
-    return {
-      x: x * NORDSCHLEIFE_SCALE + (vx / norm) * spread,
-      z: z * NORDSCHLEIFE_SCALE + (vz / norm) * spread,
-      y: (y - source[0][2]) * NORDSCHLEIFE_SCALE,
-      name,
-    };
-  });
-}
 export const nordschleifeCourse = makeCourse(
   'nordschleife',
   'Nordschleife',
-  compressedNordschleife(),
-  5,
+  nordschleifeArcadePoints.map(([x, z, y, name]) => ({ x, z, y, name })),
+  NORDSCHLEIFE_GAME_HALF_WIDTH,
 );
 export const raceCourse = (id: TrackId) =>
   id === 'nordschleife' ? nordschleifeCourse : krasnoyarskCourse;

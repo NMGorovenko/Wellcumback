@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { ROOM_VERSION } from '../lib/game/network/room-types.ts';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
@@ -18,6 +19,12 @@ function database() {
   sqlite.exec(
     readFileSync(
       new URL('../drizzle/0001_reconnect_pause.sql', import.meta.url),
+      'utf8',
+    ),
+  );
+  sqlite.exec(
+    readFileSync(
+      new URL('../drizzle/0002_room_protocol.sql', import.meta.url),
       'utf8',
     ),
   );
@@ -50,7 +57,7 @@ function database() {
   };
 }
 const call = (db, body, now = 1000) =>
-  handleRoomRequest(db, { version: 6, ...body }, now);
+  handleRoomRequest(db, { version: ROOM_VERSION, ...body }, now);
 const frame = (seq, keys = [], epoch = 0, command) => ({
   seq,
   epoch,
@@ -601,4 +608,25 @@ void test('room protocol carries the six-speed city at 115 km/h and preserves it
   assert.equal(held.body.snapshot.state.paused, true);
   assert.equal(back.body.snapshot.state.speed, 32);
   assert.deepEqual(back.body.snapshot.state.powertrain, city.powertrain);
+});
+
+void test('an upgraded relay never re-labels a saved incompatible room as current', async () => {
+  const { db, host, guest } = await party();
+  db.sqlite
+    .prepare('UPDATE rooms SET protocol_version = ? WHERE code = ?')
+    .run(ROOM_VERSION - 1, host.code);
+  for (const body of [
+    { op: 'join', code: host.code, name: 'Ещё друг' },
+    { op: 'poll', code: host.code, token: host.token },
+    { op: 'poll', code: host.code, token: guest.token },
+  ]) {
+    const reply = await call(db, body);
+    assert.equal(reply.status, 409);
+    assert.equal(reply.body.error.code, 'VERSION_MISMATCH');
+    assert.equal(reply.body.snapshot, undefined);
+  }
+  const created = await call(db, { op: 'create', name: 'Обновлённый хост' });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.version, ROOM_VERSION);
+  db.sqlite.close();
 });

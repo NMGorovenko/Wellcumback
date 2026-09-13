@@ -112,6 +112,7 @@ type RoomRow = {
   closed_at: number | null;
   pause_revision: number;
   pause_ack: number;
+  protocol_version: number;
 };
 type MemberRow = {
   room_code: string;
@@ -351,6 +352,12 @@ function validateRoom(room: RoomRow | null, now: number): RoomRow {
     return fail(410, 'ROOM_CLOSED', 'Создатель закрыл комнату.');
   if (room.expires_at <= now)
     return fail(410, 'ROOM_EXPIRED', 'Время комнаты истекло. Создайте новую.');
+  if (room.protocol_version !== ROOM_VERSION)
+    return fail(
+      409,
+      'VERSION_MISMATCH',
+      'Эта комната создана в другой версии игры. Обновите игру и создайте новую комнату.',
+    );
   return room;
 }
 async function memberFor(
@@ -460,9 +467,9 @@ async function createRoom(
       await db.batch([
         db
           .prepare(
-            'INSERT INTO rooms (code, capacity, snapshot, snapshot_seq, epoch, created_at, expires_at, closed_at) VALUES (?, ?, NULL, 0, 0, ?, ?, NULL)',
+            'INSERT INTO rooms (code, capacity, snapshot, snapshot_seq, epoch, created_at, expires_at, closed_at, protocol_version) VALUES (?, ?, NULL, 0, 0, ?, ?, NULL, ?)',
           )
-          .bind(code, capacity, now, now + ROOM_TTL_MS),
+          .bind(code, capacity, now, now + ROOM_TTL_MS, ROOM_VERSION),
         db
           .prepare(
             'INSERT INTO room_members (room_code, id, slot, name, token_hash, last_seen, last_seq, left_at) VALUES (?, ?, 0, ?, ?, ?, 0, NULL)',

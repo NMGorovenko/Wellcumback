@@ -1,0 +1,1 @@
+ALTER TABLE rooms ADD COLUMN protocol_version INTEGER NOT NULL DEFAULT 6;

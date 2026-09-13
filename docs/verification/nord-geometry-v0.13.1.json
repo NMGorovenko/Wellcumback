@@ -1,0 +1,247 @@
+{
+  "root": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back",
+  "sources": {
+    "components/game/race/nordschleife.ts": "890cb0ef9eab2cc5d32b453711ccb1735a6a85638f3e2901942c7d2faecf4c9f",
+    "lib/game/race/course.ts": "e20cb76c25050205650ac724e62fedfe28e72798be3372f6f1abe74eb6e91150",
+    "components/game/race/scene.tsx": "9b7e16fa5842b37c1972b788dd0b55175b47ee4ec87d10a48d82b6047c325deb",
+    "lib/game/race/terrain.ts": "39560adfbc45b73f46375412a10cf2a94bdab0f89c0ee979b7fa51f3674c285d",
+    "lib/game/race/camera.ts": "52da55427d00e53dbaa84fb4d00caa4e94f2b5e120b28800f6008e7b2365a09a",
+    "lib/game/race/nordschleife-arcade.ts": "1685b26e7e62fea536ca708ef729a86bcca65eb3076e47beac7a7998a6d04af1"
+  },
+  "course": {
+    "length": 3718.745738321865,
+    "points": 3716,
+    "halfWidth": 7
+  },
+  "samplingMetres": 2,
+  "geometryStats": {
+    "generationMs": 1196.24,
+    "drawMeshes": 28,
+    "renderTriangles": 436958,
+    "geometryMiB": 8.2124,
+    "terrainVertices": 90968,
+    "terrainTriangles": 180726,
+    "netHeapDeltaMiB": 17.3553,
+    "netArrayBufferDeltaMiB": 9.7476,
+    "note": "CPU construction only; memory deltas are net, not peak; no browser/GPU render benchmark"
+  },
+  "actualMeshes": {
+    "terrain": [
+      "nord-terrain"
+    ],
+    "embankments": [
+      "nord-embankment",
+      "nord-embankment"
+    ],
+    "asphalt": [
+      "nord-asphalt"
+    ],
+    "namingFallback": false
+  },
+  "raycast": "actual transformed render triangles, Three.Raycaster, double-sided safety check",
+  "cameraModel": "actual raceCameraFraming + clearRaceCamera(desired, model root y=sample.y+.04, heightAt); temporal heading/target lag not simulated",
+  "heightSampler": true,
+  "asphaltTriangles": {
+    "total": 7430,
+    "up": 7430,
+    "inverted": 0,
+    "degenerate": 0
+  },
+  "coverage": [
+    {
+      "lateralFactor": -0.98,
+      "total": 1860,
+      "missingAsphalt": 0,
+      "terrainOverRoad": 0,
+      "nearCoincident": 0,
+      "minClearance": 0.3289,
+      "maxRoadHeightError": 0.0554,
+      "heightSamplerVsMeshMaxError": 0,
+      "examples": []
+    },
+    {
+      "lateralFactor": -0.75,
+      "total": 1860,
+      "missingAsphalt": 0,
+      "terrainOverRoad": 0,
+      "nearCoincident": 0,
+      "minClearance": 0.3318,
+      "maxRoadHeightError": 0.0607,
+      "heightSamplerVsMeshMaxError": 0,
+      "examples": []
+    },
+    {
+      "lateralFactor": 0,
+      "total": 1860,
+      "missingAsphalt": 0,
+      "terrainOverRoad": 0,
+      "nearCoincident": 0,
+      "minClearance": 0.3404,
+      "maxRoadHeightError": 0.0669,
+      "heightSamplerVsMeshMaxError": 0,
+      "examples": []
+    },
+    {
+      "lateralFactor": 0.75,
+      "total": 1860,
+      "missingAsphalt": 0,
+      "terrainOverRoad": 0,
+      "nearCoincident": 0,
+      "minClearance": 0.3398,
+      "maxRoadHeightError": 0.0669,
+      "heightSamplerVsMeshMaxError": 0,
+      "examples": []
+    },
+    {
+      "lateralFactor": 0.98,
+      "total": 1860,
+      "missingAsphalt": 0,
+      "terrainOverRoad": 0,
+      "nearCoincident": 0,
+      "minClearance": 0.3362,
+      "maxRoadHeightError": 0.0668,
+      "heightSamplerVsMeshMaxError": 0,
+      "examples": []
+    }
+  ],
+  "cameras": [
+    {
+      "view": "solo",
+      "aspect": 1.7777777777777777,
+      "speed": 0,
+      "total": 1860,
+      "buried": 0,
+      "occluded": 0,
+      "maxDepth": 0,
+      "carProjection": {
+        "envelope": "conservative 2.4x1.7x5.2m box, pitch+yaw, no steering/body-roll animation",
+        "clipped": 0,
+        "minNdcY": -0.6481,
+        "maxNdcY": 0.0711,
+        "maxAbsNdcX": 0.12
+      },
+      "examples": []
+    },
+    {
+      "view": "solo",
+      "aspect": 1.7777777777777777,
+      "speed": 15,
+      "total": 1860,
+      "buried": 0,
+      "occluded": 0,
+      "maxDepth": 0,
+      "carProjection": {
+        "envelope": "conservative 2.4x1.7x5.2m box, pitch+yaw, no steering/body-roll animation",
+        "clipped": 0,
+        "minNdcY": -0.6047,
+        "maxNdcY": -0.0744,
+        "maxAbsNdcX": 0.0849
+      },
+      "examples": []
+    },
+    {
+      "view": "solo",
+      "aspect": 1.7777777777777777,
+      "speed": 30,
+      "total": 1860,
+      "buried": 0,
+      "occluded": 0,
+      "maxDepth": 0,
+      "carProjection": {
+        "envelope": "conservative 2.4x1.7x5.2m box, pitch+yaw, no steering/body-roll animation",
+        "clipped": 0,
+        "minNdcY": -0.5711,
+        "maxNdcY": -0.152,
+        "maxAbsNdcX": 0.0655
+      },
+      "examples": []
+    },
+    {
+      "view": "solo",
+      "aspect": 1.7777777777777777,
+      "speed": 50,
+      "total": 1860,
+      "buried": 0,
+      "occluded": 0,
+      "maxDepth": 0,
+      "carProjection": {
+        "envelope": "conservative 2.4x1.7x5.2m box, pitch+yaw, no steering/body-roll animation",
+        "clipped": 0,
+        "minNdcY": -0.5399,
+        "maxNdcY": -0.2128,
+        "maxAbsNdcX": 0.0501
+      },
+      "examples": []
+    },
+    {
+      "view": "split",
+      "aspect": 0.8888888888888888,
+      "speed": 0,
+      "total": 1860,
+      "buried": 0,
+      "occluded": 0,
+      "maxDepth": 0,
+      "carProjection": {
+        "envelope": "conservative 2.4x1.7x5.2m box, pitch+yaw, no steering/body-roll animation",
+        "clipped": 0,
+        "minNdcY": -0.6368,
+        "maxNdcY": 0.0715,
+        "maxAbsNdcX": 0.2369
+      },
+      "examples": []
+    },
+    {
+      "view": "split",
+      "aspect": 0.8888888888888888,
+      "speed": 15,
+      "total": 1860,
+      "buried": 0,
+      "occluded": 0,
+      "maxDepth": 0,
+      "carProjection": {
+        "envelope": "conservative 2.4x1.7x5.2m box, pitch+yaw, no steering/body-roll animation",
+        "clipped": 0,
+        "minNdcY": -0.592,
+        "maxNdcY": -0.0713,
+        "maxAbsNdcX": 0.1672
+      },
+      "examples": []
+    },
+    {
+      "view": "split",
+      "aspect": 0.8888888888888888,
+      "speed": 30,
+      "total": 1860,
+      "buried": 0,
+      "occluded": 0,
+      "maxDepth": 0,
+      "carProjection": {
+        "envelope": "conservative 2.4x1.7x5.2m box, pitch+yaw, no steering/body-roll animation",
+        "clipped": 0,
+        "minNdcY": -0.558,
+        "maxNdcY": -0.1472,
+        "maxAbsNdcX": 0.1289
+      },
+      "examples": []
+    },
+    {
+      "view": "split",
+      "aspect": 0.8888888888888888,
+      "speed": 50,
+      "total": 1860,
+      "buried": 0,
+      "occluded": 0,
+      "maxDepth": 0,
+      "carProjection": {
+        "envelope": "conservative 2.4x1.7x5.2m box, pitch+yaw, no steering/body-roll animation",
+        "clipped": 0,
+        "minNdcY": -0.5268,
+        "maxNdcY": -0.2066,
+        "maxAbsNdcX": 0.0986
+      },
+      "examples": []
+    }
+  ],
+  "defects": 0,
+  "pass": true
+}

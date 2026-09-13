@@ -3,14 +3,14 @@ const obj = (value: unknown): value is Record<string, unknown> =>
 const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 const integer = (v: unknown, min: number, max: number) =>
   finite(v) && Number.isInteger(v) && Number(v) >= min && Number(v) <= max;
-const colors = ['red', 'blue', 'yellow', 'green', 'violet', 'white'];
+const colors = ['red', 'blue', 'yellow', 'green', 'violet', 'white', 'black'];
 /** Validate flat command payloads before they enter the authoritative queue. */
 export function validRaceCommand(c: Record<string, unknown>) {
   switch (c.kind) {
     case 'race-car':
       return (
         (c.localIndex === 0 || c.localIndex === 1) &&
-        (c.vehicleId === 'mustang' || c.vehicleId === 'amg-one') &&
+        (c.vehicleId === 'mustang' || c.vehicleId === 'amg-gt') &&
         colors.includes(String(c.colorId))
       );
     case 'race-local':
@@ -72,7 +72,7 @@ export function validRaceState(value: unknown, capacity = 3) {
       ids.has(r.id) ||
       typeof r.name !== 'string' ||
       r.name.length > 80 ||
-      !['mustang', 'amg-one'].includes(String(r.vehicleId)) ||
+      !['mustang', 'amg-gt'].includes(String(r.vehicleId)) ||
       !colors.includes(String(r.colorId)) ||
       usedColors.has(r.colorId) ||
       typeof r.ready !== 'boolean' ||

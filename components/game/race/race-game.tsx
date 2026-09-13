@@ -31,7 +31,12 @@ import {
   RACE_TIME_LIMIT,
 } from '@/lib/game/race/engine';
 import { raceCourse } from '@/lib/game/race/course';
-import { CAR_COLORS, VEHICLES, type VehicleId } from '@/lib/game/race/vehicles';
+import {
+  CAR_COLORS,
+  VEHICLES,
+  defaultVehicleColor,
+  type VehicleId,
+} from '@/lib/game/race/vehicles';
 import type { RaceState, Racer } from '@/lib/game/race/types';
 import {
   gamepadPrompt,
@@ -123,12 +128,7 @@ function RaceAudio({
   enabled: boolean;
   mix: number;
 }) {
-  useCityAudio(
-    enabled,
-    { ...racer.car },
-    racer.vehicleId === 'amg-one' ? 'v6' : 'v8',
-    mix,
-  );
+  useCityAudio(enabled, { ...racer.car }, 'v8', mix);
   return null;
 }
 export default function RaceGame({
@@ -498,7 +498,19 @@ export default function RaceGame({
                           key={id}
                           aria-pressed={r.vehicleId === id}
                           onClick={() => {
-                            editCar(r, id, r.colorId);
+                            editCar(
+                              r,
+                              id,
+                              r.vehicleId === id
+                                ? r.colorId
+                                : defaultVehicleColor(
+                                    id,
+                                    r.colorId,
+                                    view.racers
+                                      .filter((other) => other !== r)
+                                      .map((other) => other.colorId),
+                                  ),
+                            );
                           }}
                         >
                           {VEHICLES[id].name}

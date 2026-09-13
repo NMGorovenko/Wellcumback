@@ -1,6 +1,6 @@
 import { cityCarBlocked, freshCity } from '../city/engine.ts';
 import { stepCar } from '../city/car-physics.ts';
-import { crossedGate, type Course } from './course.ts';
+import { crossedGate, raceBoundaryHalfWidth, type Course } from './course.ts';
 import {
   CAR_COLORS,
   vehicleTuning,
@@ -129,7 +129,7 @@ export function carBlocked(
         x + Math.sin(heading) * offset,
         z - Math.cos(heading) * offset,
       ).lateral >
-      course.halfWidth - 0.88,
+      raceBoundaryHalfWidth(course) - 0.88,
   );
 }
 export function startRace(s: RaceState, course: Course) {
@@ -414,12 +414,6 @@ function step(
       vehicleTuning(r.vehicleId, course.id === 'krasnoyarsk'),
     );
     if (hit.worldContact) contacts.add(r.id);
-    if (course.id !== 'krasnoyarsk') {
-      const sample = course.closest(r.car.x, r.car.z),
-        ahead = course.sample(sample.distance + 1);
-      r.elevation = sample.y;
-      r.pitch = Math.atan2(ahead.y - sample.y, 1);
-    }
   });
   // Reset is a teleport, never sweep its old position or award a crossed gate.
   resets.forEach((id) => {
@@ -428,6 +422,18 @@ function step(
     previous[i] = { x: c.x, z: c.z, heading: c.heading };
   });
   resolveCarContacts(s, course, previous).forEach((id) => contacts.add(id));
+  if (course.id !== 'krasnoyarsk')
+    s.racers.forEach((r) => {
+      const c = r.car,
+        dx = Math.sin(c.heading) * 1.35,
+        dz = -Math.cos(c.heading) * 1.35;
+      r.elevation = course.closest(c.x, c.z).y;
+      r.pitch = Math.atan2(
+        course.closest(c.x + dx, c.z + dz).y -
+          course.closest(c.x - dx, c.z - dz).y,
+        2.7,
+      );
+    });
   s.racers.forEach((r, i) => {
     if (!resets.has(r.id)) advanceGates(s, r, course, previous[i]);
     advanceDrift(s, r, contacts.has(r.id), dt);

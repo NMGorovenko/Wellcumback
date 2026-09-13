@@ -1,0 +1,1406 @@
+[
+  {
+    "capturedAt": "2026-09-13T19:03:29.089Z",
+    "sourceHashes": {
+      "lib/game/race/course.ts": "87050c25b312587b027a772bc88efd8179205c5bb3f246ccd9b5f49414cef712",
+      "lib/game/race/engine.ts": "21540e9b9d261892b045c1e8eb431a687e2f140b0fd0657ddb2c96a90cdc2ef7",
+      "lib/game/race/vehicles.ts": "b707bc24d03651ca034b61892173e898a2de7f165b2b7103b723dac18f28364b",
+      "lib/game/race/nordschleife-data.ts": "94f1cceb8ae289cd815da3334208cf7b7ab4d60bf8100d4671aba9b9ea43efc9",
+      "lib/game/race/nordschleife-arcade.ts": "1b059d224e69dd1feb19f795ed5fcd9e094eec67ca9594bb023f79eaf3364e9c",
+      "lib/game/city/car-physics.ts": "d3224d7465952e18a74283af403069275ec3b779dc4273ecff8d0892023f21cb",
+      "lib/game/city/powertrain.ts": "a0c4b6bcdb2fd59dd4a5bcc346810cf064f8fdd4aeffa7bd714309b8f9b978af"
+    },
+    "trackId": "nordschleife",
+    "vehicleId": "mustang",
+    "lateralAcceleration": 12,
+    "tuning": {
+      "maxSpeed": 54,
+      "acceleration": 23,
+      "power": 430,
+      "brake": 23,
+      "reverseAcceleration": 10,
+      "torqueFalloff": 0.12,
+      "shiftTorque": 0.28,
+      "grip": 7.5,
+      "driftGrip": 0.55,
+      "automaticSlip": 0.35,
+      "downforce": 0.00025,
+      "yaw": 1.7,
+      "driftYaw": 1.1,
+      "steeringSpeed": 17,
+      "drag": 0.12,
+      "transmission": {
+        "ratios": [
+          4.15,
+          2.7,
+          1.65,
+          1.16,
+          0.86,
+          0.62
+        ],
+        "idle": 780,
+        "maxRpm": 6500,
+        "rpmPerSpeed": 140,
+        "shiftRpm": 5800,
+        "duration": 0.2,
+        "maxSpeed": 54
+      }
+    },
+    "raceLaps": 3,
+    "completedLaps": 3,
+    "countdownElapsed": 2.9999999999999942,
+    "elapsedIncludingCountdown": 545.1499999996713,
+    "lapTimes": [
+      180.4166666666661,
+      180.41666666650258,
+      180.41666666650264
+    ],
+    "contactSteps": 0,
+    "length": 3718.745738321865,
+    "completed": true,
+    "lap": 180.41666666650258,
+    "elapsed": 542.1499999996713,
+    "estimatedThreeLaps": 544.2499999995077,
+    "maxSpeed": 52.18094784337274,
+    "maxLateral": 1.8013300488713981,
+    "stalled": 0,
+    "progress": 11156.206505142882,
+    "passedGates": 46,
+    "expectedGates": 46,
+    "nextGate": 1,
+    "contacts": [],
+    "gates": [
+      {
+        "time": 0.8999999999999992,
+        "gate": 0,
+        "next": 1,
+        "progress": 0
+      },
+      {
+        "time": 16.391666666666378,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.88581913868447
+      },
+      {
+        "time": 27.76666666666573,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.7683843697614
+      },
+      {
+        "time": 37.674999999998505,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.6363388500428
+      },
+      {
+        "time": 49.57499999999783,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.520537556941
+      },
+      {
+        "time": 62.9583333333304,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.5269265681961
+      },
+      {
+        "time": 77.9916666666748,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.3611823518804
+      },
+      {
+        "time": 88.64166666668328,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.3265534509078
+      },
+      {
+        "time": 97.93333333335734,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.193695158973
+      },
+      {
+        "time": 113.55000000003643,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.117035746366
+      },
+      {
+        "time": 127.7000000000477,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.0498823554103
+      },
+      {
+        "time": 142.54166666670136,
+        "gate": 11,
+        "next": 12,
+        "progress": 2726.930514470823
+      },
+      {
+        "time": 153.7166666666912,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.932577165916
+      },
+      {
+        "time": 166.7916666666793,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.904019331312
+      },
+      {
+        "time": 171.99166666667458,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.503032435962
+      },
+      {
+        "time": 181.3166666666661,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.722928838477
+      },
+      {
+        "time": 196.80833333331867,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.88378760142467
+      },
+      {
+        "time": 208.18333333330833,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.7739428221387
+      },
+      {
+        "time": 218.09166666663265,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.6324197630935
+      },
+      {
+        "time": 229.99166666662182,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.5364040403113
+      },
+      {
+        "time": 243.374999999943,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.5335395320785
+      },
+      {
+        "time": 258.40833333326265,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.3677236816527
+      },
+      {
+        "time": 269.05833333325296,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.3305567680306
+      },
+      {
+        "time": 278.3499999999112,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.1929635681386
+      },
+      {
+        "time": 293.96666666656364,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.1162639710014
+      },
+      {
+        "time": 308.11666666655077,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.0491163522315
+      },
+      {
+        "time": 322.95833333320394,
+        "gate": 11,
+        "next": 12,
+        "progress": 2726.9239124814335
+      },
+      {
+        "time": 334.1333333331938,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.928216666402
+      },
+      {
+        "time": 347.2083333331819,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.909020790001
+      },
+      {
+        "time": 352.40833333317715,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.5088559007227
+      },
+      {
+        "time": 361.7333333331687,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.7217311737963
+      },
+      {
+        "time": 377.22499999982125,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.87997313889272
+      },
+      {
+        "time": 388.5999999998109,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.77319900289837
+      },
+      {
+        "time": 398.5083333331352,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.6413937924663
+      },
+      {
+        "time": 410.4083333331244,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.5217686168675
+      },
+      {
+        "time": 423.79166666644556,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.5281249346508
+      },
+      {
+        "time": 438.8249999997652,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.362486299216
+      },
+      {
+        "time": 449.47499999975554,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.3279795876729
+      },
+      {
+        "time": 458.76666666641376,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.1982569266052
+      },
+      {
+        "time": 474.3833333330662,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.173343398059
+      },
+      {
+        "time": 488.53333333305335,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.054681906379
+      },
+      {
+        "time": 503.3749999997065,
+        "gate": 11,
+        "next": 12,
+        "progress": 2726.9444297774808
+      },
+      {
+        "time": 514.5499999996964,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.936499102152
+      },
+      {
+        "time": 527.6249999996845,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.80260290721
+      },
+      {
+        "time": 532.8333333330131,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.802227591464
+      },
+      {
+        "time": 542.1499999996713,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.715028499028
+      }
+    ]
+  },
+  {
+    "capturedAt": "2026-09-13T19:11:13.899Z",
+    "sourceHashes": {
+      "lib/game/race/course.ts": "e20cb76c25050205650ac724e62fedfe28e72798be3372f6f1abe74eb6e91150",
+      "lib/game/race/engine.ts": "21540e9b9d261892b045c1e8eb431a687e2f140b0fd0657ddb2c96a90cdc2ef7",
+      "lib/game/race/vehicles.ts": "c1811a103bc52cde25531c90d6eb037b59ad3ae0232b68943c78d9cb7bf0868e",
+      "lib/game/race/nordschleife-data.ts": "94f1cceb8ae289cd815da3334208cf7b7ab4d60bf8100d4671aba9b9ea43efc9",
+      "lib/game/race/nordschleife-arcade.ts": "1685b26e7e62fea536ca708ef729a86bcca65eb3076e47beac7a7998a6d04af1",
+      "lib/game/city/car-physics.ts": "d3224d7465952e18a74283af403069275ec3b779dc4273ecff8d0892023f21cb",
+      "lib/game/city/powertrain.ts": "a0c4b6bcdb2fd59dd4a5bcc346810cf064f8fdd4aeffa7bd714309b8f9b978af"
+    },
+    "trackId": "nordschleife",
+    "vehicleId": "mustang",
+    "lateralAcceleration": 20,
+    "tuning": {
+      "maxSpeed": 54,
+      "acceleration": 23,
+      "power": 430,
+      "brake": 23,
+      "reverseAcceleration": 10,
+      "torqueFalloff": 0.12,
+      "shiftTorque": 0.28,
+      "grip": 7.5,
+      "driftGrip": 0.55,
+      "automaticSlip": 0.35,
+      "downforce": 0.00025,
+      "yaw": 1.7,
+      "driftYaw": 1.1,
+      "steeringSpeed": 17,
+      "drag": 0.12,
+      "transmission": {
+        "ratios": [
+          4.15,
+          2.7,
+          1.65,
+          1.16,
+          0.86,
+          0.62
+        ],
+        "idle": 780,
+        "maxRpm": 6500,
+        "rpmPerSpeed": 140,
+        "shiftRpm": 5800,
+        "duration": 0.2,
+        "maxSpeed": 54
+      }
+    },
+    "raceLaps": 3,
+    "completedLaps": 3,
+    "countdownElapsed": 2.9999999999999942,
+    "elapsedIncludingCountdown": 456.733333333085,
+    "lapTimes": [
+      150.96666666669293,
+      150.95833333319604,
+      150.9499999998627
+    ],
+    "contactSteps": 0,
+    "length": 3718.745738321865,
+    "completed": true,
+    "lap": 150.9499999998627,
+    "elapsed": 453.733333333085,
+    "estimatedThreeLaps": 455.84999999958814,
+    "maxSpeed": 52.18297665392892,
+    "maxLateral": 1.8013300488713981,
+    "stalled": 0,
+    "progress": 11156.108658379857,
+    "passedGates": 46,
+    "expectedGates": 46,
+    "nextGate": 1,
+    "contacts": [],
+    "gates": [
+      {
+        "time": 0.8583333333333327,
+        "gate": 0,
+        "next": 1,
+        "progress": 0
+      },
+      {
+        "time": 13.441666666666544,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.82778574849274
+      },
+      {
+        "time": 23.13333333333266,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.73935839281665
+      },
+      {
+        "time": 31.424999999998857,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.6860985968212
+      },
+      {
+        "time": 41.316666666664965,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.5083002339123
+      },
+      {
+        "time": 52.34999999999767,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.4578632489875
+      },
+      {
+        "time": 64.7916666666643,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.4626994788907
+      },
+      {
+        "time": 73.95000000000492,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.3513814816054
+      },
+      {
+        "time": 81.75000000001113,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.2583783177986
+      },
+      {
+        "time": 94.61666666668803,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.1204402354297
+      },
+      {
+        "time": 106.308333333364,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.1407574302816
+      },
+      {
+        "time": 118.63333333337381,
+        "gate": 11,
+        "next": 12,
+        "progress": 2726.921198916391
+      },
+      {
+        "time": 128.00000000004792,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.9736309032382
+      },
+      {
+        "time": 138.91666666670466,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.755042899955
+      },
+      {
+        "time": 144.0750000000333,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.64038074408
+      },
+      {
+        "time": 151.82500000002625,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.6171914872853
+      },
+      {
+        "time": 164.40833333334814,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.87147131165486
+      },
+      {
+        "time": 174.09166666667267,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.65248641746376
+      },
+      {
+        "time": 182.3833333333318,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.6458552796163
+      },
+      {
+        "time": 192.27499999998946,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.5044397505258
+      },
+      {
+        "time": 203.30833333331276,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.4507190571612
+      },
+      {
+        "time": 215.7499999999681,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.4340756893796
+      },
+      {
+        "time": 224.90833333329311,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.2701247904026
+      },
+      {
+        "time": 232.70833333328602,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.1939011805525
+      },
+      {
+        "time": 245.57499999994099,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.094599822683
+      },
+      {
+        "time": 257.266666666597,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.1408469289895
+      },
+      {
+        "time": 269.5916666665858,
+        "gate": 11,
+        "next": 12,
+        "progress": 2726.921323878466
+      },
+      {
+        "time": 278.95833333324396,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.973772298078
+      },
+      {
+        "time": 289.8749999999007,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.7552159678585
+      },
+      {
+        "time": 295.03333333322934,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.6405685652526
+      },
+      {
+        "time": 302.7833333332223,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.617365938716
+      },
+      {
+        "time": 315.3666666665442,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.87169295485575
+      },
+      {
+        "time": 325.0499999998687,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.65282332846965
+      },
+      {
+        "time": 333.34166666652783,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.6462338916675
+      },
+      {
+        "time": 343.2333333331855,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.5048243445824
+      },
+      {
+        "time": 354.2666666665088,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.4511125915994
+      },
+      {
+        "time": 366.70833333316415,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.4346144530275
+      },
+      {
+        "time": 375.86666666648915,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.2708248360568
+      },
+      {
+        "time": 383.66666666648206,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.1947288631557
+      },
+      {
+        "time": 396.533333333137,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.095615533728
+      },
+      {
+        "time": 408.21666666645973,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.0457381703145
+      },
+      {
+        "time": 420.5416666664485,
+        "gate": 11,
+        "next": 12,
+        "progress": 2726.895610546241
+      },
+      {
+        "time": 429.90833333310667,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.9736236380177
+      },
+      {
+        "time": 440.8249999997634,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.75503319828
+      },
+      {
+        "time": 445.98333333309205,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.6403702153843
+      },
+      {
+        "time": 453.733333333085,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.6171817360937
+      }
+    ]
+  },
+  {
+    "capturedAt": "2026-09-13T19:03:31.452Z",
+    "sourceHashes": {
+      "lib/game/race/course.ts": "87050c25b312587b027a772bc88efd8179205c5bb3f246ccd9b5f49414cef712",
+      "lib/game/race/engine.ts": "21540e9b9d261892b045c1e8eb431a687e2f140b0fd0657ddb2c96a90cdc2ef7",
+      "lib/game/race/vehicles.ts": "b707bc24d03651ca034b61892173e898a2de7f165b2b7103b723dac18f28364b",
+      "lib/game/race/nordschleife-data.ts": "94f1cceb8ae289cd815da3334208cf7b7ab4d60bf8100d4671aba9b9ea43efc9",
+      "lib/game/race/nordschleife-arcade.ts": "1b059d224e69dd1feb19f795ed5fcd9e094eec67ca9594bb023f79eaf3364e9c",
+      "lib/game/city/car-physics.ts": "d3224d7465952e18a74283af403069275ec3b779dc4273ecff8d0892023f21cb",
+      "lib/game/city/powertrain.ts": "a0c4b6bcdb2fd59dd4a5bcc346810cf064f8fdd4aeffa7bd714309b8f9b978af"
+    },
+    "trackId": "nordschleife",
+    "vehicleId": "amg-gt",
+    "lateralAcceleration": 12,
+    "tuning": {
+      "maxSpeed": 50,
+      "acceleration": 22,
+      "power": 410,
+      "brake": 27,
+      "reverseAcceleration": 10,
+      "torqueFalloff": 0.1,
+      "shiftTorque": 0.55,
+      "grip": 10,
+      "driftGrip": 0.9,
+      "automaticSlip": 0.12,
+      "downforce": 0.00035,
+      "yaw": 1.75,
+      "driftYaw": 0.6,
+      "steeringSpeed": 18,
+      "drag": 0.13,
+      "transmission": {
+        "ratios": [
+          5.35,
+          3.24,
+          2.25,
+          1.64,
+          1.21,
+          1,
+          0.87,
+          0.72,
+          0.6
+        ],
+        "idle": 760,
+        "maxRpm": 7000,
+        "rpmPerSpeed": 138,
+        "shiftRpm": 6200,
+        "downshiftRpm": 2400,
+        "duration": 0.17,
+        "maxSpeed": 50
+      }
+    },
+    "raceLaps": 3,
+    "completedLaps": 3,
+    "countdownElapsed": 2.9999999999999942,
+    "elapsedIncludingCountdown": 543.9249999996724,
+    "lapTimes": [
+      180.01666666666645,
+      179.9999999998363,
+      180.00833333316967
+    ],
+    "contactSteps": 0,
+    "length": 3718.745738321865,
+    "completed": true,
+    "lap": 179.9999999998363,
+    "elapsed": 540.9249999996724,
+    "estimatedThreeLaps": 542.9999999995089,
+    "maxSpeed": 48.243661496378444,
+    "maxLateral": 1.8011226561820681,
+    "stalled": 0,
+    "progress": 11156.132712174149,
+    "passedGates": 46,
+    "expectedGates": 46,
+    "nextGate": 1,
+    "contacts": [],
+    "gates": [
+      {
+        "time": 0.8999999999999992,
+        "gate": 0,
+        "next": 1,
+        "progress": 0
+      },
+      {
+        "time": 16.316666666666382,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.86216180578862
+      },
+      {
+        "time": 27.666666666665737,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.58563232708894
+      },
+      {
+        "time": 37.558333333331845,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.5346514917649
+      },
+      {
+        "time": 49.39999999999784,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.4515614550777
+      },
+      {
+        "time": 62.71666666666375,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.4418726040917
+      },
+      {
+        "time": 77.67500000000788,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.3327932422176
+      },
+      {
+        "time": 88.3333333333497,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.4107674261743
+      },
+      {
+        "time": 97.60833333335708,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.2382325697288
+      },
+      {
+        "time": 113.14166666670278,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.1825447464907
+      },
+      {
+        "time": 127.21666666671398,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.1504183097218
+      },
+      {
+        "time": 141.96666666670188,
+        "gate": 11,
+        "next": 12,
+        "progress": 2726.873546605711
+      },
+      {
+        "time": 153.1000000000251,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.981695930174
+      },
+      {
+        "time": 166.15000000001322,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.7914485194437
+      },
+      {
+        "time": 171.62500000000824,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.4518399656276
+      },
+      {
+        "time": 180.91666666666646,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.641284993551
+      },
+      {
+        "time": 196.3333333333191,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.88630572060245
+      },
+      {
+        "time": 207.68333333330878,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.63720380087483
+      },
+      {
+        "time": 217.57499999996645,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.5447974703872
+      },
+      {
+        "time": 229.41666666662235,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.4667939028402
+      },
+      {
+        "time": 242.7333333332769,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.4509274785294
+      },
+      {
+        "time": 257.69166666659663,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.3263086093118
+      },
+      {
+        "time": 268.34166666658695,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.2289957878315
+      },
+      {
+        "time": 277.62499999991184,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.2366527196418
+      },
+      {
+        "time": 293.15833333323104,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.1935703990384
+      },
+      {
+        "time": 307.23333333321824,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.148447252243
+      },
+      {
+        "time": 321.9833333332048,
+        "gate": 11,
+        "next": 12,
+        "progress": 2726.87125103649
+      },
+      {
+        "time": 333.11666666652803,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.986446095294
+      },
+      {
+        "time": 346.16666666651616,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.836559128169
+      },
+      {
+        "time": 351.62499999984453,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.7036016685056
+      },
+      {
+        "time": 360.91666666650275,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.7060163626115
+      },
+      {
+        "time": 376.32499999982207,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.86169396520876
+      },
+      {
+        "time": 387.67499999981175,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.6194640918575
+      },
+      {
+        "time": 397.5666666664694,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.5496658575846
+      },
+      {
+        "time": 409.4083333331253,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.4599739227606
+      },
+      {
+        "time": 422.72499999977987,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.451036706826
+      },
+      {
+        "time": 437.6833333330996,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.3264276543223
+      },
+      {
+        "time": 448.3333333330899,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.2291277525992
+      },
+      {
+        "time": 457.6166666664148,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.2367932886098
+      },
+      {
+        "time": 473.149999999734,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.19371616364
+      },
+      {
+        "time": 487.2249999997212,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.14859500392
+      },
+      {
+        "time": 501.9749999997078,
+        "gate": 11,
+        "next": 12,
+        "progress": 2726.8714225703375
+      },
+      {
+        "time": 513.108333333031,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.9795125039113
+      },
+      {
+        "time": 526.1583333330192,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.785050512891
+      },
+      {
+        "time": 531.6333333330142,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.4452587473256
+      },
+      {
+        "time": 540.9249999996724,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.641235530512
+      }
+    ]
+  },
+  {
+    "capturedAt": "2026-09-13T19:11:15.989Z",
+    "sourceHashes": {
+      "lib/game/race/course.ts": "e20cb76c25050205650ac724e62fedfe28e72798be3372f6f1abe74eb6e91150",
+      "lib/game/race/engine.ts": "21540e9b9d261892b045c1e8eb431a687e2f140b0fd0657ddb2c96a90cdc2ef7",
+      "lib/game/race/vehicles.ts": "c1811a103bc52cde25531c90d6eb037b59ad3ae0232b68943c78d9cb7bf0868e",
+      "lib/game/race/nordschleife-data.ts": "94f1cceb8ae289cd815da3334208cf7b7ab4d60bf8100d4671aba9b9ea43efc9",
+      "lib/game/race/nordschleife-arcade.ts": "1685b26e7e62fea536ca708ef729a86bcca65eb3076e47beac7a7998a6d04af1",
+      "lib/game/city/car-physics.ts": "d3224d7465952e18a74283af403069275ec3b779dc4273ecff8d0892023f21cb",
+      "lib/game/city/powertrain.ts": "a0c4b6bcdb2fd59dd4a5bcc346810cf064f8fdd4aeffa7bd714309b8f9b978af"
+    },
+    "trackId": "nordschleife",
+    "vehicleId": "amg-gt",
+    "lateralAcceleration": 20,
+    "tuning": {
+      "maxSpeed": 50,
+      "acceleration": 22,
+      "power": 410,
+      "brake": 27,
+      "reverseAcceleration": 10,
+      "torqueFalloff": 0.1,
+      "shiftTorque": 0.55,
+      "grip": 10,
+      "driftGrip": 0.9,
+      "automaticSlip": 0.12,
+      "downforce": 0.00035,
+      "yaw": 1.75,
+      "driftYaw": 0.6,
+      "steeringSpeed": 18,
+      "drag": 0.13,
+      "transmission": {
+        "ratios": [
+          5.35,
+          3.24,
+          2.25,
+          1.64,
+          1.21,
+          1,
+          0.87,
+          0.72,
+          0.6
+        ],
+        "idle": 760,
+        "maxRpm": 7000,
+        "rpmPerSpeed": 138,
+        "shiftRpm": 6200,
+        "downshiftRpm": 2400,
+        "duration": 0.17,
+        "maxSpeed": 50
+      }
+    },
+    "raceLaps": 3,
+    "completedLaps": 3,
+    "countdownElapsed": 2.9999999999999942,
+    "elapsedIncludingCountdown": 454.4416666664204,
+    "lapTimes": [
+      150.2083333333603,
+      150.19166666653007,
+      150.19166666653007
+    ],
+    "contactSteps": 0,
+    "length": 3718.745738321865,
+    "completed": true,
+    "lap": 150.19166666653007,
+    "elapsed": 451.4416666664204,
+    "estimatedThreeLaps": 453.5749999995902,
+    "maxSpeed": 48.24370009843533,
+    "maxLateral": 1.8011226561820681,
+    "stalled": 0,
+    "progress": 11156.141454696031,
+    "passedGates": 46,
+    "expectedGates": 46,
+    "nextGate": 1,
+    "contacts": [],
+    "gates": [
+      {
+        "time": 0.8499999999999994,
+        "gate": 0,
+        "next": 1,
+        "progress": 0
+      },
+      {
+        "time": 13.324999999999884,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.80663623666644
+      },
+      {
+        "time": 22.966666666666004,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.74187635014357
+      },
+      {
+        "time": 31.2333333333322,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.6630244296572
+      },
+      {
+        "time": 41.04166666666498,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.4750839149685
+      },
+      {
+        "time": 51.99166666666436,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.5042598239415
+      },
+      {
+        "time": 64.29999999999724,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.4071492937285
+      },
+      {
+        "time": 73.45000000000452,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.1926750978048
+      },
+      {
+        "time": 81.24166666667739,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.1262467741253
+      },
+      {
+        "time": 93.9833333333542,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.0448938476216
+      },
+      {
+        "time": 105.54166666669673,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.09107564352
+      },
+      {
+        "time": 117.7333333333731,
+        "gate": 11,
+        "next": 12,
+        "progress": 2727.066418171958
+      },
+      {
+        "time": 127.00833333338048,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.9744139541535
+      },
+      {
+        "time": 137.87500000003894,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.7661370519736
+      },
+      {
+        "time": 143.29166666670068,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.752019925208
+      },
+      {
+        "time": 151.05833333336028,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.6481800569522
+      },
+      {
+        "time": 163.51666666668228,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.80488068313423
+      },
+      {
+        "time": 173.15833333334018,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.7396518158572
+      },
+      {
+        "time": 181.42499999999933,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.6605314308516
+      },
+      {
+        "time": 191.23333333332374,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.4794498329078
+      },
+      {
+        "time": 202.18333333331378,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.5031242910636
+      },
+      {
+        "time": 214.49166666663592,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.4057053440374
+      },
+      {
+        "time": 223.6416666666276,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.1908478571372
+      },
+      {
+        "time": 231.43333333328718,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.1241908486654
+      },
+      {
+        "time": 244.18333333327558,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.1857701406902
+      },
+      {
+        "time": 255.73333333326508,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.0193391201296
+      },
+      {
+        "time": 267.92499999992066,
+        "gate": 11,
+        "next": 12,
+        "progress": 2727.054630399572
+      },
+      {
+        "time": 277.1999999999122,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.9797313558306
+      },
+      {
+        "time": 288.066666666569,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.766401627303
+      },
+      {
+        "time": 293.48333333323075,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.7522991883075
+      },
+      {
+        "time": 301.24999999989035,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.6484403661225
+      },
+      {
+        "time": 313.70833333321235,
+        "gate": 1,
+        "next": 2,
+        "progress": 247.80516012508514
+      },
+      {
+        "time": 323.34999999987025,
+        "gate": 2,
+        "next": 3,
+        "progress": 495.7400332217095
+      },
+      {
+        "time": 331.6166666665294,
+        "gate": 3,
+        "next": 4,
+        "progress": 743.6609617277227
+      },
+      {
+        "time": 341.4249999998538,
+        "gate": 4,
+        "next": 5,
+        "progress": 991.4799071786889
+      },
+      {
+        "time": 352.37499999984385,
+        "gate": 5,
+        "next": 6,
+        "progress": 1239.5036248938093
+      },
+      {
+        "time": 364.683333333166,
+        "gate": 6,
+        "next": 7,
+        "progress": 1487.4063418017215
+      },
+      {
+        "time": 373.83333333315767,
+        "gate": 7,
+        "next": 8,
+        "progress": 1735.1916534151567
+      },
+      {
+        "time": 381.62499999981725,
+        "gate": 8,
+        "next": 9,
+        "progress": 1983.1250972319096
+      },
+      {
+        "time": 394.37499999980565,
+        "gate": 9,
+        "next": 10,
+        "progress": 2231.1718404764947
+      },
+      {
+        "time": 405.92499999979515,
+        "gate": 10,
+        "next": 11,
+        "progress": 2479.0175408755404
+      },
+      {
+        "time": 418.1166666664507,
+        "gate": 11,
+        "next": 12,
+        "progress": 2727.0677834171256
+      },
+      {
+        "time": 427.3916666664423,
+        "gate": 12,
+        "next": 13,
+        "progress": 2974.97588419384
+      },
+      {
+        "time": 438.2583333330991,
+        "gate": 13,
+        "next": 14,
+        "progress": 3222.767966999589
+      },
+      {
+        "time": 443.6749999997608,
+        "gate": 14,
+        "next": 0,
+        "progress": 3470.7539514097975
+      },
+      {
+        "time": 451.4416666664204,
+        "gate": 0,
+        "next": 1,
+        "progress": 3718.649978052358
+      }
+    ]
+  }
+]

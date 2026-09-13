@@ -11,6 +11,7 @@ const sourceHashes = Object.fromEntries(
     'lib/game/race/engine.ts',
     'lib/game/race/vehicles.ts',
     'lib/game/race/nordschleife-data.ts',
+    'lib/game/race/nordschleife-arcade.ts',
     'lib/game/city/car-physics.ts',
     'lib/game/city/powertrain.ts',
   ].map((p) => [
@@ -226,5 +227,5 @@ for (const track of process.argv[2]
   : ['krasnoyarsk', 'nordschleife'])
   for (const vehicle of process.argv[3]
     ? [process.argv[3]]
-    : ['mustang', 'amg-one'])
+    : ['mustang', 'amg-gt'])
     run(track, vehicle, Number(process.argv[4] ?? 12));

@@ -1,0 +1,111 @@
+{
+  "passed": true,
+  "invariant": "Every head vertex remains at least 0.008 units below the actual triangulated panoramic roof surface, within its footprint, at +/-0.108 radians head roll.",
+  "reports": [
+    {
+      "id": "nikita",
+      "variants": [
+        {
+          "roll": -0.108,
+          "minRoofClearance": 0.05786393369489762,
+          "closestVertex": [
+            -0.29243560740517494,
+            1.2899339788719493,
+            0.37493762323809354
+          ],
+          "outsidePanoramicRoofFootprint": 0
+        },
+        {
+          "roll": 0,
+          "minRoofClearance": 0.058706776271496564,
+          "closestVertex": [
+            -0.4326002576003195,
+            1.2823819533018892,
+            0.37433216900535815
+          ],
+          "outsidePanoramicRoofFootprint": 0
+        },
+        {
+          "roll": 0.108,
+          "minRoofClearance": 0.052117100314140075,
+          "closestVertex": [
+            -0.4264099505842853,
+            1.2894301610859724,
+            0.36819636929249305
+          ],
+          "outsidePanoramicRoofFootprint": 0
+        }
+      ]
+    },
+    {
+      "id": "yaroslav",
+      "variants": [
+        {
+          "roll": -0.108,
+          "minRoofClearance": 0.04416661658160326,
+          "closestVertex": [
+            -0.35694249311958237,
+            1.3010505221267694,
+            0.37874453931839197
+          ],
+          "outsidePanoramicRoofFootprint": 0
+        },
+        {
+          "roll": 0,
+          "minRoofClearance": 0.04458193269843003,
+          "closestVertex": [
+            -0.3782810660676218,
+            1.2999470869027276,
+            0.3600071797410534
+          ],
+          "outsidePanoramicRoofFootprint": 0
+        },
+        {
+          "roll": 0.108,
+          "minRoofClearance": 0.042878951025685064,
+          "closestVertex": [
+            -0.40108835181291325,
+            1.3003440592510225,
+            0.3672371948550011
+          ],
+          "outsidePanoramicRoofFootprint": 0
+        }
+      ]
+    },
+    {
+      "id": "roma",
+      "variants": [
+        {
+          "roll": -0.108,
+          "minRoofClearance": 0.016460336252726915,
+          "closestVertex": [
+            -0.3510844481842334,
+            1.3289967409442185,
+            0.377725903764855
+          ],
+          "outsidePanoramicRoofFootprint": 0
+        },
+        {
+          "roll": 0,
+          "minRoofClearance": 0.01671550363351404,
+          "closestVertex": [
+            -0.3742296857833862,
+            1.3278936777128427,
+            0.3696615258256979
+          ],
+          "outsidePanoramicRoofFootprint": 0
+        },
+        {
+          "roll": 0.108,
+          "minRoofClearance": 0.01640439605215316,
+          "closestVertex": [
+            -0.35473659069908886,
+            1.3288252544115953,
+            0.38776243101055824
+          ],
+          "outsidePanoramicRoofFootprint": 0
+        }
+      ]
+    }
+  ]
+}

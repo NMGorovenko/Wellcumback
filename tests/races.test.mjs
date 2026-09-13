@@ -42,10 +42,10 @@ await test('six unique cars, per-device configuration and readiness invalidation
   assert.equal(s.racers.length, 6);
   assert.equal(new Set(s.racers.map((r) => r.colorId)).size, 6);
   s.racers.forEach((r) => (r.ready = true));
-  assert.equal(configureCar(s, 1, 1, 'amg-one', s.racers[3].colorId), true);
-  assert.equal(s.racers[3].vehicleId, 'amg-one');
+  assert.equal(configureCar(s, 1, 1, 'amg-gt', s.racers[3].colorId), true);
+  assert.equal(s.racers[3].vehicleId, 'amg-gt');
   assert(s.racers.every((r) => !r.ready));
-  assert.equal(configureCar(s, 1, 1, 'amg-one', s.racers[0].colorId), false);
+  assert.equal(configureCar(s, 1, 1, 'amg-gt', s.racers[0].colorId), false);
 });
 await test('start and ordered gates require three complete laps; reverse and skipped gates give nothing', () => {
   const s = ready(),
@@ -167,10 +167,11 @@ await test('compressed Nordschleife has a closed, metric route and real elevatio
   assert(c.points.every((p) => Number.isFinite(p.x + p.y + p.z)));
   const ys = c.points.map((p) => p.y);
   assert(Math.max(...ys) - Math.min(...ys) > 50);
-  const t = vehicleTuning('amg-one', false).transmission,
+  const t = vehicleTuning('amg-gt', false).transmission,
     m = freshPowertrain();
-  m.gear = 7;
-  m.rpm = 10000;
+  assert.equal(t.ratios.length, 9);
+  m.gear = 9;
+  m.rpm = 6500;
   for (let i = 0; i < 600; i++) advancePowertrain(m, 4, 0.3, 1 / 60, t);
   assert(m.gear < 4);
 });

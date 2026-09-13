@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { RenderKit } from '../world/render-kit';
 import { createCityEnvironment } from '../city/environment';
 import { createMustang } from '../city/mustang';
-import { createAmgOne } from './amg-one';
+import { createAmgGt } from './amg-gt';
 import { createNordschleife } from './nordschleife';
 import { createRaceEffects } from './effects';
 import { raceCourse } from '../../../lib/game/race/course';
@@ -12,6 +12,10 @@ import { CAR_COLORS } from '../../../lib/game/race/vehicles';
 import type { RaceState } from '../../../lib/game/race/types';
 import { followCityHeading } from '../city/camera';
 import { renderedFrameCounter } from '../../../lib/game/performance';
+import {
+  clearRaceCamera,
+  raceCameraFraming,
+} from '../../../lib/game/race/camera';
 
 export default function RaceScene({
   game,
@@ -68,8 +72,9 @@ export default function RaceScene({
     sun.shadow.camera.far = 170;
     sun.shadow.normalBias = 0.08;
     scene.add(sun, sun.target);
+    let terrainHeight: ((x: number, z: number) => number) | undefined;
     if (course.id === 'krasnoyarsk') createCityEnvironment(kit);
-    else createNordschleife(kit, course);
+    else terrainHeight = createNordschleife(kit, course).heightAt;
     const updateEffects = createRaceEffects(kit);
     const models = game.current.racers.map((r, i) => {
       const color = CAR_COLORS.find((c) => c.id === r.colorId)!.hex,
@@ -79,8 +84,8 @@ export default function RaceScene({
         id: r.id,
         kit: carKit,
         model:
-          r.vehicleId === 'amg-one'
-            ? createAmgOne(carKit, color, driverId)
+          r.vehicleId === 'amg-gt'
+            ? createAmgGt(carKit, color, driverId)
             : createMustang(carKit, { color, driverId }),
       };
     });
@@ -144,7 +149,8 @@ export default function RaceScene({
       game.current.racers[1]?.car.heading ?? 0,
     ];
     const initialized = [false, false],
-      look = [new THREE.Vector3(), new THREE.Vector3()];
+      look = [new THREE.Vector3(), new THREE.Vector3()],
+      previousFocus = [new THREE.Vector3(), new THREE.Vector3()];
     let width = 1,
       height = 1,
       last = performance.now(),
@@ -199,14 +205,20 @@ export default function RaceScene({
           camera = cameras[i];
         const preview = state.phase === 'lobby',
           speed = preview ? 0 : r.car.speed;
-        headings[i] = followCityHeading(
-          headings[i],
-          preview ? -model.root.rotation.y : r.car.heading,
-          dt,
-        );
+        const heading = preview ? -model.root.rotation.y : r.car.heading;
+        if (
+          initialized[i] &&
+          previousFocus[i].distanceTo(model.root.position) > 45
+        ) {
+          initialized[i] = false;
+        }
+        if (!initialized[i]) headings[i] = heading;
+        previousFocus[i].copy(model.root.position);
+        headings[i] = followCityHeading(headings[i], heading, dt);
         const fx = Math.sin(headings[i]),
           fz = -Math.cos(headings[i]);
-        const lead = 4 + speed * 0.35,
+        const framing = raceCameraFraming(speed, aspect),
+          lead = framing.lead,
           px = model.root.position.x,
           pz = model.root.position.z;
         const target = new THREE.Vector3(
@@ -220,14 +232,23 @@ export default function RaceScene({
           look[i].copy(target);
           initialized[i] = true;
         } else look[i].lerp(target, 1 - Math.exp(-dt * 8));
-        const distance =
-            (preview ? 10 : 12 + speed * 0.32) * Math.max(1, 0.9 / aspect),
-          heightOffset = preview ? 6 : 7 + speed * 0.12;
+        const distance = preview
+            ? 10 * Math.max(1, 0.9 / aspect)
+            : framing.distance,
+          heightOffset = preview ? 6 : framing.height;
         camera.position.set(
           look[i].x - fx * distance,
           look[i].y + heightOffset,
           look[i].z - fz * distance,
         );
+        if (terrainHeight) {
+          const clear = clearRaceCamera(
+            camera.position,
+            model.root.position,
+            terrainHeight,
+          );
+          camera.position.set(clear.x, clear.y, clear.z);
+        }
         camera.aspect = aspect;
         camera.fov = preview ? 48 : 57;
         camera.lookAt(look[i]);

@@ -37,7 +37,11 @@ const pollWaiters = new Set();
 function setup() {
   sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys = ON');
-  for (const migration of ['0000_rooms.sql', '0001_reconnect_pause.sql'])
+  for (const migration of [
+    '0000_rooms.sql',
+    '0001_reconnect_pause.sql',
+    '0002_room_protocol.sql',
+  ])
     sqlite.exec(
       readFileSync(new URL(`../drizzle/${migration}`, import.meta.url), 'utf8'),
     );
@@ -324,7 +328,7 @@ void test('race start CAS rejects a join interleaved after its read and preserve
             frame(1, epoch, undefined, {
               kind: 'race-car',
               localIndex: 0,
-              vehicleId: 'amg-one',
+              vehicleId: 'amg-gt',
               colorId,
             }),
           ],
@@ -366,7 +370,7 @@ void test('race start CAS rejects a join interleaved after its read and preserve
     step();
     assert.equal(
       state().racers.find((r) => r.memberSlot === 1).vehicleId,
-      'amg-one',
+      'amg-gt',
     );
     assert.deepEqual(
       state().racers.map((r) => r.id),
@@ -403,7 +407,7 @@ void test('accepted race freezes car/track roster, rejects active joins, and per
         s.trackId = 'nordschleife';
       },
       (s) => {
-        s.racers[0].vehicleId = 'amg-one';
+        s.racers[0].vehicleId = 'amg-gt';
       },
       (s) => {
         s.racers.splice(1, 1);
@@ -470,7 +474,7 @@ void test('race config owns only the authenticated device; stale ready and proto
     assert.equal(guest.vehicleId, 'mustang');
     const accepted = await pollGuest({
       frames: [
-        frame(1, epoch, undefined, { ...command, vehicleId: 'amg-one' }),
+        frame(1, epoch, undefined, { ...command, vehicleId: 'amg-gt' }),
         frame(2, epoch, undefined, {
           kind: 'race-ready',
           revision: oldRevision,
@@ -485,7 +489,7 @@ void test('race config owns only the authenticated device; stale ready and proto
     await nextPoll();
     step(neutral(2));
     step(neutral(2));
-    assert.equal(guest.vehicleId, 'amg-one');
+    assert.equal(guest.vehicleId, 'amg-gt');
     assert.deepEqual(
       state()
         .racers.filter((r) => r.memberSlot === 0)

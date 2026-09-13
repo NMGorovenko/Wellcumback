@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "body": {
+    "vertices": 1067,
+    "triangles": 2130,
+    "signedVolume": 4.550635288667851,
+    "frontCapTriangles": 9,
+    "rearCapTriangles": 9,
+    "degenerateTriangles": 0,
+    "manifold": true
+  },
+  "model": {
+    "meshes": 63,
+    "triangles": 35987,
+    "bounds": [
+      2.220409393310547,
+      1.4880403848078159,
+      4.838392212995778
+    ],
+    "wheels": 4,
+    "heads": 1,
+    "textures": [
+      "/characters/faces/nikita.jpg"
+    ]
+  },
+  "checks": [
+    "finite geometry",
+    "outward closed shell and caps",
+    "owned resources",
+    "face asset preserved",
+    "steering and spinning wheels",
+    "rear spoiler deployment",
+    "zero-delta wheel freeze"
+  ]
+}

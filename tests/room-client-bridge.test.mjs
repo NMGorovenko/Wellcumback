@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { ROOM_VERSION } from '../lib/game/network/room-types.ts';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
@@ -40,11 +41,19 @@ function setup() {
       'utf8',
     ),
   );
+  sqlite.exec(
+    readFileSync(
+      new URL('../drizzle/0002_room_protocol.sql', import.meta.url),
+      'utf8',
+    ),
+  );
   const prepare = (sql, values = []) => ({
     bind: (...next) => prepare(sql, next),
     first: async () => sqlite.prepare(sql).get(...values) ?? null,
     all: async () => ({ results: sqlite.prepare(sql).all(...values) }),
-    run: async () => ({ meta: { changes: Number(sqlite.prepare(sql).run(...values).changes) } }),
+    run: async () => ({
+      meta: { changes: Number(sqlite.prepare(sql).run(...values).changes) },
+    }),
   });
   db = {
     prepare,
@@ -128,7 +137,7 @@ async function drain() {
   });
 }
 const api = (body) =>
-  handleRoomRequest(db, { version: 6, ...body }, 1000 + now);
+  handleRoomRequest(db, { version: ROOM_VERSION, ...body }, 1000 + now);
 async function nextPoll() {
   const timer = timers.shift();
   assert.ok(timer, 'client must schedule the next poll');
