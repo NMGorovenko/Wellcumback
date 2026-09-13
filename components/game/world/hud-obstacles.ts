@@ -15,7 +15,15 @@ const selector = [
   '.moving-footer',
   '.moving-alert',
   '.moving-day-clock',
+  '.moving-results .moving-card',
   '.room-strip',
+  '.city-heading',
+  '.city-actions',
+  '.city-minimap',
+  '.city-arrival',
+  '.city-speed',
+  '.city-drive-hints',
+  '.city-bottom',
 ].join(',');
 
 /** Measure only the small HUD islands, never the transparent full-screen

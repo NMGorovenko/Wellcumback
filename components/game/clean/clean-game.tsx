@@ -517,7 +517,11 @@ export default function CleanGame({
         </details>
       </aside>
       <footer className="game-footer">
-        <div className="footer-message" aria-live="polite">
+        <div
+          className="footer-message"
+          aria-live="polite"
+          hidden={!!speech && view.message.includes(speech.text)}
+        >
           <span>В КАЗАРМЕ</span>
           <p>{view.message}</p>
         </div>

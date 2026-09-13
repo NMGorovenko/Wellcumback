@@ -6,6 +6,9 @@ import type { CityState } from '@/lib/game/city/engine';
 import { RenderKit } from '../world/render-kit';
 import { createCityEnvironment } from './environment';
 import { createMustang } from './mustang';
+import { citySpeech } from '@/lib/game/city/dialogue';
+import { placeSpeechBubble } from '../world/speech-position';
+import type { SpeechBubbleRef } from '../world/speech-bubble';
 import {
   cityDriveCamera,
   cityFaceCamera,
@@ -22,10 +25,12 @@ export default function CityScene({
   game,
   targetStop = -1,
   cameraMode = 'drive',
+  speechRef,
 }: {
   game: RefObject<CityState>;
   targetStop?: number;
   cameraMode?: CityCameraMode;
+  speechRef: SpeechBubbleRef;
 }) {
   const host = useRef<HTMLDivElement>(null),
     selectedStop = useRef(targetStop);
@@ -258,6 +263,15 @@ export default function CityScene({
       camera.bottom = -currentHalfHeight;
       camera.updateProjectionMatrix();
       car.update(s, dt, mode.current === 'faces');
+      const line = citySpeech(s);
+      placeSpeechBubble(
+        speechRef,
+        line ? car.passengers[line.passenger] : null,
+        camera,
+        element,
+        !!line,
+        car.passengers,
+      );
       city.update(
         s.elapsed,
         selectedStop.current,
@@ -342,7 +356,7 @@ export default function CityScene({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [game]);
+  }, [game, speechRef]);
   return (
     <div
       className="three-host city-three-host"

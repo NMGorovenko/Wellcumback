@@ -283,3 +283,11 @@
     max-width: 205px;
   }
 }
+
+/* Results keep the last speaker visible; the balloon routes around the card. */
+.moving-results {
+  backdrop-filter: none;
+}
+.moving-world:has(.moving-results) .world-speech {
+  z-index: 11;
+}

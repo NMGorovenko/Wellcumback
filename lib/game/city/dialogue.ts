@@ -52,3 +52,25 @@ export function advanceCityConversation(s: CityState) {
     s.radioUntil = s.elapsed + 8;
   }
 }
+
+const PASSENGER_SPEAKERS = [
+  { speaker: 'Никита', aliases: ['Никита'] },
+  { speaker: 'Ярик', aliases: ['Ярик', 'Ярослав'] },
+  { speaker: 'Рома', aliases: ['Рома'] },
+] as const;
+
+/** Read the shared trip's dialogue without giving network status text a voice. */
+export function citySpeech(
+  s: Pick<CityState, 'radio' | 'radioUntil' | 'elapsed' | 'paused'>,
+) {
+  if (s.paused || s.elapsed >= s.radioUntil) return null;
+  const separator = s.radio.indexOf(':');
+  if (separator < 0) return null;
+  const name = s.radio.slice(0, separator).trim();
+  const passenger = PASSENGER_SPEAKERS.findIndex((person) =>
+    person.aliases.some((alias) => alias === name),
+  );
+  const text = s.radio.slice(separator + 1).trim();
+  if (passenger < 0 || !text) return null;
+  return { passenger, speaker: PASSENGER_SPEAKERS[passenger].speaker, text };
+}

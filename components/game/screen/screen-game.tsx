@@ -518,7 +518,6 @@ export default function ScreenGame({
           text={view.speechText}
           visible={
             !view.paused &&
-            view.phase !== 'result' &&
             view.messageSpeaker !== null &&
             view.messageUntil > view.elapsed
           }
@@ -657,9 +656,12 @@ export default function ScreenGame({
           )}
         </div>
         {view.phase !== 'result' && (
-          <div className="hud-message" aria-live="polite">
-            <span>БРИГАДА</span>
-            <p>«{view.message}»</p>
+          <div
+            className="hud-message"
+            aria-live="polite"
+            hidden={view.message === view.speechText}
+          >
+            <p>{view.message}</p>
           </div>
         )}
       </aside>

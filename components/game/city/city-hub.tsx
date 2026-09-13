@@ -24,6 +24,8 @@ import {
 } from '@/lib/game/city/engine';
 import { cityStops, type CityMission } from '@/lib/game/city/layout';
 import CityScene from './scene';
+import { citySpeech } from '@/lib/game/city/dialogue';
+import { SpeechBubble } from '../world/speech-bubble';
 import CityMinimap from './minimap';
 import { CITY_CAMERA_MODES, type CityCameraMode } from './camera';
 import { useGameInspection } from '@/hooks/use-game-inspection';
@@ -63,6 +65,7 @@ export default function CityHub({
   onGamepads?: (status: Pick<PadFrame, 'assignments' | 'unsupported'>) => void;
 }) {
   const game = useRef(savedGame.current);
+  const speechRef = useRef<HTMLOutputElement>(null);
   const room = useRoom();
   const network = {
     role: room.code
@@ -267,6 +270,7 @@ export default function CityHub({
     },
   });
   const stop = cityStops[view.nearStop];
+  const speech = citySpeech(view);
   const control = (key: Parameters<typeof keyboardPrompt>[1]) =>
     gamepadPrompt(pads, 0, key, 'city') || keyboardPrompt(0, key, 'city');
   return (
@@ -275,7 +279,18 @@ export default function CityHub({
       aria-label="Поездка по Красноярску между историями"
     >
       <div className="city-world">
-        <CityScene game={game} targetStop={target} cameraMode={cameraMode} />
+        <CityScene
+          game={game}
+          targetStop={target}
+          cameraMode={cameraMode}
+          speechRef={speechRef}
+        />
+        <SpeechBubble
+          bubbleRef={speechRef}
+          speaker={speech?.speaker ?? ''}
+          text={speech?.text ?? ''}
+          visible={!!speech}
+        />
         {cameraMode !== 'map' && !view.paused && (
           <CityMinimap
             state={view}
@@ -395,9 +410,6 @@ export default function CityHub({
               </small>
             </section>
           </div>
-        )}
-        {view.elapsed < view.radioUntil && (
-          <output className="city-radio">{view.radio}</output>
         )}
       </div>
       <div className="city-bottom">

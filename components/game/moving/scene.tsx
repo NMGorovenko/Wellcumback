@@ -522,7 +522,7 @@ export default function MovingScene({
         element,
         !!s.dialogueId &&
           s.messageUntil > time &&
-          s.phase === 'moving' &&
+          s.phase !== 'brief' &&
           !s.paused,
         rigs.filter((rig) => rig.root.visible).map((rig) => rig.head),
       );

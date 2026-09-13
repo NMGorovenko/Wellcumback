@@ -1,5 +1,4 @@
 import {
-  cleanRole,
   cleanCast,
   cleanActiveActorCount,
   ROMA_WASHER_LINE,
@@ -7,6 +6,7 @@ import {
 } from './cast.ts';
 export { cleanCrew, cleanRole, cleanCast } from './cast.ts';
 import { freshSupport, type CleanSupport } from './support.ts';
+import { cleanSay } from './dialogue.ts';
 import { reserveTrace } from './traces.ts';
 import {
   bounds,
@@ -90,6 +90,12 @@ export type CleanState = {
   timer: number;
   score: number;
   message: string;
+  actorSpeech?: {
+    actor: number;
+    text: string;
+    until: number;
+    phase: CleanPhase;
+  };
   paused: boolean;
   station: number;
   urge: number;
@@ -347,6 +353,7 @@ function accident(s: CleanState, atDesk: boolean) {
       ? '«Товарищ дневальный, разрешите…» Клапан согласования сорвало прямо у тумбы.'
       : 'Дотерпел. Дневальный заметил проблему и идёт разбираться. Оставайся на месте.',
   );
+  if (atDesk) cleanSay(s, 0, 'Товарищ дневальный, разрешите…', 2.6);
   s.npcs[0].action = 'walk';
   s.npcs[0].line = 'Боец, ты что, обосрался?!';
 }
@@ -675,7 +682,7 @@ function work(s: CleanState, i: number, dt: number) {
     if (s.rinse[i] >= 1) {
       s.dirt[i] = 0;
       s.rinse[i] = 0;
-      s.message = `${cleanRole(s, i).name}: швабра чистая. Можно возвращаться к следам.`;
+      cleanSay(s, i, 'Швабра чистая. Можно возвращаться к следам.');
     }
     return 'rinse';
   }
@@ -712,7 +719,7 @@ function work(s: CleanState, i: number, dt: number) {
   }
   s.dirt[i] = clamp(s.dirt[i] + spent * 0.44, 0, 0.98);
   if (spent && s.dirt[i] >= 0.98 - 1e-8)
-    s.message = `${cleanRole(s, i).name}: швабра полная. К ведру — прополоскать до конца.`;
+    cleanSay(s, i, 'Швабра полная. К ведру — прополоскать до конца.');
   return spent ? 'mop' : '';
 }
 /** Soft body separation plus a sideways yield keeps two people from blocking the same doorway forever. */
@@ -877,7 +884,8 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
     s.baselineUrge = clamp(0.14 + s.elapsed * 0.014);
     s.urge = Math.max(s.baselineUrge, clamp(s.urge + dt * 0.027));
     if (s.phase === 'duty' && s.phaseTime >= 4) {
-      phase(s, 'find', 'Где тут дневальный?..');
+      phase(s, 'find', 'Найди дневального.');
+      cleanSay(s, 0, 'Где тут дневальный?..');
       s.station = 0;
       s.rhythm.active = true;
     }

@@ -238,7 +238,7 @@ export default function MovingGame({
           text={view.message}
           visible={
             !!view.dialogueId &&
-            view.phase === 'moving' &&
+            view.phase !== 'brief' &&
             !view.paused &&
             view.messageUntil > view.elapsed
           }
@@ -346,7 +346,7 @@ export default function MovingGame({
           </div>
         )}
         {view.phase === 'result' && (
-          <div className="moving-overlay">
+          <div className="moving-overlay moving-results">
             <div className="moving-card">
               <span className="tiny-label">ПЕРВАЯ ХОДКА ГОТОВА</span>
               <h2>Это ещё не всё.</h2>

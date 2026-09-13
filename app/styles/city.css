@@ -153,19 +153,6 @@
   color: #2a4338;
   font-size: 11px;
 }
-.city-radio {
-  position: absolute;
-  left: 24px;
-  right: 24px;
-  bottom: 18px;
-  font-size: 13px;
-  color: #eaf0da;
-  background: #213930df;
-  padding: 10px 14px;
-  border-radius: 5px;
-  width: fit-content;
-  max-width: calc(100% - 48px);
-}
 .city-pause {
   position: absolute;
   inset: 0;
@@ -259,13 +246,6 @@
   .city-speed {
     bottom: 143px;
     right: 18px;
-  }
-  .city-radio {
-    left: 14px;
-    right: 14px;
-    max-width: calc(100% - 28px);
-    bottom: 14px;
-    font-size: 12px;
   }
   .city-arrival button {
     white-space: normal;

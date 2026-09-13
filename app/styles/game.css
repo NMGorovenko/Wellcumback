@@ -277,7 +277,7 @@
   background: #fff8df;
   box-shadow: 3px 4px 0 #303c3259;
   pointer-events: none;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
 }
 .world-speech[hidden] {
@@ -286,7 +286,7 @@
 .world-speech strong {
   display: block;
   margin-bottom: 3px;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   color: #7a5b36;
 }
@@ -294,21 +294,22 @@
   display: block;
   margin: 0;
 }
-.world-speech i {
+.world-speech .speech-tail {
   position: absolute;
-  left: var(--speech-tail, 40px);
-  bottom: -9px;
-  width: 15px;
-  height: 15px;
-  background: #fff8df;
-  border-right: 2px solid #303c32;
-  border-bottom: 2px solid #303c32;
-  transform: rotate(45deg);
+  left: 0;
+  top: 100%;
+  width: 100%;
+  height: 1px;
+  overflow: visible;
+  fill: #fff8df;
+  stroke: #303c32;
+  stroke-width: 2px;
+  stroke-linejoin: round;
 }
 @media (max-width: 640px) {
   .world-speech {
     max-width: 245px;
     padding: 9px 11px;
-    font-size: 12px;
+    font-size: 14px;
   }
 }

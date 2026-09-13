@@ -366,11 +366,6 @@
   color: #f3f3e2;
   text-shadow: 0 1px 4px #163325;
 }
-.play-viewport .city-radio {
-  bottom: 68px;
-  left: var(--hud-edge);
-  max-width: min(550px, calc(100% - 100px));
-}
 .play-viewport .city-arrival {
   bottom: 18px;
 }
@@ -378,9 +373,6 @@
 .play-viewport .city-view-map .city-speed,
 .play-viewport .city-view-map .city-arrival {
   bottom: 78px;
-}
-.play-viewport .city-view-map .city-radio {
-  bottom: 132px;
 }
 .play-viewport .city-pause {
   z-index: 10;
@@ -426,9 +418,6 @@
   }
   .play-viewport .city-drive-hints {
     max-width: calc(100% - 100px);
-  }
-  .play-viewport .city-radio {
-    bottom: 100px;
   }
   .play-viewport .clean-help {
     bottom: auto;

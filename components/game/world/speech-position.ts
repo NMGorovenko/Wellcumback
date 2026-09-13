@@ -23,7 +23,12 @@ export function speechPlacement(
   const minX = 10,
     maxX = Math.max(minX, width - w - 10);
   const x = clamp(ax - w / 2, minX, maxX);
-  const y = clamp(ay - h - 30, 82, Math.max(82, height - h - 20));
+  // At the top edge, put the body below the speaker instead of covering the face.
+  const y = clamp(
+    ay - h - 30 < 82 ? ay + 36 : ay - h - 30,
+    82,
+    Math.max(82, height - h - 20),
+  );
   const nearbyX = (value: number) =>
     clamp(
       value,
@@ -72,6 +77,33 @@ export function speechPlacement(
       }
     }
   return { ...best, tail: clamp(ax - best.x - 8, 18, w - 30) };
+}
+
+/** Tail may lean when the balloon moves around a face or a HUD island. */
+export function speechTail(
+  ax: number,
+  ay: number,
+  rect: OverlayRect,
+  base: number,
+) {
+  const tipX = ax - rect.x,
+    tipY = ay - rect.y - rect.h + (ay < rect.y ? 8 : -8);
+  let cx = base + 8,
+    cy = -2,
+    dx = 9,
+    dy = 0;
+  if (tipY < -rect.h) {
+    cy = -rect.h + 2;
+  } else if (tipY < 0) {
+    // Draw from the closest side, never across the text inside the balloon.
+    if (tipX >= 0 && tipX <= rect.w) return '';
+    cx = tipX < 0 ? 2 : rect.w - 2;
+    cy = clamp(tipY, -rect.h + 18, -18);
+    dx = 0;
+    dy = 9;
+  }
+  const bendY = cy + (tipY - cy) * 0.45;
+  return `M ${cx - dx} ${cy - dy} Q ${cx - dx * 0.8} ${bendY - dy * 0.8} ${tipX} ${tipY} Q ${cx + dx * 0.8} ${bendY + dy * 0.8} ${cx + dx} ${cy + dy}`;
 }
 
 export function placeSpeechBubble(
@@ -136,7 +168,9 @@ export function placeSpeechBubble(
   );
   bubble.style.left = `${Math.round(x)}px`;
   bubble.style.top = `${Math.round(y)}px`;
-  bubble.style.setProperty('--speech-tail', `${tail}px`);
+  bubble
+    .querySelector('[data-speech-tail]')
+    ?.setAttribute('d', speechTail(ax, ay, { x, y, w, h }, tail));
   bubble.style.visibility = 'visible';
   return { x, y, w, h: h + 16 };
 }

@@ -1023,8 +1023,8 @@ function launchTool(s: GameState) {
   t.groundSide = to.targetSide;
   s.workers[t.owner].animation = 'throw';
   emit(s, 'throw', t.owner, from.side, t.charge);
-  s.message =
-    'Лови! Получатель держит свою клавишу действия, когда отвёртка подлетает.';
+  screenSay(s, 'Лови!', t.owner as 0 | 1 | 2, 1.8);
+  s.message = 'Держи действие, когда отвёртка подлетает.';
 }
 function toolStep(
   s: GameState,

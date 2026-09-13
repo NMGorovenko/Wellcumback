@@ -61,7 +61,11 @@ void test('owner may elect a normal throw and catch immediately after installing
     screenPrompts(s)[0].prompts.map((p) => p.control),
     ['throw'],
   );
-  advance(s, 2, ['Enter']);
+  advance(s, 0.025, ['Enter']);
+  assert.equal(s.tool.status, 'flight');
+  assert.equal(s.speechText, 'Лови!');
+  assert.equal(s.messageSpeaker, 0, 'the thrower calls out, not the receiver');
+  advance(s, 1.975, ['Enter']);
   assert.equal(s.tool.status, 'held');
   assert.equal(s.tool.owner, 1);
   assert.equal(s.tool.catches, 1);

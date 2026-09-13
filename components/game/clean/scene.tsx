@@ -585,9 +585,16 @@ export default function CleanScene({
       const narrow = camera.aspect < 1.15;
       const actor = Math.max(0, Math.min(s.actorCount - 1, local.current ?? 0));
       const line = cleanSpeech(s);
-      const focused =
-        line && mode.current === 'faces'
+      const speakingRig = line
+        ? line.actor === null
           ? npcs[line.npc].rig
+          : cleaning
+            ? crew[line.actor].rig
+            : soldier.rig
+        : null;
+      const focused =
+        speakingRig && mode.current === 'faces'
+          ? speakingRig
           : cleaning
             ? crew[actor].rig
             : soldier.rig;
@@ -631,7 +638,7 @@ export default function CleanScene({
         : [soldier.rig.head];
       const speechRect = placeSpeechBubble(
         speech.current,
-        line ? npcs[line.npc].rig.head : null,
+        speakingRig?.head ?? null,
         camera,
         element,
         !!line,

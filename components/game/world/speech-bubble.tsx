@@ -24,7 +24,9 @@ export function SpeechBubble({
     >
       <strong>{speaker}</strong>
       <span className="speech-text">{text}</span>
-      <i aria-hidden="true" />
+      <svg className="speech-tail" aria-hidden="true">
+        <path data-speech-tail="" />
+      </svg>
     </output>
   );
 }
