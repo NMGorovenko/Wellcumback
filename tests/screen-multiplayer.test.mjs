@@ -1,3 +1,4 @@
+import { levelKeys } from './screen-level-controller.mjs';
 import { drillControls } from './screen-drill-controller.mjs';
 import assert from 'node:assert/strict';
 import {
@@ -69,7 +70,7 @@ function controller(s) {
   } else if (s.phase === 'tension') {
     const t = s.tool;
     let target = s.workers[0].targetSide;
-    if (t.owner !== 0 && t.needsPass && t.status === 'held')
+    if (t.owner !== 0 && t.passSuggested && t.status === 'held')
       target = s.recommendedSide;
     if (!at(s.workers[0], target)) move(0, target);
     if (!at(s.workers[1], (target + 2) % 4)) move(1, (target + 2) % 4);
@@ -88,7 +89,8 @@ function controller(s) {
     ) {
       const p = t.owner,
         c = CONTROLS[p];
-      if (t.needsPass) {
+      // This controller voluntarily passes to exercise cooperation; humans may keep working.
+      if (t.passSuggested) {
         if (t.charge < throwTargetPower(s) || t.status === 'held') add('KeyQ');
       } else if (s.spring.active) {
         const [a, b] = springWindow(s);
@@ -119,8 +121,7 @@ function controller(s) {
     add('Enter');
     if (s.players === 3) add('KeyO');
   } else if (s.phase === 'level') {
-    add(signKey(-s.angle, 'KeyD', 'KeyA', 0.005));
-    if (s.levelStable >= 1) press(0);
+    for (const key of levelKeys(s)) add(key);
   }
   return keys;
 }

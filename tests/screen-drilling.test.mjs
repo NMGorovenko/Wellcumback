@@ -1,3 +1,4 @@
+import { levelKeys } from './screen-level-controller.mjs';
 import { equipDriller, drillControls } from './screen-drill-controller.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -222,12 +223,8 @@ void test('finishing a practice episode earns no party score or awards', () => {
   until(
     s,
     (state) => state.phase === 'result',
-    (state) => {
-      if (state.angle > 0.005) return ['KeyA'];
-      if (state.angle < -0.005) return ['KeyD'];
-      return state.levelStable >= 1 ? ['KeyE'] : [];
-    },
-    5,
+    (state) => [...levelKeys(state)],
+    45,
   );
   assert.equal(s.practice, true);
   assert.equal(s.score, 0);

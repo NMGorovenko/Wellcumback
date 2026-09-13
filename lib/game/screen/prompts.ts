@@ -1,3 +1,9 @@
+import {
+  levelCheck,
+  levelChairGrip,
+  levelChairsCentered,
+  LEVEL_APPROACH,
+} from './level-check.ts';
 import { nearChairs } from './drill-space.ts';
 import { pickupCandidate, nextHandoffTool } from './drill-tools.ts';
 import type { GameState } from './engine.ts';
@@ -105,9 +111,10 @@ export function screenPromptInput(
 export function screenPrompts(s: GameState): WorkerPrompt[] {
   const solo = s.players === 1;
   const drilling = s.phase === 'drill';
+  const checking = s.phase === 'level';
   return Array.from({ length: Math.max(2, s.players) }, (_, worker) => {
     const player = solo
-      ? drilling
+      ? drilling || checking
         ? worker === 1
           ? 0
           : null
@@ -138,7 +145,7 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
             ? 'с отвёрткой'
             : 'готовит следующий край'
           : s.phase === 'level'
-            ? ['левый подвес', 'правый подвес', 'сверяет уровень'][worker]
+            ? ['смотрит на экран', 'с уровнем', 'сверяет издалека'][worker]
             : ['левый край', 'правый край', 'направляет экран'][worker];
     const row: WorkerPrompt = { worker, player, role, prompts: [] };
     const cue = (
@@ -214,21 +221,16 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
         if (w.side !== t.groundSide || moving)
           cue('move', `к отвёртке: ${sideName(t.groundSide)} край`);
         else cue('action', 'подобрать отвёртку', 'tap');
-      } else if (t.owner === worker && (t.status === 'charging' || t.needsPass))
-        cue(
-          'throw',
-          t.status === 'charging'
-            ? 'отпустить в зелёном'
-            : 'передать готовому напарнику',
-          t.status === 'charging' ? 'release' : 'hold',
-        );
+      } else if (t.owner === worker && t.status === 'charging')
+        cue('throw', 'отпустить в зелёном', 'release');
       else if (t.owner === worker) {
         const uneven = s.clips[w.side] > Math.min(...s.clips);
         if (s.spring.active)
           cue('action', 'отпустить в зелёном', 'release', {
             emphasis: uneven ? 'danger' : undefined,
           });
-        else if (moving || s.clips[w.side] === 4 || uneven)
+        else if (moving) cue('move', 'к выбранному креплению');
+        else if (s.clips[w.side] === 4)
           cue(
             'move',
             `к свободному краю: ${sideName(s.recommendedSide)}`,
@@ -237,7 +239,12 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
               emphasis: uneven ? 'danger' : undefined,
             },
           );
-        else cue('action', 'натянуть пружину', 'hold');
+        else
+          cue('action', 'натянуть пружину', 'hold', {
+            emphasis: uneven ? 'danger' : undefined,
+          });
+        if (!s.spring.active && !moving)
+          cue('throw', 'бросить отвёртку', 'hold');
       } else {
         const opposite = (s.workers[t.owner].targetSide + 2) % 4;
         const next =
@@ -248,7 +255,7 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
                   side !== s.workers[1].targetSide &&
                   s.clips[side] === Math.min(...s.clips),
               ) ?? opposite)
-            : t.needsPass
+            : t.passSuggested
               ? s.recommendedSide
               : opposite;
         if (moving || w.side !== next)
@@ -394,22 +401,43 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
         });
       else cue('action', 'придержать раскачку', 'hold');
     } else if (s.phase === 'level') {
-      if (Math.abs(s.angle) >= 0.012)
-        cue(
-          'horizontal',
-          worker === 2 ? 'подскажи поправку' : 'поправь подвес',
-          'hold',
-          {
+      const c = levelCheck(s);
+      if (c.mode === 'settle') {
+        if (Math.abs(s.angle) >= 0.012)
+          cue('horizontal', 'поправить подвес', 'hold', {
             direction: s.angle < 0 ? 'right' : 'left',
-          },
-        );
-      else if (s.levelStable >= 1) {
-        cue(
-          'action',
-          actionHeld ? 'затем проверь уровень' : 'ГОТОВО · проверить',
-          actionHeld ? 'release' : 'tap',
-        );
-      } else cue('horizontal', 'дай пузырьку успокоиться', 'release');
+          });
+        else if (s.levelStable >= 1)
+          cue(
+            'action',
+            actionHeld ? 'отпусти, затем проверь' : 'проверить уровень',
+            actionHeld ? 'release' : 'tap',
+          );
+        else cue('horizontal', 'дай пузырьку успокоиться', 'release');
+      } else if (worker === 1) {
+        if (c.mode === 'fetch') {
+          if (Math.hypot(c.x - LEVEL_APPROACH.x, c.z - LEVEL_APPROACH.z) < 0.42)
+            cue('action', 'взять уровень', 'hold');
+          else cue('move', 'к полке с уровнем');
+        } else if (c.mode === 'chairs') {
+          const grip = levelChairGrip(c);
+          if (Math.hypot(c.x - grip.x, c.z - grip.z) < 0.4)
+            cue('action', 'взяться за стулья', 'tap');
+          else cue('move', 'к стульям');
+        } else if (c.mode === 'position') {
+          if (levelChairsCentered(c)) cue('action', 'забраться', 'tap');
+          else cue('move', 'стулья — к середине экрана');
+        } else if (c.mode !== 'celebrate')
+          cue(
+            'action',
+            c.mode === 'pickup'
+              ? 'взять уровень'
+              : c.mode === 'climb'
+                ? 'подниматься'
+                : 'положить уровень',
+            'hold',
+          );
+      }
     }
     return row;
   });

@@ -26,7 +26,7 @@ void test('V8 idles, revs and shifts without affecting vehicle speed', () => {
   assert.equal(s.gear, 6);
   assert.equal(shifts, 5);
   assert.ok(
-    s.rpm > 4600 && s.rpm < 5100,
+    s.rpm > 4100 && s.rpm < 4500,
     'top gear cruises without sitting on the limiter',
   );
   advanceV8(s, input(32, 0), 1 / 60);
@@ -58,7 +58,7 @@ for (const rate of [30, 60, 144])
       );
       if (motor.gear > previousGear)
         shifts.push({
-          time: motor.time,
+          time: city.powertrain.shiftStartedAt,
           from: motor.rpm,
           min: motor.rpm,
           minLoad: 1,
@@ -83,12 +83,21 @@ for (const rate of [30, 60, 144])
       assert.ok(shift.minLoad < 0.12, 'exhaust unloads during a shift');
     }
     assert.ok(
-      shifts.slice(1).every((s, i) => s.time - shifts[i].time > 0.4),
+      shifts.slice(1).every((s, i) => s.time - shifts[i].time > 0.3),
       'no gear chatter',
     );
     assert.ok(
-      motor.rpm > 4600 && motor.rpm < 5100,
+      motor.rpm > 4100 && motor.rpm < 4500,
       'full-speed top gear stays below the shift point',
+    );
+    const intervals = shifts.map(
+      (shift, i) => shift.time - (shifts[i - 1]?.time ?? 0),
+    );
+    assert.ok(intervals[1] <= 0.45, 'second shift remains quick');
+    assert.ok(intervals[3] >= 0.6, 'fourth gear lasts longer');
+    assert.ok(
+      intervals[4] >= 1.2 && intervals[4] >= intervals[3] * 2,
+      'fifth gear builds speed for substantially longer',
     );
     const top = motor.gear;
     for (let i = 0; i < 2 * rate; i++)

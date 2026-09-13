@@ -186,7 +186,7 @@ void test('six-speed full throttle keeps pulling beyond the old ceiling while pa
   const full = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 },
     partial = freshCity();
   const marks = new Map();
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < 360; i++) {
     tickCity(full, 1 / 60, new Set(['KeyW']));
     if (i < 30)
       tickCity(partial, 1 / 60, new Set(), { throttle: 0.25, steer: 0 });
@@ -223,5 +223,27 @@ void test('fractional refresh periods cannot silently lose a city simulation tic
     assert.ok(Math.abs(s.elapsed - 2) < 1e-9);
     assert.ok(Math.abs(s.z - states[0].z) < 1e-8);
     assert.ok(s.accumulator >= 0 && s.accumulator < 1 / 60);
+  }
+});
+
+void test('higher speed power limiting never makes a partial trigger stronger than full throttle', () => {
+  for (const speed of [24, 30]) {
+    const accelerations = [0.25, 0.5, 0.75, 0.9, 1].map((throttle) => {
+      const s = {
+        ...freshCity(),
+        x: -104,
+        z: -63,
+        heading: Math.PI / 2,
+        vx: speed,
+        vz: 0,
+        speed,
+      };
+      s.powertrain.gear = 6;
+      s.powertrain.shiftReadyAt = 100;
+      tickCity(s, 1 / 60, new Set(), { throttle, steer: 0 });
+      return (s.vx - speed) * 60;
+    });
+    for (let i = 1; i < accelerations.length; i++)
+      assert.ok(accelerations[i] >= accelerations[i - 1]);
   }
 });

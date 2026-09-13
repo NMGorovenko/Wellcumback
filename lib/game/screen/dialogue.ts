@@ -17,7 +17,7 @@ export const SCREEN_DIALOGUE: Record<Phase, { speaker: 0 | 1; text: string }> =
     lift: { speaker: 0, text: 'Я держу. Только не поднимай один!' },
     level: {
       speaker: 1,
-      text: 'Слева пятнадцать, справа пятнадцать. Потолок, ты серьёзно?',
+      text: 'Погоди. А уровень где? На полке же был.',
     },
     result: { speaker: 0, text: 'С возвращением, Рома! Включай кино.' },
   };

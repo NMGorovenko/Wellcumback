@@ -131,6 +131,10 @@ void test('preview remains upright independently of the drill floor pose', () =>
   const { kit, model, state } = fixture();
   settle(model, state, true);
   assert.ok(visibleBounds(model).max.y > 3);
-  assert.ok(Math.abs(model.root.rotation.x) < 1e-8);
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(model.root.quaternion);
+  assert.ok(
+    up.y > 0.999,
+    'upright after turning the clean front into the room',
+  );
   kit.dispose();
 });

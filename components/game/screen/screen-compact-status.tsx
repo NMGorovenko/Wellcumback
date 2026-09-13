@@ -1,4 +1,5 @@
 'use client';
+import { levelCheck, levelLabels } from '@/lib/game/screen/level-check';
 
 import { Check } from 'lucide-react';
 import {
@@ -148,13 +149,11 @@ export function ScreenCompactStatus({
                   : NAMES[tool.owner]}
             </strong>
           </div>
-          {view.springSupport > 0 &&
-            tool.status === 'held' &&
-            !tool.needsPass && (
-              <span className="hud-compact-alert is-ready">
-                Край поддержан · легче натянуть
-              </span>
-            )}
+          {view.springSupport > 0 && tool.status === 'held' && (
+            <span className="hud-compact-alert is-ready">
+              Край поддержан · легче натянуть
+            </span>
+          )}
           {tool.status === 'ground' ? (
             <div className="hud-compact-alert">
               {SIDES[tool.groundSide]} сторона · подними действием
@@ -168,7 +167,7 @@ export function ScreenCompactStatus({
               }
               value={tool.flight}
             />
-          ) : tool.status === 'charging' || tool.needsPass ? (
+          ) : tool.status === 'charging' ? (
             <Meter
               label={
                 localPlayer !== undefined && localPlayer !== tool.owner
@@ -312,6 +311,12 @@ export function ScreenCompactStatus({
         </>
       );
     case 'level':
+      if (levelCheck(view).mode !== 'settle')
+        return (
+          <div className="hud-compact-title">
+            {levelLabels[levelCheck(view).mode]}
+          </div>
+        );
       return (
         <>
           <Meter
@@ -336,7 +341,7 @@ export function ScreenCompactStatus({
             ) : view.levelStable > 0 ? (
               'Дай пузырьку успокоиться'
             ) : (
-              'Поправь подвесы A / D'
+              'Поправь подвесы'
             )}
           </div>
         </>

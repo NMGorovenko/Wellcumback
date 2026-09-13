@@ -491,6 +491,7 @@ void test('batched guest press/release both reach fixed simulation when renderin
     const { code, guest, epoch } = await hostCity(0);
     const state = freshGame(2);
     state.phase = 'level';
+    state.levelCheck.mode = 'settle';
     state.angle = state.bubble = 0;
     state.levelStable = 1.2;
     client.publishRoomWorld({
@@ -513,8 +514,8 @@ void test('batched guest press/release both reach fixed simulation when renderin
     for (let count = 0; count < 16; count++)
       bridge.tickRoomScreen(state, 1 / 240, new Set());
     assert.equal(
-      state.phase,
-      'result',
+      state.levelCheck.mode,
+      'celebrate',
       'the guest tap vanished before any fixed simulation step observed it',
     );
   } finally {

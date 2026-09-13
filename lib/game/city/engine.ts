@@ -183,7 +183,10 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
     ? 30
     : gas < 0
       ? 10
-      : (14.5 + (fullTorque - 14.5) * gas * gas) * (changing ? 0.28 : 1);
+      : Math.min(
+          14.5 + (fullTorque - 14.5) * gas * gas,
+          260 / Math.max(10, forward),
+        ) * (changing ? 0.28 : 1);
   // Rolling resistance is mild: lifting the accelerator preserves momentum,
   // while an opposite pedal gives controllable braking before reversing.
   const speed = Math.hypot(s.vx, s.vz);

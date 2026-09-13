@@ -582,7 +582,7 @@ void test('room protocol carries the six-speed city at 115 km/h and preserves it
   const { freshCity, tickCity } = await import('../lib/game/city/engine.ts');
   const { hostPoll, guestPoll } = await party(2);
   const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
-  for (let i = 0; i < 240; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
+  for (let i = 0; i < 360; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
   const world = { ...snapshot(3), state: city };
   const published = await hostPoll({ snapshot: world, snapshotSeq: 1 });
   assert.equal(published.status, 200);

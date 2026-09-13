@@ -1,5 +1,7 @@
-/* oxlint-disable jsx-a11y/prefer-tag-over-role -- A live WebGL surface has no static image URL. */
 'use client';
+import { levelCheck, levelCheckStage } from '@/lib/game/screen/level-check';
+import { createSpiritLevel, placeLevelHands } from './spirit-level';
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- A live WebGL surface has no static image URL. */
 import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
@@ -122,6 +124,8 @@ export default function Scene({
     const apartment = createApartment(kit);
     apartment.sofa.position.z = PHYSICAL_LAYOUT.sofaZ;
     const screen = createScreenModel(kit);
+    const spiritLevel = createSpiritLevel(kit);
+    const levelTarget = new THREE.Vector3();
     const crew = [people[1], people[0], people[2]];
     const rigs = crew.map((p) => createRig(kit, p));
     const nameplates = rigs.map((rig, i) => {
@@ -234,7 +238,10 @@ export default function Scene({
       const floor =
         ['frame', 'rods', 'tension'].includes(s.phase) && !isPreview;
       const drillPhase = s.phase === 'drill' && !isPreview;
-      const stage = drillStaging(s);
+      const levelPhase = s.phase === 'level' && !isPreview;
+      const checking = levelCheck(s);
+      const stage = levelPhase ? levelCheckStage(s) : drillStaging(s);
+      screen.levelWorld(levelTarget);
       const count = isPreview ? 3 : Math.max(2, s.players);
       rigs.forEach((rig, i) => {
         rig.root.visible = i < count;
@@ -290,6 +297,17 @@ export default function Scene({
           z = 1.12 + Math.sin(i) * 0.2;
           rotation = [0.13, -0.1, -0.3][i];
           pose = 'idle';
+        } else if (levelPhase) {
+          const staged = stage.workers[i];
+          ({ x, y, z, rotation } = staged);
+          pose =
+            i === 1
+              ? checking.mode === 'celebrate'
+                ? 'talk'
+                : poses[worker.animation]
+              : 'idle';
+          if (i === 1 && checking.mode === 'celebrate')
+            rotation = Math.PI * Math.max(0, 1 - checking.progress * 1.5);
         } else if (!floor && !drillPhase) {
           // Both carriers stand on the floor and lift with their arms. Ring height never raises a body.
           if (i < 2) {
@@ -331,7 +349,7 @@ export default function Scene({
         if (opt.cameraMode === 'faces') rotation = 0;
         // Staged paths already interpolate safely; smoothing world positions cuts through the cloth.
         rig.root.position.set(x, y, z);
-        if (!drillPhase) {
+        if (!drillPhase && !levelPhase) {
           rig.root.position.y = 0;
           rig.root.rotation.z = 0;
         }
@@ -368,6 +386,7 @@ export default function Scene({
         } else if (
           !floor &&
           !drillPhase &&
+          !levelPhase &&
           !isPreview &&
           i < 2 &&
           s.phase !== 'result' &&
@@ -474,6 +493,34 @@ export default function Scene({
             );
           }
         }
+        if (levelPhase && opt.cameraMode !== 'faces') {
+          rig.setCrouch(stage.workers[i].crouch);
+          if (i === 1) {
+            if (checking.mode === 'position')
+              rig.reach(
+                'left',
+                new THREE.Vector3(
+                  checking.chairX + 0.22,
+                  1.06,
+                  checking.chairZ + 0.2,
+                ),
+              );
+            else if (
+              checking.mode === 'climb' &&
+              checking.progress > 0.16 &&
+              checking.progress < 0.7
+            )
+              rig.reach(
+                'left',
+                new THREE.Vector3(
+                  checking.chairX + 0.26,
+                  1.52,
+                  checking.chairZ + 0.15,
+                ),
+              );
+            placeLevelHands(s, rig, levelTarget);
+          }
+        }
         springFeedback.react(rig, i);
         rig.speak(
           s.messageSpeaker === i && s.messageUntil > s.elapsed
@@ -484,11 +531,17 @@ export default function Scene({
           !opt.cueRefs && !isPreview && opt.cameraMode !== 'faces';
       });
       apartment.stools.forEach((stool, i) => {
-        if (drillPhase) {
+        if (drillPhase || levelPhase) {
           const staged = stage.stools[i];
           stool.visible = staged.visible;
           stool.position.copy(staged);
           stool.rotation.set(0, staged.rotation, staged.lean);
+          stool.scale.y = staged.scaleY;
+        } else if (s.phase === 'lift' || s.phase === 'result') {
+          const staged = levelCheckStage(s).stools[i];
+          stool.visible = true;
+          stool.position.copy(staged);
+          stool.rotation.set(0, 0, 0);
           stool.scale.y = staged.scaleY;
         } else {
           const parked = PHYSICAL_LAYOUT.parkedStools[i];
@@ -519,7 +572,9 @@ export default function Scene({
           screw.scale.y = 1;
           screw.position.y = 0;
         }
-        marks[i].visible = !isPreview && ['drill', 'lift'].includes(s.phase);
+        marks[i].visible =
+          !isPreview &&
+          (s.phase === 'drill' || (s.phase === 'lift' && !s.latched[i]));
         marks[i].position.set(
           hookX(i),
           hookHeight(s.holes[i] ?? s.aim) + 0.22,
@@ -527,6 +582,12 @@ export default function Scene({
         );
       });
       drillingProps.update(s, rigs, time);
+      spiritLevel.update(
+        s,
+        rigs[1],
+        levelTarget,
+        Math.atan((Math.tan(s.angle) * 8.8 * 0.13) / 4.32),
+      );
       screwdriver.visible = s.phase === 'tension';
       toolHalo.visible = s.phase === 'tension' && s.tool.status === 'ground';
       if (screwdriver.visible) {
@@ -581,7 +642,7 @@ export default function Scene({
           ? 1
           : s.phase === 'tension'
             ? s.tool.owner
-            : s.phase === 'drill'
+            : s.phase === 'drill' || s.phase === 'level'
               ? 1
               : 0;
         const rig = rigs[index];
@@ -600,7 +661,7 @@ export default function Scene({
       } else if (floor) {
         targetPosition.set(4.45, 5.25, 6.25);
         wantedLook.set(0, 0.55, -0.25);
-      } else if (drillPhase) {
+      } else if (drillPhase || levelPhase) {
         const xs = [
           s.chairX * FLOOR_SCALE,
           ...rigs.slice(0, count).map((rig) => rig.root.position.x),
@@ -615,7 +676,7 @@ export default function Scene({
       }
       // AUTO stays close, then expands only enough to retain every participant,
       // the whole working frame, and a pending screwdriver arc inside the frustum.
-      if ((floor || drillPhase) && opt.cameraMode === 'auto') {
+      if ((floor || drillPhase || levelPhase) && opt.cameraMode === 'auto') {
         const forward = targetPosition.clone().sub(wantedLook).normalize();
         const right = new THREE.Vector3()
           .crossVectors(new THREE.Vector3(0, 1, 0), forward)
@@ -658,7 +719,7 @@ export default function Scene({
       if (
         camera.aspect < 1.3 &&
         opt.cameraMode !== 'faces' &&
-        !((floor || drillPhase) && opt.cameraMode === 'auto')
+        !((floor || drillPhase || levelPhase) && opt.cameraMode === 'auto')
       )
         targetPosition
           .sub(wantedLook)

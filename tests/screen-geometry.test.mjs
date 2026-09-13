@@ -65,10 +65,14 @@ const person = {
 function matrix(t) {
   return new THREE.Matrix4().compose(
     new THREE.Vector3(t.x, t.y, t.z),
-    new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 0, 1),
-      t.angle,
-    ),
+    new THREE.Quaternion()
+      .setFromAxisAngle(new THREE.Vector3(0, 0, 1), t.angle)
+      .multiply(
+        new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          Math.PI,
+        ),
+      ),
     new THREE.Vector3(t.scaleX, 1, 1),
   );
 }
@@ -82,7 +86,7 @@ void test('lift anchors match target hook X Y Z, including extreme uneven holes'
   ]) {
     const m = matrix(mountTransform(l, r));
     for (const [i, h] of [l, r].entries()) {
-      const p = new THREE.Vector3(i ? 2.16 : -2.16, 1.235, 0.068).applyMatrix4(
+      const p = new THREE.Vector3(i ? -2.16 : 2.16, 1.235, 0.068).applyMatrix4(
         m,
       );
       assert.ok(

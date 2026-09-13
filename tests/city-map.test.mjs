@@ -293,7 +293,7 @@ void test('larger city statics are batched and repeated driving updates allocate
 
 void test('network preserves high-speed gearbox state and rejects forged gear or velocity values', () => {
   const state = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
-  for (let i = 0; i < 240; i++) tickCity(state, 1 / 60, new Set(['KeyW']));
+  for (let i = 0; i < 360; i++) tickCity(state, 1 / 60, new Set(['KeyW']));
   const packet = (next) =>
     JSON.stringify({
       type: 'city',

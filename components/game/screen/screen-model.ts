@@ -12,7 +12,7 @@ export const hookHeight = (logical: number) =>
   2.7 + (logical - 2.6) * HEIGHT_SCALE;
 export const SCREEN_Z = -2.66;
 export const RING_Y = 1.235;
-export const MOUNT_Z = SCREEN_Z + 0.068;
+export const MOUNT_Z = SCREEN_Z - 0.068;
 /** Pure mounting transform: the top attachment centres exactly retain target X/Y. */
 export function mountTransform(
   left: number,
@@ -58,6 +58,24 @@ export function createScreenModel(kit: RenderKit) {
   kit.scene.add(root);
   const frameRoot = new THREE.Group();
   root.add(frameRoot);
+  // Clean front bezel is on the opposite side from the spring hardware.
+  const front = new THREE.Group();
+  root.add(front);
+  for (const sign of [-1, 1]) {
+    kit.box(4.8, 0.14, 0.025, '#24252a', 0, sign * 1.285, -0.055, front, 0.005);
+    kit.box(
+      0.14,
+      2.44,
+      0.025,
+      '#24252a',
+      sign * 2.335,
+      0,
+      -0.055,
+      front,
+      0.005,
+    );
+  }
+  let frontFacing = false;
   const rails: THREE.Group[] = [];
   const lengths = [SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT];
   for (let side = 0; side < 4; side++) {
@@ -204,6 +222,9 @@ export function createScreenModel(kit: RenderKit) {
   );
   const update = (s: GameState, dt: number, preview = false) => {
     const cinema = s.phase === 'result' && !preview;
+    frontFacing = preview || ['lift', 'level', 'result'].includes(s.phase);
+    front.visible = frontFacing;
+    cloth.scale.x = frontFacing ? -1 : 1;
     if (cinema) {
       projectionTime += dt;
       projectGreeting(projectionTime);
@@ -373,7 +394,17 @@ export function createScreenModel(kit: RenderKit) {
         mounted ? s.angle : undefined,
       );
       target.set(transform.x, transform.y, transform.z);
-      targetRot.set(0, 0, transform.angle);
+      // Turn the frame over as it rises: the spring side faces the wall.
+      targetRot.setFromQuaternion(
+        new THREE.Quaternion()
+          .setFromAxisAngle(new THREE.Vector3(0, 0, 1), transform.angle)
+          .multiply(
+            new THREE.Quaternion().setFromAxisAngle(
+              new THREE.Vector3(0, 1, 0),
+              Math.PI,
+            ),
+          ),
+      );
       root.scale.x = transform.scaleX;
     }
     if (floor) root.scale.x = 1;
@@ -397,12 +428,16 @@ export function createScreenModel(kit: RenderKit) {
   };
   const ringWorld = (side: number, out = new THREE.Vector3()) => {
     root.updateWorldMatrix(true, true);
-    return rings[side].getWorldPosition(out);
+    return rings[frontFacing ? 1 - side : side].getWorldPosition(out);
   };
   const gripWorld = (side: number, out = new THREE.Vector3()) => {
     root.updateWorldMatrix(true, true);
     return root.localToWorld(
-      out.set((side === 0 ? -1 : 1) * 2.04, -1.295, 0.06),
+      out.set(
+        (side === 0 ? -1 : 1) * (frontFacing ? -1 : 1) * 2.04,
+        -1.295,
+        frontFacing ? -0.06 : 0.06,
+      ),
     );
   };
   const workWorld = (
@@ -435,5 +470,20 @@ export function createScreenModel(kit: RenderKit) {
     root.updateWorldMatrix(true, true);
     return root.localToWorld(out);
   };
-  return { root, rings, ringWorld, gripWorld, workWorld, update };
+  const levelWorld = (out = new THREE.Vector3()) => {
+    root.updateWorldMatrix(true, true);
+    return root.localToWorld(out.set(0, 1.385, -0.025));
+  };
+  return {
+    root,
+    rings,
+    cloth,
+    coils,
+    front,
+    ringWorld,
+    gripWorld,
+    workWorld,
+    levelWorld,
+    update,
+  };
 }

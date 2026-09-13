@@ -34,8 +34,8 @@ export const screenEpisodes: {
   },
   {
     id: 'level',
-    title: 'Кривой потолок',
-    description: 'Выставить экран по уровню',
+    title: 'Проверить уровень',
+    description: 'Взять уровень, подставить стулья и проверить экран',
   },
 ];
 
@@ -64,7 +64,7 @@ export function createScreenEpisode(players: number, phase: ScreenEpisode) {
     s.liftLeft = s.holes[0];
     s.liftRight = s.holes[1];
     s.liftX = 0;
-    s.angle = 0.047;
+    s.angle = Math.atan2(s.holes[1] - s.holes[0], 8.8);
     s.bubble = s.angle;
   }
   return s;

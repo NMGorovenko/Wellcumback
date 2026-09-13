@@ -1,3 +1,4 @@
+import { levelKeys } from './screen-level-controller.mjs';
 import { drillControls } from './screen-drill-controller.mjs';
 import assert from 'node:assert/strict';
 import {
@@ -49,7 +50,7 @@ function keysFor(s) {
     // After AI has fixed the opposite spring, rotate the pair together.
     if (
       t.owner === 1 &&
-      t.needsPass &&
+      t.passSuggested &&
       t.status === 'held' &&
       w.targetSide !== s.recommendedSide
     )
@@ -66,7 +67,8 @@ function keysFor(s) {
       t.owner === 0 &&
       (t.status === 'held' || t.status === 'charging')
     ) {
-      if (t.needsPass) {
+      // This controller voluntarily passes to exercise cooperation; humans may keep working.
+      if (t.passSuggested) {
         if (t.charge < throwTargetPower(s) || t.status === 'held') add('KeyQ');
       } else if (s.spring.active) {
         const [a, b] = springWindow(s);
@@ -97,8 +99,7 @@ function keysFor(s) {
     add(signKey(-s.liftX - s.liftXVelocity * 0.2, 'KeyD', 'KeyA', 0.015));
     add('KeyE');
   } else if (s.phase === 'level') {
-    add(signKey(-s.angle, 'KeyD', 'KeyA', 0.005));
-    if (s.levelStable >= 1 && !s.simulation.previousActions[0]) add('KeyE');
+    for (const key of levelKeys(s)) add(key);
   }
   return keys;
 }
@@ -115,7 +116,7 @@ for (let n = 0; n < 60 * 900 && s.phase !== 'result'; n++) {
       s.clips,
       s.tool.owner,
       s.tool.status,
-      s.tool.needsPass,
+      s.tool.passSuggested,
       s.workers.map((w) => w.targetSide),
       s.spring,
     );

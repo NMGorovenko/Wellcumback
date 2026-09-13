@@ -57,7 +57,7 @@ void test('uneven pull launches the actual detached opposite coil; contact, comi
   assert.equal(s.penalties, penalties);
   assert.equal(s.score, score, 'face gag cannot change scoring or recovery');
   assert.equal(s.tool.status, 'held');
-  assert.equal(s.tool.needsPass, true);
+  assert.equal(s.tool.passSuggested, true);
 });
 void test('a crouching helper is contacted at the lowered face instead of empty standing head space', () => {
   const s = unevenPull(true);

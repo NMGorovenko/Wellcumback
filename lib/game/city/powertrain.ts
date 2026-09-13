@@ -11,8 +11,8 @@ export type PowertrainState = {
   shiftReadyAt: number;
 };
 export const CITY_TOP_SPEED = 32;
-export const AUTOMATIC_RATIOS = [4.15, 2.7, 1.88, 1.36, 1.01, 0.74] as const;
-export const SHIFT_DURATION = 0.24;
+export const AUTOMATIC_RATIOS = [4.15, 2.7, 1.65, 1.16, 0.86, 0.62] as const;
+export const SHIFT_DURATION = 0.2;
 export const freshPowertrain = (): PowertrainState => ({
   rpm: 780,
   gear: 1,
@@ -35,7 +35,7 @@ function shift(s: PowertrainState, nextGear: number) {
   );
   s.shiftStartedAt = s.time;
   s.shiftUntil = s.time + SHIFT_DURATION;
-  s.shiftReadyAt = s.shiftUntil + 0.18;
+  s.shiftReadyAt = s.shiftUntil + 0.12;
   s.gear = nextGear;
 }
 export function advancePowertrain(

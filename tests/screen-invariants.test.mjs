@@ -97,20 +97,6 @@ void test('jam does not clear while pushing; releasing recovers without resettin
   assert.equal(s.rodJam[2], 0);
   assert.equal(s.rods[1], 1);
 });
-void test('extra hook by same worker requires passing the unique screwdriver', () => {
-  const s = freshGame(2);
-  s.phase = 'tension';
-  step(s, 4);
-  step(s, 1.2, ['KeyE']);
-  step(s, 0.5);
-  assert.equal(s.clips[2], 1);
-  assert.equal(s.tool.needsPass, true);
-  const score = s.score;
-  step(s, 1.2, ['KeyE']);
-  step(s, 0.5);
-  assert.equal(s.clips[2], 1);
-  assert.equal(s.score, score);
-});
 void test('two chair loss of balance preserves finished hole and resets current work', () => {
   const s = freshGame(2);
   s.phase = 'drill';

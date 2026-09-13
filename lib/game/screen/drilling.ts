@@ -70,20 +70,8 @@ function fall(s: GameState) {
     'БУХ! Ярик цел. Никита: «Я же сказал — держу, а не приклеил!» Залезай заново, инструменты подадим ещё раз.',
     100,
   );
-  const lostDrill = s.drillTools.drill.location === 'climber';
-  const lostVacuum = s.drillTools.vacuum.location === 'climber';
   dropClimberTools(s);
-  drillSay(
-    s,
-    lostDrill && lostVacuum
-      ? 'Я цел! Приборы на полу. Никита, подбери их там, где упали.'
-      : lostDrill
-        ? 'Я цел! А дрель… Никита, подбери её там, где упала.'
-        : lostVacuum
-          ? 'Я цел! Пылесос улетел. Никита, подбери его, пожалуйста.'
-          : 'Я цел! Давай снова залезу. Приборы хотя бы не уронил.',
-    1,
-  );
+  drillSay(s, 'бляяяяяять', 1);
   s.balance = 0;
   s.drill = 0;
   s.drillMark = null;

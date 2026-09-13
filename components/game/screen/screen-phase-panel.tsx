@@ -1,4 +1,5 @@
 'use client';
+import { levelCheck, levelLabels } from '@/lib/game/screen/level-check';
 import { ArrowRight, Check, RotateCcw, Search, Trophy } from 'lucide-react';
 import {
   CONTROLS,
@@ -292,7 +293,7 @@ export function ScreenPhasePanel({
             </>
           ) : (
             <>
-              {view.tool.status === 'charging' || view.tool.needsPass ? (
+              {view.tool.status === 'charging' ? (
                 <>
                   <p className="hud-instruction">
                     Передай инструмент напарнику напротив. Держи Q и отпусти в
@@ -340,11 +341,13 @@ export function ScreenPhasePanel({
                   )}
                 </>
               )}
+              {ownerIsHuman &&
+                view.tool.status === 'held' &&
+                hold('KeyQ', 'Q · Бросить отвёртку', view.spring.active)}
             </>
           )}
           <p className="hud-note">
-            Равномерно, по кругу: разница больше одной пружины отрывает край.
-            Следующая свободная сторона:{' '}
+            Свободная сторона:{' '}
             <b>{SIDES[view.recommendedSide].toLowerCase()}</b>.
           </p>
           <div className="hud-mini-stats">
@@ -526,60 +529,43 @@ export function ScreenPhasePanel({
           )}
         </>
       );
-    case 'level':
+    case 'level': {
+      const c = levelCheck(view),
+        player = players === 1 ? 0 : 1,
+        binding = CONTROLS[player];
       return (
         <>
-          <p className="hud-instruction">
-            Потолок кривой. Смотри на пузырёк: поправь подвесы и отпусти, чтобы
-            уровень успокоился.
-          </p>
-          <Meter
-            label="Пузырьковый уровень"
-            value={view.bubble}
-            min={-0.22}
-            max={0.22}
-            target={[-0.012, 0.012]}
-            hint={`${Math.abs((view.angle * 180) / Math.PI).toFixed(1)}°`}
-          />
-          <Fill
-            label={
-              view.levelStable >= 1
-                ? 'Ровно. Можно отпускать'
-                : 'Пузырёк успокаивается'
-            }
-            value={Math.min(1, view.levelStable)}
-          />
-          <div className="hud-button-grid">
-            {hold('KeyA', 'A · поправить ←')}
-            {hold('KeyD', 'D · поправить →')}
-          </div>
-          <button
-            type="button"
-            className="hud-primary"
-            disabled={view.levelStable < 1}
-            onClick={() => clickAction()}
-          >
-            <Check size={16} /> E · Вот теперь ровно
-          </button>
-          {players > 1 && (
-            <div className="hud-helper">
-              <p className="hud-note">
-                Каждый может поправить уровень своими ←/→ и проверить своей
-                кнопкой действия.
-              </p>
-              <div className="hud-button-grid">
-                {hold('ArrowLeft', 'Ярик · подвес ←')}
-                {hold('ArrowRight', 'Ярик · подвес →')}
-                {players === 3 && hold('KeyJ', 'Рома · поправка ←')}
-                {players === 3 && hold('KeyL', 'Рома · поправка →')}
-              </div>
-            </div>
+          <p className="hud-instruction">{levelLabels[c.mode]}</p>
+          {c.mode === 'settle' && (
+            <Meter
+              label="Пузырьковый уровень"
+              value={view.bubble}
+              min={-0.22}
+              max={0.22}
+              target={[-0.012, 0.012]}
+            />
           )}
-          <p className="hud-note">
-            «Слева пятнадцать. Справа пятнадцать. А потолок — со своим мнением».
-          </p>
+          {c.mode !== 'celebrate' && (
+            <>
+              <div className="hud-button-grid">
+                {hold(binding.left, '←')}
+                {hold(binding.right, '→')}
+                {c.mode !== 'settle' && (
+                  <>
+                    {hold(binding.up, '↑')}
+                    {hold(binding.down, '↓')}
+                  </>
+                )}
+              </div>
+              {hold(
+                binding.action,
+                `${ACTION_LABELS[player]} · ${c.mode === 'settle' ? 'проверить' : 'действие Ярика'}`,
+              )}
+            </>
+          )}
         </>
       );
+    }
     case 'result':
       return (
         <div className="hud-result">

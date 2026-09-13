@@ -91,7 +91,7 @@ void test('uneven tension marks physical strain without narrating the surprise a
   assert.deepEqual(s.clips, [0, 0, 1, 0]);
   assert.equal(s.events.findLast((e) => e.kind === 'pop').side, 0);
   assert.equal(s.tool.status, 'held');
-  assert.equal(s.tool.needsPass, true);
+  assert.equal(s.tool.passSuggested, true);
   assert.equal(s.penalties, 1);
 });
 
@@ -133,11 +133,14 @@ void test('third player guides the lift, and every player can finish a settled l
   for (let player = 0; player < 3; player++) {
     const level = freshGame(3);
     Object.assign(level, { phase: 'level', angle: 0.04, bubble: 0.04 });
+    level.levelCheck.mode = 'settle';
     advance(level, 0.8, [CONTROLS[player].left]);
     assert.ok(Math.abs(level.angle) < 0.01);
     advance(level, 1.4);
     assert.ok(level.levelStable >= 1);
     advance(level, dt, [CONTROLS[player].action]);
+    assert.equal(level.levelCheck.mode, 'celebrate');
+    advance(level, 5.6);
     assert.equal(level.phase, 'result');
   }
 });
@@ -181,6 +184,7 @@ void test('a held action is released before the next frame click or final level 
     levelStable: 1.1,
     heldKeys: ['KeyO'],
   });
+  s.levelCheck.mode = 'settle';
   assert.equal(screenPrompts(s)[2].prompts[0].mode, 'release');
   s.heldKeys = [];
   assert.equal(screenPrompts(s)[2].prompts[0].mode, 'tap');

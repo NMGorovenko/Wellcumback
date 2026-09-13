@@ -1,3 +1,4 @@
+import { levelCheck, levelLabels } from '@/lib/game/screen/level-check';
 import type { GameState, Phase } from '@/lib/game/screen/engine';
 
 export const NAMES = ['Никита', 'Ярик', 'Рома'];
@@ -45,8 +46,22 @@ export function progress(state: GameState): { value: number; label: string } {
       };
     case 'level':
       return {
-        value: Math.min(1, state.levelStable),
-        label: state.levelStable >= 1 ? 'Можно отпускать' : 'Последний штрих',
+        value: Math.min(
+          1,
+          ([
+            'fetch',
+            'pickup',
+            'chairs',
+            'position',
+            'climb',
+            'place',
+            'settle',
+            'celebrate',
+          ].indexOf(levelCheck(state).mode) +
+            levelCheck(state).progress) /
+            8,
+        ),
+        label: levelLabels[levelCheck(state).mode],
       };
     case 'result':
       return { value: 1, label: 'Кино будет!' };
@@ -112,10 +127,10 @@ export function instructions(state: GameState): [string, string][] {
       ];
     case 'level':
       return [
-        ['A / D', 'регулировать подвесы'],
+        ['НАПРАВЛЕНИЯ ЯРИКА', 'к полке, затем стулья — в центр'],
         [
           state.players > 1 ? 'ДЕЙСТВИЕ' : 'E',
-          'проверить, когда пузырёк успокоится',
+          'взять уровень, подняться и положить на экран',
         ],
       ];
     case 'result':

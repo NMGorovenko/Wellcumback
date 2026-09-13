@@ -1,3 +1,4 @@
+import { freshLevelCheck, levelStep, type LevelCheck } from './level-check.ts';
 import {
   createSpringFlight,
   advanceSpringFlights,
@@ -86,7 +87,8 @@ export type ToolState = {
   goodThrow: boolean;
   groundSide: number;
   lastWorker: number;
-  needsPass: boolean;
+  /** Advisory helper strategy; never prevents the owner from working. */
+  passSuggested: boolean;
   catches: number;
   misses: number;
 };
@@ -150,6 +152,7 @@ export type GameState = DrillingState & {
   fatigue: [number, number];
   bubble: number;
   levelStable: number;
+  levelCheck?: LevelCheck;
   /** Internal simulation bookkeeping. Persist along with public fields for replay. */
   simulation: {
     accumulator: number;
@@ -176,7 +179,7 @@ export const titles: Record<Phase, string> = {
   tension: 'Одна отвёртка на всех',
   drill: 'Стремянка не приехала',
   lift: 'Левее. Нет, твоё левее',
-  level: 'Потолок виноват',
+  level: 'Последний штрих',
   result: 'Кино будет!',
 };
 export const SIDE_NAMES = [
@@ -298,7 +301,7 @@ export function freshGame(players = 1): GameState {
       goodThrow: false,
       groundSide: 0,
       lastWorker: -1,
-      needsPass: false,
+      passSuggested: false,
       catches: 0,
       misses: 0,
     },
@@ -338,6 +341,7 @@ export function freshGame(players = 1): GameState {
     fatigue: [0, 0],
     bubble: 0,
     levelStable: 0,
+    levelCheck: freshLevelCheck(),
     simulation: {
       accumulator: 0,
       previousActions: [false, false, false],
@@ -1061,7 +1065,7 @@ function toolStep(
             t.owner as 0 | 1 | 2,
             3.6,
           );
-        t.needsPass = false;
+        t.passSuggested = false;
         s.simulation.tossCooldown = 0.3;
         emit(s, 'catch', t.owner, target.side);
         s.message =
@@ -1091,12 +1095,12 @@ function toolStep(
         input[p].pressed &&
         s.simulation.tossCooldown === 0
       ) {
-        t.needsPass = p === t.lastWorker && t.owner === p;
+        t.passSuggested = p === t.lastWorker && t.owner === p;
         t.owner = p;
         t.status = 'held';
         s.cooldown = 0.25;
         emit(s, 'catch', p, w.side);
-        s.message = 'Подняли. Теперь кидаем человеку, а не в ипотеку.';
+        s.message = 'Подняли. Отвёртка снова в деле.';
         break;
       }
     }
@@ -1158,11 +1162,10 @@ function completeSpring(s: GameState) {
     }
     emit(s, 'spring', p, side, power);
     w.animation = 'pull';
-    s.message =
-      'Крючок на раме. Передай отвёртку: Q держать, отпустить в зелёной зоне.';
+    s.message = 'Крючок на раме.';
   }
   s.tool.lastWorker = p;
-  s.tool.needsPass = true;
+  s.tool.passSuggested = true;
   const minimum = Math.min(...s.clips),
     across = opposite(side);
   s.recommendedSide =
@@ -1200,7 +1203,7 @@ function tensionStep(
       s.cooldown === 0
     ) {
       if (
-        t.needsPass ||
+        t.passSuggested ||
         s.clips[s.workers[1].side] >= 4 ||
         s.clips[s.workers[1].side] > Math.min(...s.clips)
       )
@@ -1244,11 +1247,6 @@ function tensionStep(
       completeSpring(s);
     }
   } else if (c.pressed && arrived(w)) {
-    if (t.needsPass) {
-      s.message =
-        'Отвёртку — напарнику. После каждого крючка меняемся: Q держать и отпустить.';
-      return;
-    }
     if (s.clips[w.side] >= 4) {
       s.message = 'Здесь все четыре. Обойди рамку к свободной стороне.';
       return;
@@ -1345,45 +1343,11 @@ function liftStep(s: GameState, dt: number, input: Input[]) {
   }
   if (s.latched.every(Boolean)) {
     award(s, 'Оба крючка', 500);
-    s.angle = Math.atan2(s.holes[1] - s.holes[0], 8.8) + 0.027;
+    s.angle = Math.atan2(s.holes[1] - s.holes[0], 8.8);
     s.bubble = s.angle;
     s.levelStable = 0;
-    transition(
-      s,
-      'level',
-      'A/D регулирует подвесы. Дождись, пока пузырёк успокоится, и нажми E. Потолку не верь.',
-    );
-  }
-}
-function levelStep(s: GameState, dt: number, input: Input[]) {
-  const steering = input.slice(0, s.players).filter((c) => c.x !== 0);
-  const direction = steering.length
-    ? steering.reduce((sum, c) => sum + c.x, 0) / steering.length
-    : 0;
-  for (let p = 0; p < s.players; p++)
-    s.workers[p].animation = input[p].x ? (p === 2 ? 'guide' : 'lift') : 'hold';
-  s.angle = clamp(s.angle + direction * dt * 0.045, -0.22, 0.22);
-  s.bubble += (s.angle - s.bubble) * Math.min(1, dt * 4);
-  s.levelStable =
-    Math.abs(s.angle) < 0.012 && Math.abs(s.bubble) < 0.013 && !direction
-      ? Math.min(1.2, s.levelStable + dt)
-      : 0;
-  if (input.some((c, p) => p < s.players && c.pressed) && s.cooldown === 0) {
-    if (s.levelStable < 1) {
-      s.message = 'Пузырёк ещё думает. Поправь подвесы и дай ему секунду.';
-      return;
-    }
-    award(s, 'Потолок кривой. Экран — нет.', 600);
-    award(
-      s,
-      'Слаженность бригады',
-      Math.max(0, Math.round(1200 - s.elapsed * 1.4 - s.tool.misses * 20)),
-    );
-    transition(
-      s,
-      'result',
-      'Включай кино. Про полчаса больше никому не рассказываем.',
-    );
+    s.levelCheck = freshLevelCheck();
+    transition(s, 'level', 'Ярик, возьми уровень с полки.');
   }
 }
 function fixedStep(s: GameState, dt: number, keys: Set<string>) {
