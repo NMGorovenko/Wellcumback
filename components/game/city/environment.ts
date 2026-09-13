@@ -16,6 +16,8 @@ import type { RenderKit } from '../world/render-kit.ts';
 import { makeLabel } from '../world/labels.ts';
 import { createCityLandmarks } from './landmarks.ts';
 import { createStreetDetails } from './streets.ts';
+import { roadDashClear } from '../../../lib/game/city/crossings.ts';
+import { createEuropeMonument, createChapelCannon } from './monuments.ts';
 import {
   createCivicBuilding,
   createApartmentDetails,
@@ -188,8 +190,13 @@ export function createCityEnvironment(kit: RenderKit) {
       const x = road.from.x + (dx * distance) / length,
         z = road.from.z + (dz * distance) / length;
       if (
+        !roadDashClear(
+          road.id,
+          x + (dx * 1.15) / length,
+          z + (dz * 1.15) / length,
+        ) ||
         Math.hypot(x - ROUNDABOUT.x, z - ROUNDABOUT.z) <
-        ROUNDABOUT.outerRadius + 1
+          ROUNDABOUT.outerRadius + 1
       )
         continue;
       ribbon(
@@ -419,6 +426,8 @@ export function createCityEnvironment(kit: RenderKit) {
   }
   createSiberianRidges(kit, root);
   createNorthernChapel(kit, root);
+  createEuropeMonument(kit, root);
+  createChapelCannon(kit, root);
   const scenery = createCityLandmarks(kit, root, lit);
   const streetFurniture = createStreetDetails(kit, root, lit, scenery);
   batchCity(kit, root);

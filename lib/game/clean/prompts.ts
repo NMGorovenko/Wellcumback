@@ -1,4 +1,4 @@
-import { cleanSupportTask } from './support.ts';
+import { cleanActiveActorCount } from './cast.ts';
 import {
   cleanBindings,
   stations,
@@ -21,7 +21,7 @@ export type CleanPrompt = {
 /** Match work() priority and its exact action radii. A badge offers movement
  * until an ordinary held action can actually reach the target. */
 export function cleanPrompts(s: CleanState, actor = 0): CleanPrompt[] {
-  const count = s.actorCount;
+  const count = cleanActiveActorCount(s);
   if (
     s.paused ||
     ['brief', 'result'].includes(s.phase) ||
@@ -41,17 +41,6 @@ export function cleanPrompts(s: CleanState, actor = 0): CleanPrompt[] {
     s.containment.cooldown > 0 || s.containment.stamina <= 1e-8
       ? { control: 'throw', text: 'восстановить силы', mode: 'release' }
       : { control: 'throw', text: 'сдержаться', mode: 'hold' };
-  if (actor > 0 && s.phase !== 'clean') {
-    const task = cleanSupportTask(s, actor);
-    if (!task) return move('всё готово · к прачечной');
-    return distance(task.target) < task.radius
-      ? action(
-          task.progress > 0 && task.id !== 'brace'
-            ? `${task.label} · ${Math.round(task.progress * 100)}%`
-            : task.label,
-        )
-      : move(task.destination);
-  }
   if (s.phase === 'clean') {
     if (near(4) && s.valve < 1) return action('перекрыть воду');
     if (near(3) && s.spin < 1) return action('придержать стиралку');

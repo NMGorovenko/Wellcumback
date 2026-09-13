@@ -140,7 +140,7 @@ void test('third player guides the lift, and every player can finish a settled l
     assert.ok(level.levelStable >= 1);
     advance(level, dt, [CONTROLS[player].action]);
     assert.equal(level.levelCheck.mode, 'celebrate');
-    advance(level, 5.6);
+    advance(level, 11.6);
     assert.equal(level.phase, 'result');
   }
 });

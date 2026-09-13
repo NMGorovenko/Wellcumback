@@ -16,5 +16,22 @@ export function cleanRole(state: CleanCastState, actor: number): CleanRole {
 }
 export const cleanCast = (state: CleanCastState) =>
   Array.from({ length: state.players }, (_, actor) => cleanRole(state, actor));
-export const isRomaWitness = (players: number, npc: number) =>
-  players === 1 && npc === 1;
+export const isRomaWitness = (_players: number, npc: number) => npc === 1;
+export const cleanActiveActorCount = (s: CleanCastState) =>
+  ['clean', 'result'].includes(s.phase) ? s.players : 1;
+
+export const ROMA_WASHER_LINE =
+  'ебаный рот это казино, ты нахуя обосранные штаны в машинку засунул ? Пиздааа';
+export const WASHER_ORDER_LINE =
+  'ахуеть вы сделали - быстро надели химзащиту и отмыли все и машинку и полы обосрыши ебаные';
+
+export function cleanNpcVisible(
+  s: { phase: string; pantsLoaded: boolean; responseStage: string },
+  npc: number,
+) {
+  if (npc === 0) return true;
+  if (['clean', 'result'].includes(s.phase) || !s.pantsLoaded) return false;
+  return (
+    npc === 1 || ['order-approach', 'order', 'gear'].includes(s.responseStage)
+  );
+}

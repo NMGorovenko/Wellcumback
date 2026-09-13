@@ -7,6 +7,7 @@ import {
 } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { citySceneryFits, type CitySceneryPlacement } from './landmarks.ts';
+import { cityCrossings } from '../../../lib/game/city/crossings.ts';
 
 /** Small street furniture uses the same placement clearance as the older quays.
  * Roads stay open, with no new invisible collision boxes. */
@@ -54,22 +55,57 @@ export function createStreetDetails(
       }
   }
   // Painted zebra crossings are flush with the tarmac and cannot block a car.
-  for (const x of [-92, -48, -16, 38, 94])
-    for (const z of [-54, 54]) {
-      for (const side of [-1, 1])
-        for (let strip = -4; strip <= 4; strip++)
-          kit.box(
-            0.58,
-            0.012,
-            2.3,
-            '#d4d2b7',
-            x + strip * 1.1,
-            0.082,
-            z + side * 9,
-            root,
-            0,
+  for (const c of cityCrossings) {
+    const g = new THREE.Group();
+    g.name = `crossing:${c.roadId}:${c.x}:${c.z}`;
+    g.position.set(c.x, 0, c.z);
+    g.rotation.y = Math.atan2(c.tx, c.tz);
+    root.add(g);
+    for (let strip = -c.width / 2 + 0.5; strip < c.width / 2; strip++)
+      kit.box(0.5, 0.012, c.depth, '#e4dfc0', strip, 0.082, 0, g, 0);
+    for (const side of [-1, 1]) {
+      const x = side * (c.width / 2 + 0.85);
+      kit.cylinder(0.055, 0.075, 2.5, '#68787a', x, 1.25, -side * 1.6, g);
+      kit.box(0.8, 0.8, 0.08, '#327398', x, 2.5, -side * 1.6, g, 0);
+      for (const facing of [-1, 1]) {
+        const triangle = new THREE.Shape();
+        triangle.moveTo(-0.33, -0.29);
+        triangle.lineTo(0.33, -0.29);
+        triangle.lineTo(0, 0.31);
+        triangle.closePath();
+        const face = kit.mesh(
+          new THREE.ShapeGeometry(triangle),
+          kit.material('#f1edcd'),
+          g,
+        );
+        face.position.set(x, 2.5, -side * 1.6 + facing * 0.05);
+        face.rotation.y = facing < 0 ? Math.PI : 0;
+        kit.sphere(
+          0.055,
+          0.055,
+          0.026,
+          '#263b42',
+          x,
+          2.58,
+          face.position.z + facing * 0.015,
+          g,
+          8,
+        );
+        for (const dir of [-1, 1])
+          kit.rod(
+            new THREE.Vector3(x, 2.46, face.position.z + facing * 0.02),
+            new THREE.Vector3(
+              x + dir * 0.12,
+              2.29,
+              face.position.z + facing * 0.02,
+            ),
+            0.022,
+            '#263b42',
+            g,
           );
+      }
     }
+  }
   // Rounded trees fill a few previously empty sidewalk pockets, never mission rings.
   for (const p of [
     { x: 8, z: -65 },

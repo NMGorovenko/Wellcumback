@@ -5,7 +5,7 @@ import {
   type GameState,
   type Input,
 } from './engine.ts';
-import { screenSay } from './dialogue.ts';
+import { screenSay, PROJECTOR_MOVING_LINE } from './dialogue.ts';
 import { drillStaging } from './staging.ts';
 
 export type LevelCheck = {
@@ -271,8 +271,11 @@ export function levelStep(s: GameState, dt: number, input: Input[]) {
     return;
   }
   if (c.mode === 'celebrate') {
+    const before = c.progress;
     c.progress += dt;
-    if (c.progress >= 5.5) {
+    if (before < 5.5 && c.progress >= 5.5)
+      screenSay(s, PROJECTOR_MOVING_LINE, 0, 6);
+    if (c.progress >= 11.5) {
       award(s, 'Потолок кривой. Экран — нет.', 600);
       award(
         s,

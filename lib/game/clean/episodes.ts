@@ -108,6 +108,7 @@ export function createCleanEpisode(
     }
   };
   const checkpoint = () => {
+    if (state.phase === 'clean') tick(empty);
     // Preparation uses normal play. Only the returned checkpoint is practice;
     // its points remain zero and the UI excludes it from persisted results.
     state.practice = true;

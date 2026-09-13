@@ -5,7 +5,15 @@ import {
   MAX_SPRING_FLIGHTS,
   type SpringFlight,
 } from './spring-feedback.ts';
-import { announceScreenPhase, screenSay, SCREEN_DIALOGUE } from './dialogue.ts';
+import {
+  announceScreenPhase,
+  screenSay,
+  SCREEN_DIALOGUE,
+  queueScreenSpeech,
+  advanceScreenSpeech,
+  PROJECTOR_MOVING_LINE,
+  type PendingSpeech,
+} from './dialogue.ts';
 import { freshDrillTools, freshDrillAssistant } from './drill-tools.ts';
 import { CARRY_SHIFT_LIMIT } from './carrier-staging.ts';
 /** Pure, deterministic screen story simulation. Coordinates are logical metres;
@@ -153,6 +161,7 @@ export type GameState = DrillingState & {
   bubble: number;
   levelStable: number;
   levelCheck?: LevelCheck;
+  pendingSpeech?: PendingSpeech[];
   /** Internal simulation bookkeeping. Persist along with public fields for replay. */
   simulation: {
     accumulator: number;
@@ -1382,7 +1391,9 @@ function fixedStep(s: GameState, dt: number, keys: Set<string>) {
     const hit = flight.hit!;
     emit(s, 'spring-hit', hit.worker, flight.side, flight.clip);
     screenSay(s, 'Ай, блять, в глаз!', hit.worker as 0 | 1 | 2, 2.6);
+    queueScreenSpeech(s, PROJECTOR_MOVING_LINE, 0);
   }
+  advanceScreenSpeech(s);
   s.workers.forEach((w, p) => {
     w.actionTime =
       w.animation === previousAnimations[p] ? w.actionTime + dt : 0;

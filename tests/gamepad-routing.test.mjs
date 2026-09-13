@@ -31,134 +31,56 @@ void test('available input slots follow playable humans and never recruit a solo
   assert.equal(inputPlayerCount({ players: 2, actorCount: 2 }), 2);
 });
 for (const players of [2, 3])
-  void test(`one controller stays with Nikita while keyboard controls the soldier and Roma for ${players} players`, () => {
-    const routeInput = (
-      s,
-      memory,
-      buttons = [],
-      axes = [0, 0],
-      keyboard = [],
-      dt = 0.025,
-    ) => {
-      const source = new Set(keyboard);
+  void test(`controller remaps safely from the soldier to a partner when ${players} cleaners arrive`, () => {
+    const s = createCleanEpisode(players, 'response'),
+      memory = createPadInput();
+    const input = (buttons = [], axes = [0, 0], keyboard = []) => {
       const frame = mapGamepads(
         memory,
         [pad(buttons, axes)],
         inputPlayerCount(s),
       );
-      cleanTick(s, dt, mergeInputKeys(source, frame.keys));
-      assert.deepEqual(
-        [...source],
-        keyboard,
-        'pad keys never contaminate the keyboard source',
-      );
-      assert.equal(frame.assignments[0].player, 1);
-      assert.equal(
-        frame.primaryActionPressed,
-        false,
-        'the partner never triggers the primary action',
-      );
+      cleanTick(s, 0.025, mergeInputKeys(new Set(keyboard), frame.keys));
       return frame;
     };
-    // Real episode prerequisites, with clear corridor positions to isolate input ownership.
-    for (const chapter of [
-      'duty',
-      'find',
-      'toilet',
-      'shower',
-      'laundry',
-      'spin',
-      'response',
-      'clean',
-    ]) {
-      const s = createCleanEpisode(players, chapter),
-        memory = createPadInput();
-      s.x[0] = 800;
-      s.y[0] = 650;
-      s.x[1] = 900;
-      s.y[1] = 650;
-      assert.equal(inputPlayerCount(s), players, chapter);
-      routeInput(s, memory);
-      const frame = routeInput(s, memory, [], [0, 1], [], 0.15);
-      assert.deepEqual([...frame.keys], ['ArrowDown']);
-      assert.equal(
-        s.y[0],
-        650,
-        `${chapter}: the pad never moves the anonymous soldier or Roma`,
-      );
-      assert.ok(s.y[1] > 670, `${chapter}: the pad moves Nikita`);
-      const partnerY = s.y[1];
-      routeInput(s, memory, [], [0, 0], ['KeyD'], 0.15);
-      assert.ok(s.x[0] > 820, `${chapter}: keyboard still moves player 1`);
-      assert.equal(
-        s.y[1],
-        partnerY,
-        `${chapter}: released stick cannot keep moving Nikita`,
-      );
-      const primaryX = s.x[0];
-      routeInput(s, memory, [], [0, 1], ['KeyD'], 0.1);
-      assert.ok(
-        s.x[0] > primaryX && s.y[1] > partnerY,
-        `${chapter}: mixed sources work simultaneously`,
-      );
-    }
-    // A partner's A cannot perform the soldier's personal station action.
-    const toilet = createCleanEpisode(players, 'toilet'),
-      stationPad = createPadInput();
-    toilet.x[0] = stations[1].x;
-    toilet.y[0] = stations[1].y;
-    toilet.x[1] = 900;
-    toilet.y[1] = 650;
-    routeInput(toilet, stationPad);
-    const partnerAction = routeInput(toilet, stationPad, [0]);
-    assert.deepEqual([...partnerAction.keys], ['Enter']);
-    assert.equal(toilet.relief, 0);
-    routeInput(toilet, stationPad, [0], [0, 0], ['KeyE']);
-    assert.ok(toilet.relief > 0, 'only the keyboard soldier starts relief');
-
-    // Trigger the actual NPC handoff while A is held. Player 2 does not change
-    // identity, so held A stays Enter; it must never become Roma's KeyE.
-    const s = createCleanEpisode(players, 'response'),
-      memory = createPadInput();
+    assert.equal(input().assignments[0].player, 0);
+    s.x[0] = 800;
+    s.y[0] = 650;
+    input([], [1, 0]);
+    assert.ok(s.x[0] > 800, 'the only pad controls the soldier in the opening');
     s.responseStage = 'gear';
-    for (const [i, npc] of s.npcs.slice(1).entries()) {
+    s.npcs.slice(1).forEach((npc, i) => {
       npc.x = crewSpawn.x + (i ? 25 : -25);
       npc.y = crewSpawn.y;
-    }
-    mapGamepads(memory, [pad()], inputPlayerCount(s));
-    const crossing = routeInput(s, memory, [0]);
+    });
+    input([0]);
     assert.equal(s.phase, 'clean');
-    assert.equal(crossing.assignments[0].ready, true);
-    const held = routeInput(s, memory, [0]);
+    const before = structuredClone(s.x),
+      held = input([0], [1, 0]);
+    assert.equal(held.assignments[0].player, 1);
+    assert.equal(held.assignments[0].ready, false);
     assert.equal(
-      held.assignments[0].ready,
-      true,
-      'stable actor ownership needs no remapping reset',
+      held.keys.size,
+      0,
+      'old held input cannot leak into a new identity',
     );
-    assert.deepEqual([...held.keys], ['Enter']);
-    assert.equal(
-      s.activity[0],
-      'idle',
-      'held partner action does not leak into Roma',
-    );
+    assert.deepEqual(s.x, before);
+    input();
     s.x[1] = stations[4].x;
     s.y[1] = stations[4].y;
-    routeInput(s, memory, [0], [0, 0], [], 0.1);
-    assert.ok(
-      s.valve > 0,
-      'the held controller works the real valve as Nikita',
-    );
-    assert.equal(s.activity[1], 'valve');
+    input([0]);
+    assert.ok(s.valve > 0, 'after releasing, the partner can close the valve');
     assert.equal(s.activity[0], 'idle');
-    assert.equal(
-      routeInput(s, memory).keys.size,
-      0,
-      'release clears the controller source after handoff',
+    input();
+    s.x[0] = 800;
+    s.y[0] = 650;
+    s.x[1] = 900;
+    s.y[1] = 650;
+    input([], [0, 1], ['KeyD']);
+    assert.ok(
+      s.x[0] > 800 && s.y[1] > 650,
+      'keyboard and pad control separate cleaners',
     );
-    const before = s.x[0];
-    routeInput(s, memory, [], [0, 0], ['KeyA'], 0.1);
-    assert.ok(s.x[0] < before, 'keyboard controls Roma after the handoff');
-    assert.equal(s.players, players);
   });
 
 void test('any teammate can resume with B or confirm A and navigate a shared pause menu', () => {

@@ -1,9 +1,17 @@
 import type { GameState, Phase } from './engine.ts';
+export const PROJECTOR_MOVING_LINE =
+  'В отличии от телека - проектор проще перевозить при переезде..';
+export type PendingSpeech = {
+  text: string;
+  speaker: 0 | 1 | 2;
+  duration: number;
+  after: number;
+};
 export const SCREEN_DIALOGUE: Record<Phase, { speaker: 0 | 1; text: string }> =
   {
     frame: {
       speaker: 0,
-      text: 'Так. Экран огромный. Диван теперь для масштаба.',
+      text: PROJECTOR_MOVING_LINE,
     },
     rods: {
       speaker: 1,
@@ -37,4 +45,28 @@ export function screenSay(
 export function announceScreenPhase(s: GameState, phase: Phase) {
   const line = SCREEN_DIALOGUE[phase];
   screenSay(s, line.text, line.speaker);
+}
+
+export function queueScreenSpeech(
+  s: GameState,
+  text: string,
+  speaker: 0 | 1 | 2,
+  duration = 6,
+) {
+  const queue = (s.pendingSpeech ??= []);
+  if (!queue.some((line) => line.text === text))
+    queue.push({ text, speaker, duration, after: s.messageUntil });
+}
+
+export function advanceScreenSpeech(s: GameState) {
+  const next = s.pendingSpeech?.[0];
+  if (
+    !next ||
+    s.phase === 'result' ||
+    s.elapsed < next.after ||
+    s.elapsed < s.messageUntil
+  )
+    return;
+  s.pendingSpeech!.shift();
+  screenSay(s, next.text, next.speaker, next.duration);
 }

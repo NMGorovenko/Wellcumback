@@ -131,3 +131,108 @@
   overflow-wrap: anywhere;
   text-align: center;
 }
+
+/* Timing is part of the action at the actor, even with tutorial badges off. */
+.context-worker[data-timing='true'] {
+  width: 88px;
+  justify-items: center;
+}
+.timing-dial {
+  margin: 0;
+  --dial-accent: #d9ef98;
+  width: 88px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.timing-dial-face {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #14231ee8 0 56%,
+    #14231e80 57% 70%,
+    transparent 71%
+  );
+}
+.timing-dial svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+}
+.timing-dial-track {
+  stroke: #fff4;
+  stroke-width: 3;
+}
+.timing-dial-window {
+  stroke: var(--dial-accent);
+  stroke-width: 7;
+  stroke-linecap: butt;
+}
+.timing-dial-needle {
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.timing-dial-tip {
+  fill: #fff;
+  stroke: #18251e;
+  stroke-width: 1;
+}
+.timing-dial-face kbd {
+  position: absolute;
+  inset: 23px 14px;
+  display: grid;
+  place-items: center;
+  padding: 0 2px;
+  border: 1px solid #f2f1df80;
+  border-bottom-width: 3px;
+  border-radius: 7px;
+  background: #f2f1df;
+  color: #18251e;
+  font:
+    700 18px / 1 system-ui,
+    sans-serif;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.timing-dial[data-held='true'] kbd {
+  background: #ccdcba;
+  transform: translateY(1px);
+}
+.timing-dial[data-ready='true'] .timing-dial-face {
+  box-shadow:
+    0 0 0 2px #d9ef9850,
+    0 0 16px #d9ef9840;
+}
+.timing-dial-caption {
+  max-width: 108px;
+  padding: 3px 7px;
+  border-radius: 10px;
+  color: #fffbe8;
+  background: #14231ef0;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+}
+.timing-dial[data-feedback='good'] {
+  --dial-accent: #bfff9a;
+}
+.timing-dial[data-feedback='good'] .timing-dial-caption {
+  color: #bfff9a;
+}
+.timing-dial[data-feedback='early'],
+.timing-dial[data-feedback='late'],
+.timing-dial[data-feedback='wrong'] {
+  --dial-accent: #ffbc8f;
+}
+.timing-dial[data-feedback='early'] .timing-dial-caption,
+.timing-dial[data-feedback='late'] .timing-dial-caption,
+.timing-dial[data-feedback='wrong'] .timing-dial-caption {
+  color: #ffbc8f;
+}

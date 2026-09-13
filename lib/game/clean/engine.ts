@@ -1,11 +1,12 @@
-import { cleanRole, cleanCast } from './cast.ts';
-export { cleanCrew, cleanRole, cleanCast } from './cast.ts';
 import {
-  cleanSupportTask,
-  freshSupport,
-  supportBenefits,
-  type CleanSupport,
-} from './support.ts';
+  cleanRole,
+  cleanCast,
+  cleanActiveActorCount,
+  ROMA_WASHER_LINE,
+  WASHER_ORDER_LINE,
+} from './cast.ts';
+export { cleanCrew, cleanRole, cleanCast } from './cast.ts';
+import { freshSupport, type CleanSupport } from './support.ts';
 import { reserveTrace } from './traces.ts';
 import {
   bounds,
@@ -116,7 +117,14 @@ export type CleanState = {
   leaks: number;
   leakClock: number;
   machineClean: number;
-  responseStage: 'none' | 'approach' | 'react' | 'gear' | 'ready';
+  responseStage:
+    | 'none'
+    | 'approach'
+    | 'react'
+    | 'order-approach'
+    | 'order'
+    | 'gear'
+    | 'ready';
   responseTime: number;
   npcs: CleanNpc[];
   spots: CleanSpot[];
@@ -128,6 +136,7 @@ export type CleanState = {
   penalties: number;
   cooldown: number;
   navigation: Navigation[];
+  cleanupInputReady?: boolean[];
   simulation: {
     previousE: boolean;
     previousQ: boolean;
@@ -178,7 +187,7 @@ export function freshClean(players = 1): CleanState {
     phase: 'brief',
     phaseTime: 0,
     players: clamp(Math.floor(players) || 1, 1, 3),
-    actorCount: clamp(Math.floor(players) || 1, 1, 3),
+    actorCount: 1,
     x: [stations[7].x, 225, 300],
     y: [stations[7].y, 555, 615],
     elapsed: 0,
@@ -506,6 +515,7 @@ function startMachine(s: CleanState) {
 function startCleanup(s: CleanState) {
   s.responseStage = 'ready';
   s.actorCount = s.players;
+  s.cleanupInputReady = [false, false, false];
   s.timer = 220;
   // A narrative handoff: the anonymous soldier leaves the playable role; the cleanup crew exits the gear cabinet.
   for (let i = 0; i < 3; i++) {
@@ -528,28 +538,46 @@ function startCleanup(s: CleanState) {
 function updateWitnesses(s: CleanState, dt: number) {
   const witnesses = s.npcs.slice(1);
   if (s.responseStage === 'approach') {
-    const arrived = witnesses.map((npc, i) => {
-      npc.action = 'walk';
-      return navigate(npc, npc.navigation, witnessLookPoints[i], dt, 40);
-    });
-    if (arrived.every(Boolean)) {
+    const roma = witnesses[0];
+    roma.action = 'walk';
+    if (navigate(roma, roma.navigation, witnessLookPoints[0], dt, 40)) {
       s.responseStage = 'react';
       s.responseTime = 0;
-      witnesses[0].line = 'Это, блять, какой режим стирки?';
-      witnesses[1].line = 'Нам нужна химзащита. И новая стиралка.';
-      s.message =
-        '«Это, блять, какой режим стирки?» — «Нам нужна химзащита. И новая стиралка». ';
+      roma.line = ROMA_WASHER_LINE;
+      roma.action = 'react';
+      s.message = `Рома: «${ROMA_WASHER_LINE}»`;
     }
   } else if (s.responseStage === 'react') {
     s.responseTime += dt;
-    witnesses.forEach((npc) => {
-      npc.action = 'react';
-    });
-    if (s.responseTime >= 2.5) {
+    witnesses[0].action = 'react';
+    witnesses[0].line = ROMA_WASHER_LINE;
+    witnesses[1].line = '';
+    if (s.responseTime >= 7) {
+      s.responseStage = 'order-approach';
+      witnesses[0].line = '';
+    }
+  } else if (s.responseStage === 'order-approach') {
+    witnesses[1].action = 'walk';
+    if (
+      navigate(
+        witnesses[1],
+        witnesses[1].navigation,
+        witnessLookPoints[1],
+        dt,
+        40,
+      )
+    ) {
+      s.responseStage = 'order';
+      s.responseTime = 0;
+      witnesses[1].action = 'react';
+      witnesses[1].line = WASHER_ORDER_LINE;
+      s.message = `Старший: «${WASHER_ORDER_LINE}»`;
+    }
+  } else if (s.responseStage === 'order') {
+    s.responseTime += dt;
+    if (s.responseTime >= 8) {
       s.responseStage = 'gear';
-      witnesses.forEach((npc) => {
-        npc.line = '';
-      });
+      witnesses[1].line = '';
     }
   } else if (s.responseStage === 'gear') {
     const ready = witnesses.map((npc, i) => {
@@ -612,7 +640,8 @@ function machineStep(
   if (!s.pantsLoaded || s.spin >= 1) return;
   // A stable supported drum finishes sooner even after the valve is closed.
   s.machine += dt * (braces > 0 && s.balance < 0.5 ? 1.18 : 1);
-  s.spin = clamp(s.machine / 34);
+  // The witnesses finish their dialogue while the wash is still running.
+  s.spin = clamp(s.machine / 60);
   s.valve = clamp(s.valve + (valves * dt) / 2);
   s.balance = clamp(
     s.balance +
@@ -762,6 +791,7 @@ function finish(s: CleanState) {
   );
 }
 function step(s: CleanState, dt: number, keys: Set<string>) {
+  s.actorCount = cleanActiveActorCount(s);
   s.elapsed += dt;
   s.phaseTime += dt;
   s.cooldown = Math.max(0, s.cooldown - dt);
@@ -769,10 +799,22 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
   if (s.rhythm.feedbackTime === 0) s.rhythm.feedback = 'waiting';
   const holding = [false, false, false],
     from = position(s, 0);
-  const humans = s.players;
+  const humans = s.actorCount;
   for (let i = 0; i < humans; i++) {
     s.activity[i] = 'idle';
     const [l, r, u, d, action] = cleanBindings[i];
+    if (s.phase === 'clean' && s.cleanupInputReady && !s.cleanupInputReady[i]) {
+      const neutral = [
+        l,
+        r,
+        u,
+        d,
+        action,
+        ...(i === 0 ? ['Space', 'KeyQ'] : []),
+      ].every((key) => !keys.has(key));
+      if (!neutral) continue;
+      s.cleanupInputReady[i] = true;
+    }
     holding[i] = keys.has(action) || (i === 0 && keys.has('Space'));
     if (s.phase === 'accident' && i === 0) {
       s.activity[i] = 'strain';
@@ -788,13 +830,11 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
             : -1;
     const stationTarget =
       stationIndex === -1 ? undefined : stations[stationIndex];
-    const supportTask = i > 0 ? cleanSupportTask(s, i) : undefined;
     const stationaryAction =
       holding[i] &&
-      ((i === 0 &&
-        !!stationTarget &&
-        near(s, i, stationTarget, stationIndex === 3 ? 70 : 62)) ||
-        (!!supportTask && near(s, i, supportTask.target, supportTask.radius)));
+      i === 0 &&
+      !!stationTarget &&
+      near(s, i, stationTarget, stationIndex === 3 ? 70 : 62);
     const dx = stationaryAction ? 0 : Number(keys.has(r)) - Number(keys.has(l)),
       dy = stationaryAction ? 0 : Number(keys.has(d)) - Number(keys.has(u));
     const actor = position(s, i),
@@ -837,11 +877,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
     s.baselineUrge = clamp(0.14 + s.elapsed * 0.014);
     s.urge = Math.max(s.baselineUrge, clamp(s.urge + dt * 0.027));
     if (s.phase === 'duty' && s.phaseTime >= 4) {
-      phase(
-        s,
-        'find',
-        'К дневальному справа. По пути нажимай подсвеченные кнопки в такт.',
-      );
+      phase(s, 'find', 'Где тут дневальный?..');
       s.station = 0;
       s.rhythm.active = true;
     }
@@ -867,7 +903,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
       s.message = `Дневальный: «${dutyReprimand}»`;
     }
     if (arrived && s.phaseTime >= 3.2)
-      phase(s, 'toilet', `Дневальный: «${dutyReprimand}» Кабинка внизу слева.`);
+      phase(s, 'toilet', `Дневальный: «${dutyReprimand}»`);
   } else if (s.phase === 'toilet') {
     if (holding[0] && near(s, 0, stations[1], 62)) {
       s.activity[0] = 'relief';
@@ -915,39 +951,14 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
     }
   }
   let braces = 0;
-  if (s.phase !== 'clean') {
-    for (let i = 1; i < humans; i++) {
-      if (!holding[i]) continue;
-      const task = cleanSupportTask(s, i);
-      if (!task || !near(s, i, task.target, task.radius)) continue;
-      if (task.id === 'brace') {
-        braces++;
-        s.activity[i] = 'brace';
-      } else if (task.id === 'valve') {
-        s.valve = clamp(s.valve + dt / task.seconds);
-        s.activity[i] = 'valve';
-        if (s.valve === 1)
-          s.message = `${cleanRole(s, i).name} перекрыл воду. Новых протечек не будет.`;
-      } else {
-        const progress = s.support.progress;
-        if (task.id === 'kitPickup') s.support.kitOwner = i;
-        progress[task.id] = clamp(progress[task.id] + dt / task.seconds);
-        s.activity[i] = 'gear';
-        if (progress[task.id] === 1) {
-          s.support.completed++;
-          s.message = `${cleanRole(s, i).name}: ${supportBenefits[task.id]}`;
-        }
-      }
-    }
-  }
   if (s.phase === 'spin' || s.phase === 'response') {
     if (holding[0] && near(s, 0, stations[3])) {
       braces++;
       s.activity[0] = 'brace';
     }
     updateWitnesses(s, dt);
-    if (s.phase === 'spin' && s.phaseTime >= 4)
-      phase(s, 'response', 'Сослуживцы идут на шум. Придержи стиралку.');
+    if ((s.phase as CleanPhase) === 'clean') holding.fill(false);
+    if (s.phase === 'spin' && s.phaseTime >= 4) phase(s, 'response', s.message);
   }
   if (s.phase === 'clean') {
     s.timer = Math.max(0, s.timer - dt);

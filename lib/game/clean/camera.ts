@@ -1,5 +1,25 @@
 import { bounds, mapSize, MAP_UNITS_PER_METRE } from './layout.ts';
 
+export const isBarracksStoryClose = (phase: string) =>
+  ['duty', 'find', 'accident', 'toilet'].includes(phase);
+
+/** Show the surrounding passage, not the whole itinerary. Fixed pitch and
+ * heading avoid camera spins while a player watches the timing cue. */
+export function barracksFollow(x: number, z: number, aspect: number) {
+  const distance = 10.8 * Math.max(1, 0.85 / Math.max(0.35, aspect));
+  const pitch = Math.PI * 0.255;
+  const look = { x, y: 0.85, z: z - 0.45 };
+  return {
+    look,
+    position: {
+      x,
+      y: look.y + Math.sin(pitch) * distance,
+      z: look.z + Math.cos(pitch) * distance,
+    },
+    far: 65,
+  };
+}
+
 /** Fixed isometric view fitted to floor corners plus standing head height.
  * Only the viewport aspect ratio changes this framing, never a story action. */
 export function barracksOverview(aspect: number, verticalFov = 43) {

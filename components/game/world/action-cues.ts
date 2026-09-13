@@ -75,11 +75,14 @@ export function placeActionCues(
       i % 2 === 0
         ? [anchorX - w - 42, anchorX + 42]
         : [anchorX + 42, anchorX - w - 42];
+    const aboveX = clampX(anchorX - w / 2),
+      aboveY = clampY(anchorY - h - 38);
+    const above = badge.dataset?.timing === 'true' && !overlaps(aboveX, aboveY);
     const sideX = sides.find(
       (cx) => cx >= 8 && cx + w <= width - 8 && !overlaps(cx, sideY),
     );
-    let x = sideX ?? clampX(anchorX - w / 2),
-      y = sideX === undefined ? clampY(anchorY - h - 40) : sideY;
+    let x = above ? aboveX : (sideX ?? aboveX),
+      y = above ? aboveY : sideX === undefined ? aboveY : sideY;
     if (overlaps(x, y)) {
       const candidates = [
         [x, anchorY + 48],

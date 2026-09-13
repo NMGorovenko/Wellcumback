@@ -1020,7 +1020,7 @@ for (const scene of ['clean', 'moving'])
       const state = structuredClone(client.roomWorld().state);
       tick(state, 1 / 60, new Set());
       assert.equal(state.players, 3);
-      assert.equal(state.actorCount, 3);
+      assert.equal(state.actorCount, scene === 'clean' ? 1 : 3);
       if (scene === 'moving') assert.equal(state.actors.length, 3);
       assert.equal(state.phase, scene === 'clean' ? 'duty' : 'moving');
       bridge.roomCommand({ kind: 'pause' }, 2);
@@ -1205,7 +1205,7 @@ void test('leader transfers only chosen actors, pauses without resetting and sur
     bridge.roomCommand({ kind: 'exit' }, 1);
     bridge.roomCommand({ kind: 'start-story', value: 'clean' }, 1);
     assert.equal(bridge.roomRoleName(client.roomWorld(), 1), 'Солдат');
-    assert.equal(bridge.roomRoleName(client.roomWorld(), 2), 'Рома');
+    assert.equal(bridge.roomRoleName(client.roomWorld(), 2), 'Наблюдатель');
     bridge.roomCommand({ kind: 'episode', value: 'clean' }, 1);
     assert.equal(bridge.roomRoleName(client.roomWorld(), 1), 'Сослуживец');
     assert.equal(bridge.roomRoleName(client.roomWorld(), 2), 'Рома');
@@ -1492,6 +1492,103 @@ void test('background polling does not replace another tab’s explicitly select
     await nextPoll();
     assert.equal(localStorage.getItem('wellcum-room-return-v5'), saved);
   } finally {
+    await cleanup();
+  }
+});
+
+void test('clean handoff publishes a new epoch and discards old queued commands', async () => {
+  setup();
+  let unsubscribe = () => {};
+  try {
+    const { crewSpawn } = await import('../lib/game/clean/layout.ts');
+    const { code, guest, epoch } = await hostCity();
+    const state = freshClean(2);
+    Object.assign(state, {
+      phase: 'response',
+      responseStage: 'gear',
+      pantsLoaded: true,
+      elapsed: 43,
+      machine: 34,
+      spin: 0.56,
+      valve: 0.4,
+      machineClean: 0.25,
+      score: 321,
+    });
+    for (let i = 1; i < 3; i++) {
+      state.npcs[i].x = crewSpawn.x + (i === 1 ? -25 : 25);
+      state.npcs[i].y = crewSpawn.y;
+    }
+    const oldEpoch = epoch + 1;
+    client.publishRoomWorld({
+      scene: 'clean',
+      epoch: oldEpoch,
+      attempt: 7,
+      state,
+      brief: false,
+      roles: [0, 1, 2],
+      driver: 0,
+    });
+    await nextPoll();
+    const queued = await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [
+        { seq: 1, epoch: oldEpoch, keys: [] },
+        { seq: 2, epoch: oldEpoch, keys: [], command: { kind: 'pause' } },
+        { seq: 3, epoch: oldEpoch, keys: ['KeyA', 'KeyE'] },
+      ],
+    });
+    assert.equal(queued.status, 200);
+    await nextPoll();
+    const previousWorld = client.roomWorld(),
+      notifications = [];
+    unsubscribe = client.subscribeRoom(() => {
+      const world = client.roomWorld();
+      notifications.push({
+        epoch: world.epoch,
+        attempt: world.attempt,
+        phase: world.state.phase,
+      });
+    });
+    bridge.tickRoomClean(state, 0.1, new Set());
+    assert.deepEqual(notifications, [
+      { epoch: oldEpoch + 1, attempt: 7, phase: 'clean' },
+    ]);
+    assert.equal(previousWorld.epoch, oldEpoch);
+    assert.equal(state.actorCount, 2);
+    assert.equal(state.score, 321);
+    assert.equal(state.paused, false, 'old pause cannot cross the handoff');
+    assert.deepEqual(client.roomWorld().roles, [0, 1, 2]);
+    const before = { x: [...state.x], y: [...state.y] };
+    bridge.tickRoomClean(state, 0.1, new Set());
+    assert.deepEqual(state.x, before.x);
+    assert.deepEqual(state.y, before.y);
+    assert.equal(client.roomWorld().epoch, oldEpoch + 1);
+    await nextPoll();
+    const persisted = await api({ op: 'poll', code, token: guest.token });
+    assert.equal(persisted.status, 200);
+    assert.equal(persisted.body.snapshot.epoch, oldEpoch + 1);
+    assert.equal(persisted.body.snapshot.attempt, 7);
+    assert.equal(persisted.body.snapshot.state.phase, 'clean');
+    const renewed = await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [
+        { seq: 4, epoch: oldEpoch + 1, keys: [] },
+        { seq: 5, epoch: oldEpoch + 1, keys: ['KeyD'] },
+      ],
+    });
+    assert.equal(renewed.status, 200);
+    await nextPoll();
+    bridge.tickRoomClean(state, 0.1, new Set());
+    assert.ok(state.x[1] > before.x[1]);
+    assert.equal(state.x[0], before.x[0]);
+    assert.equal(state.score, 321);
+    assert.equal(client.roomWorld().attempt, 7);
+  } finally {
+    unsubscribe();
     await cleanup();
   }
 });

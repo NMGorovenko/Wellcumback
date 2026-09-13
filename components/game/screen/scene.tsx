@@ -1,4 +1,5 @@
 'use client';
+import { screenFaceActor } from '@/lib/game/screen/camera';
 import { levelCheck, levelCheckStage } from '@/lib/game/screen/level-check';
 import { createSpiritLevel, placeLevelHands } from './spirit-level';
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- A live WebGL surface has no static image URL. */
@@ -40,6 +41,7 @@ type Props = {
   cameraMode?: CameraMode;
   cueRefs?: ActionCueRefs;
   speechRef?: SpeechBubbleRef;
+  localActor?: number;
 };
 const poses: Record<WorkerAction, Pose> = {
   idle: 'idle',
@@ -63,13 +65,28 @@ export default function Scene({
   cameraMode = 'auto',
   cueRefs,
   speechRef,
+  localActor,
 }: Props) {
   const host = useRef<HTMLDivElement>(null),
-    options = useRef({ stateRef, preview, cameraMode, cueRefs, speechRef });
+    options = useRef({
+      stateRef,
+      preview,
+      cameraMode,
+      cueRefs,
+      speechRef,
+      localActor,
+    });
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    options.current = { stateRef, preview, cameraMode, cueRefs, speechRef };
-  }, [stateRef, preview, cameraMode, cueRefs, speechRef]);
+    options.current = {
+      stateRef,
+      preview,
+      cameraMode,
+      cueRefs,
+      speechRef,
+      localActor,
+    };
+  }, [stateRef, preview, cameraMode, cueRefs, speechRef, localActor]);
   useEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -638,13 +655,7 @@ export default function Scene({
         );
       });
       if (opt.cameraMode === 'faces') {
-        const index = isPreview
-          ? 1
-          : s.phase === 'tension'
-            ? s.tool.owner
-            : s.phase === 'drill' || s.phase === 'level'
-              ? 1
-              : 0;
+        const index = isPreview ? 1 : screenFaceActor(s, opt.localActor);
         const rig = rigs[index];
         rig.head.getWorldPosition(wantedLook);
         targetPosition.set(
@@ -743,7 +754,7 @@ export default function Scene({
         rigs.map((rig) => rig.head),
         camera,
         renderer.domElement,
-        !s.paused && !isPreview && opt.cameraMode !== 'faces',
+        !s.paused && !isPreview,
         speechRect ? [speechRect] : [],
       );
       renderer.render(world, camera);

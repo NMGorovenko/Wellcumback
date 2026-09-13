@@ -6,6 +6,11 @@ import {
 } from './powertrain.ts';
 import { resolveDrive, type DriveAxes } from '../input/drive.ts';
 import {
+  advanceCityConversation,
+  freshCityConversation,
+  type CityConversation,
+} from './dialogue.ts';
+import {
   BRIDGES,
   CITY_BOUNDS,
   CITY_SPAWN,
@@ -45,6 +50,7 @@ export type CityState = {
   accumulator: number;
   radio: string;
   radioUntil: number;
+  conversation?: CityConversation;
 };
 export const freshCity = (): CityState => ({
   paused: false,
@@ -70,6 +76,7 @@ export const freshCity = (): CityState => ({
   accumulator: 0,
   radio: 'Никита: Все сели? Поехали вспоминать этот год.',
   radioUntil: 7,
+  conversation: freshCityConversation(),
 });
 const blockers = [...cityBuildings, ...cityBarriers];
 const RADIUS = 0.85,
@@ -250,6 +257,7 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
     }
   }
   s.previousAction = action;
+  advanceCityConversation(s);
 }
 /** Fixed steps keep grip/collisions consistent on 30, 60 and 144 Hz displays. */
 export function tickCity(

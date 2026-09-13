@@ -506,6 +506,7 @@ export default function ScreenGame({
         <Scene
           stateRef={game}
           cameraMode={cameraMode}
+          localActor={online ? localActor : undefined}
           cueRefs={cueRefs}
           speechRef={speechRef}
         />
@@ -522,14 +523,13 @@ export default function ScreenGame({
             view.messageUntil > view.elapsed
           }
         />
-        {settings.showWorldPrompts && (
-          <ContextPrompts
-            state={view}
-            pads={pads}
-            cueRefs={cueRefs}
-            localPlayer={online ? localActor : undefined}
-          />
-        )}
+        <ContextPrompts
+          showPrompts={settings.showWorldPrompts}
+          state={view}
+          pads={pads}
+          cueRefs={cueRefs}
+          localPlayer={online ? localActor : undefined}
+        />
         <div key={view.phase} className="scene-cut" aria-hidden="true">
           <span>{titles[view.phase]}</span>
         </div>

@@ -14,7 +14,7 @@ for (const players of [1, 2, 3])
     const s = createScreenEpisode(players, 'level');
     const modes = [],
       checkpoints = new Map();
-    let spokenAt;
+    let spokenAt, nikitaAt;
     for (let i = 0; i < 45 * 60 && s.phase !== 'result'; i++) {
       tick(s, 1 / 60, levelKeys(s));
       const c = s.levelCheck;
@@ -28,6 +28,18 @@ for (const players of [1, 2, 3])
         checkpoints.set(c.mode, structuredClone(s));
       const stage = levelCheckStage(s);
       assert.ok(stage.workers[1].y >= 0);
+      if (
+        c.mode === 'celebrate' &&
+        s.messageSpeaker === 0 &&
+        nikitaAt === undefined
+      ) {
+        nikitaAt = s.elapsed;
+        assert.equal(
+          s.speechText,
+          'В отличии от телека - проектор проще перевозить при переезде..',
+        );
+        assert.ok(nikitaAt - spokenAt >= 5.49);
+      }
       if (c.mode === 'celebrate' && spokenAt === undefined) {
         spokenAt = s.elapsed;
         assert.equal(s.speechText, 'нихуя с первого раза и по уровню вышло xD');
@@ -47,7 +59,8 @@ for (const players of [1, 2, 3])
       'settle',
       'celebrate',
     ]);
-    assert.ok(s.elapsed - spokenAt >= 5.49);
+    assert.ok(s.elapsed - spokenAt >= 11.49);
+    assert.ok(s.elapsed - nikitaAt >= 5.97);
     assert.equal(s.score, 0, 'practice cannot earn points');
     for (const saved of checkpoints.values()) {
       const restored = JSON.parse(JSON.stringify(saved));

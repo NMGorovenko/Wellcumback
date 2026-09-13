@@ -15,6 +15,7 @@ import {
   type CityPoint,
 } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
+import { createWhiteHorse } from './monuments.ts';
 
 const palette = {
   stone: '#d4d2b7',
@@ -27,7 +28,7 @@ const palette = {
   gold: '#e8dca7',
 };
 export type CitySceneryPlacement = CityPoint & {
-  kind: 'shelter' | 'parking' | 'quay';
+  kind: 'shelter' | 'parking' | 'quay' | 'monument';
   radius: number;
 };
 
@@ -371,5 +372,7 @@ export function createCityLandmarks(
       }
       placements.push({ ...p, kind: 'quay', radius: 1.05 });
     }
+  const horse = createWhiteHorse(kit, root);
+  placements.push({ ...horse, kind: 'monument' });
   return placements;
 }

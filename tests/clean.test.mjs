@@ -211,7 +211,9 @@ void test('witnesses physically approach the spinning washer, react, collect sui
 for (const players of [1, 2, 3])
   void test(`complete v3 with ${players} players using real movement/actions, all traces, machine and rinsing`, () => {
     const s = throughLaundry(players);
-    run(s, 35);
+    for (let step = 0; step < 2400 && s.phase !== 'clean'; step++)
+      run(s, 0.025);
+    run(s, 0.025);
     assert.equal(s.phase, 'clean');
     let actor = 0,
       rinses = 0,

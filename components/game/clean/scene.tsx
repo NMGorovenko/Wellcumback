@@ -1,12 +1,18 @@
 'use client';
-import { isRomaWitness } from '@/lib/game/clean/cast';
+import { isRomaWitness, cleanNpcVisible } from '@/lib/game/clean/cast';
+import { cleanSpeech } from '@/lib/game/clean/dialogue';
+import { placeSpeechBubble } from '../world/speech-position';
+import type { SpeechBubbleRef } from '../world/speech-bubble';
 import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import type { CleanState } from '@/lib/game/clean/engine';
-import { barracksOverview } from '@/lib/game/clean/camera';
+import {
+  barracksOverview,
+  barracksFollow,
+  isBarracksStoryClose,
+} from '@/lib/game/clean/camera';
 import { bounds } from '@/lib/game/clean/layout';
-import { cleanSupportTask } from '@/lib/game/clean/support';
 import { planRoute, stations } from '@/lib/game/clean/engine';
 import { RenderKit } from '../world/render-kit';
 import { placeActionCues, type ActionCueRefs } from '../world/action-cues';
@@ -16,11 +22,10 @@ import {
   createCleaner,
   createNpc,
   createSoldier,
-  createSupporter,
 } from './actors-v3';
 import { createTraceField, floorWorld } from './props-v3';
 
-export type CleanCameraMode = 'wide' | 'faces';
+export type CleanCameraMode = 'auto' | 'wide' | 'faces';
 const TAU = Math.PI * 2;
 const angleToward = (current: number, target: number, amount: number) =>
   current +
@@ -32,21 +37,29 @@ const isCleanup = (phase: CleanState['phase']) =>
 export default function CleanScene({
   game,
   players,
-  cameraMode = 'wide',
+  cameraMode = 'auto',
   cueRefs,
+  localActor,
+  speechRef,
 }: {
   game: RefObject<CleanState>;
   players: number;
   cameraMode?: CleanCameraMode;
   cueRefs?: ActionCueRefs;
+  localActor?: number;
+  speechRef?: SpeechBubbleRef;
 }) {
   const host = useRef<HTMLDivElement>(null),
     mode = useRef(cameraMode);
   const cues = useRef(cueRefs);
+  const local = useRef(localActor);
+  const speech = useRef(speechRef);
   useEffect(() => {
     mode.current = cameraMode;
     cues.current = cueRefs;
-  }, [cameraMode, cueRefs]);
+    local.current = localActor;
+    speech.current = speechRef;
+  }, [cameraMode, cueRefs, localActor, speechRef]);
   useEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -104,11 +117,8 @@ export default function CleanScene({
     const soldier = createSoldier(kit),
       npcs = [0, 1, 2].map((i) => createNpc(kit, i, players));
     const crew = [0, 1, 2].map((i) => createCleaner(kit, i, players));
-    const supporters = [1, 2].map((i) => createSupporter(kit, i));
-    supporters.forEach((actor, i) => {
-      actor.previous.copy(
-        floorWorld(game.current.x[i + 1], game.current.y[i + 1]),
-      );
+    crew.forEach((actor, i) => {
+      actor.previous.copy(floorWorld(game.current.x[i], game.current.y[i]));
       actor.rig.root.position.copy(actor.previous);
     });
     const routeMaterial = new THREE.MeshStandardMaterial({
@@ -187,6 +197,14 @@ export default function CleanScene({
         previousHero.copy(target);
         routeClock = 1;
         lastStation = -1;
+        crew.forEach((actor, i) => {
+          actor.previous.copy(floorWorld(s.x[i], s.y[i], target));
+          actor.rig.root.position.copy(target);
+        });
+        npcs.forEach((npc, i) => {
+          npc.previous.copy(floorWorld(s.npcs[i].x, s.npcs[i].y, target));
+          npc.rig.root.position.copy(target);
+        });
       }
       const phaseChanged = previousPhase !== s.phase;
       if (phaseChanged && cleaning)
@@ -355,7 +373,7 @@ export default function CleanScene({
 
       npcs.forEach((npc, i) => {
         const state = s.npcs[i];
-        npc.rig.root.visible = !cleaning || i === 0;
+        npc.rig.root.visible = cleanNpcVisible(s, i);
         floorWorld(state.x, state.y, target);
         const dx = target.x - npc.previous.x,
           dz = target.z - npc.previous.z;
@@ -380,12 +398,7 @@ export default function CleanScene({
         );
         npc.rig.update(time + i * 0.29, actorPose(state.action));
         npc.suited.visible = state.suited;
-        const speaking =
-          i === 0
-            ? s.phase === 'accident' ||
-              (s.phase === 'toilet' && s.phaseTime < 8)
-            : state.action === 'react';
-        npc.say(speaking && mode.current === 'faces' ? state.line : '');
+        npc.say('');
         npc.shock.visible = state.action === 'react' && !state.line;
         npc.name.visible = isRomaWitness(players, i) && !cleaning;
         if (state.action === 'react') {
@@ -406,53 +419,6 @@ export default function CleanScene({
           npc.rig.root.localToWorld(hand);
           npc.rig.reach('right', hand);
         }
-      });
-      supporters.forEach((actor, slot) => {
-        const i = slot + 1;
-        actor.rig.root.visible = !cleaning && i < s.players;
-        if (!actor.rig.root.visible) return;
-        const activity = s.activity[i];
-        floorWorld(s.x[i], s.y[i], target);
-        const dx = target.x - actor.previous.x,
-          dz = target.z - actor.previous.z;
-        let heading = actor.rig.root.rotation.y;
-        if (dx * dx + dz * dz > 0.000001) heading = Math.atan2(dx, dz);
-        const task = cleanSupportTask(s, i);
-        if (
-          activity !== 'walk' &&
-          task &&
-          ['gear', 'brace', 'valve'].includes(activity)
-        ) {
-          floorWorld(task.target.x, task.target.y, point).sub(target);
-          heading = Math.atan2(point.x, point.z);
-        }
-        actor.previous.copy(target);
-        actor.rig.root.position.lerp(target, easing);
-        actor.rig.root.rotation.y = angleToward(
-          actor.rig.root.rotation.y,
-          heading,
-          rotationEase,
-        );
-        actor.rig.update(time + i * 0.29, actorPose(activity));
-        actor.kitBag.visible =
-          s.support.kitOwner === i &&
-          s.support.progress.kitPickup >= 1 &&
-          s.support.progress.kit < 1 &&
-          !s.washed;
-        if (actor.kitBag.visible) {
-          hand.set(0.28, 0.96, 0.24);
-          actor.rig.root.localToWorld(hand);
-          actor.rig.reach('right', hand);
-        }
-        if (activity === 'brace') {
-          floorWorld(stations[3].x, stations[3].y, hand);
-          hand.y = 0.92;
-          hand.z = washerHome.z + 0.48;
-          actor.rig.reach('left', hand);
-          hand.x += 0.16;
-          actor.rig.reach('right', hand);
-        } else if (activity === 'valve')
-          actor.rig.reach('right', room.valve.position);
       });
       crew.forEach((actor, i) => {
         const visible = cleaning && i < s.actorCount;
@@ -550,7 +516,10 @@ export default function CleanScene({
         }
       });
 
+      const storyClose =
+        mode.current === 'auto' && isBarracksStoryClose(s.phase);
       const routeVisible =
+        !storyClose &&
         !cleaning &&
         ['duty', 'find', 'toilet', 'shower', 'laundry'].includes(s.phase) &&
         !['relief', 'shower', 'load'].includes(heroAction);
@@ -600,11 +569,11 @@ export default function CleanScene({
       room.markers[3].position.z = washerHome.z + 0.78;
       // Map labels help in overview; in close-ups they would cover faces.
       room.roomSigns.forEach((sign) => {
-        sign.visible = mode.current === 'wide';
+        sign.visible = mode.current !== 'faces' && !storyClose;
       });
       room.labels.forEach((label, i) => {
         label.visible =
-          mode.current === 'wide' ||
+          (mode.current !== 'faces' && !storyClose) ||
           (cleaning
             ? i === 5 ||
               (i === 4 && s.valve < 1) ||
@@ -614,14 +583,21 @@ export default function CleanScene({
       });
 
       const narrow = camera.aspect < 1.15;
-      const focused = cleaning ? crew[0].rig : soldier.rig;
+      const actor = Math.max(0, Math.min(s.actorCount - 1, local.current ?? 0));
+      const line = cleanSpeech(s);
+      const focused =
+        line && mode.current === 'faces'
+          ? npcs[line.npc].rig
+          : cleaning
+            ? crew[actor].rig
+            : soldier.rig;
       if (mode.current === 'faces') {
         focused.head.getWorldPosition(desiredLook);
         desiredLook.y -= 0.1;
         desiredCamera
           .copy(desiredLook)
           .add(offset.set(narrow ? 0.65 : 0.85, 0.5, narrow ? 3.6 : 2.8));
-        if (s.activity[0] !== 'walk')
+        if (s.activity[actor] !== 'walk')
           focused.root.rotation.y = angleToward(
             focused.root.rotation.y,
             Math.atan2(
@@ -631,7 +607,13 @@ export default function CleanScene({
             rotationEase,
           );
       } else {
-        const overview = barracksOverview(camera.aspect, camera.fov);
+        const overview = storyClose
+          ? barracksFollow(
+              focused.root.position.x,
+              focused.root.position.z,
+              camera.aspect,
+            )
+          : barracksOverview(camera.aspect, camera.fov);
         desiredLook.copy(overview.look);
         desiredCamera.copy(overview.position);
         if (camera.far !== overview.far) {
@@ -644,14 +626,27 @@ export default function CleanScene({
       camera.position.lerp(desiredCamera, cameraEase);
       look.lerp(desiredLook, cameraEase);
       camera.lookAt(look);
-      placeActionCues(
-        cues.current,
-        cleaning
-          ? crew.map((actor) => actor.rig.head)
-          : [soldier.rig.head, ...supporters.map((actor) => actor.rig.head)],
+      const heads = cleaning
+        ? crew.slice(0, s.actorCount).map((a) => a.rig.head)
+        : [soldier.rig.head];
+      const speechRect = placeSpeechBubble(
+        speech.current,
+        line ? npcs[line.npc].rig.head : null,
         camera,
         element,
-        !s.paused && mode.current !== 'faces',
+        !!line,
+        [
+          ...heads,
+          ...npcs.filter((n) => n.rig.root.visible).map((n) => n.rig.head),
+        ],
+      );
+      placeActionCues(
+        cues.current,
+        heads,
+        camera,
+        element,
+        !s.paused && !['brief', 'result'].includes(s.phase),
+        speechRect ? [speechRect] : [],
       );
       renderer.render(scene, camera);
       countRenderedFrame(performance.now());

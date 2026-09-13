@@ -209,3 +209,35 @@ void test('flight feedback stays bounded, expires, settles on the floor and supp
   advanceSpringFlights(flights, 2.5, 0.01, [], PHYSICAL_LAYOUT);
   assert.equal(flights.length, 0);
 });
+
+void test('Nikita repeats the moving joke after the hit reaction, including pause and reconnect', async () => {
+  const { PROJECTOR_MOVING_LINE } =
+    await import('../lib/game/screen/dialogue.ts');
+  const opening = freshGame(2);
+  assert.equal(opening.speechText, PROJECTOR_MOVING_LINE);
+  assert.equal(opening.messageSpeaker, 0);
+  const s = unevenPull();
+  advance(s, 0.4);
+  assert.equal(s.speechText, 'Ай, блять, в глаз!');
+  const until = s.messageUntil;
+  assert.equal(s.pendingSpeech.length, 1);
+  s.paused = true;
+  const saved = JSON.stringify(s);
+  advance(s, 4);
+  assert.equal(JSON.stringify(s), saved);
+  const restored = JSON.parse(saved);
+  s.paused = restored.paused = false;
+  for (let i = 0; i < 200; i++) {
+    tick(s, 1 / 60, new Set());
+    tick(restored, 1 / 60, new Set());
+    if (s.elapsed < until) assert.equal(s.speechText, 'Ай, блять, в глаз!');
+  }
+  assert.deepEqual(restored, s);
+  assert.equal(s.speechText, PROJECTOR_MOVING_LINE);
+  assert.equal(s.messageSpeaker, 0);
+  assert.equal(s.pendingSpeech.length, 0);
+  assert.ok(
+    s.messageUntil > s.elapsed + 4,
+    'the reply is readable for six seconds',
+  );
+});

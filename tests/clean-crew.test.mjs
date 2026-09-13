@@ -50,6 +50,7 @@ for (const players of [1, 2, 3]) {
         beforeHandoff.slice(1),
         'partners retain their identities and slots',
       );
+    cleanTick(s, 0.025, new Set()); // Release inputs after the identity handoff.
     const before = [...s.x];
     for (let i = 0; i < 5; i++)
       cleanTick(s, 0.025, new Set(['KeyA', 'ArrowLeft', 'KeyJ']));
@@ -113,13 +114,13 @@ for (const players of [1, 2, 3])
       const npcs = [0, 1, 2].map((index) =>
         createChecked(
           () => createNpc(k, index, players),
-          players === 1 && index === 1,
+          index === 1,
           `NPC ${index}`,
         ),
       );
       assert.deepEqual(
         npcs.map((actor) => actor.rig.root.name),
-        ['npc-0', players === 1 ? 'witness-roma' : 'npc-1', 'npc-2'],
+        ['npc-0', 'witness-roma', 'npc-2'],
       );
       // The scene constructs every slot, including models hidden in this mode or phase.
       const crew = [0, 1, 2].map((index) =>

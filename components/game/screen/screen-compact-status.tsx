@@ -8,11 +8,7 @@ import {
   type PadFrame,
   type InputControl,
 } from '@/lib/game/input/gamepads';
-import {
-  springWindow,
-  throwTargetPower,
-  type GameState,
-} from '@/lib/game/screen/engine';
+import { type GameState } from '@/lib/game/screen/engine';
 import { chairBalanceCue } from '@/lib/game/screen/prompts';
 import { ACTION_LABELS, NAMES, SIDES } from './screen-hud-data';
 import { Fill, Meter } from './screen-hud-primitives';
@@ -89,17 +85,7 @@ export function ScreenCompactStatus({
                 )}
               />
             </>
-          ) : (
-            <Meter
-              label="До щелчка"
-              value={view.cursor}
-              target={[
-                0.5 - (0.075 + view.frameBrace * 0.08),
-                0.5 + (0.075 + view.frameBrace * 0.08),
-              ]}
-              hint={hint(localPlayer ?? 0, 'action', 'E')}
-            />
-          )}
+          ) : null}
         </>
       );
     case 'rods':
@@ -133,9 +119,7 @@ export function ScreenCompactStatus({
         </>
       );
     case 'tension': {
-      const tool = view.tool,
-        force = springWindow(view),
-        target = throwTargetPower(view);
+      const tool = view.tool;
       return (
         <>
           <Edges view={view} />
@@ -167,24 +151,7 @@ export function ScreenCompactStatus({
               }
               value={tool.flight}
             />
-          ) : tool.status === 'charging' ? (
-            <Meter
-              label={
-                localPlayer !== undefined && localPlayer !== tool.owner
-                  ? `${NAMES[tool.owner]} · готовит бросок`
-                  : `Бросок → отпусти ${hint(tool.owner, 'throw', 'Q')}`
-              }
-              value={tool.status === 'charging' ? tool.charge : 0}
-              target={[target - 0.105, target + 0.105]}
-            />
-          ) : (
-            <Meter
-              label="Пружина → отпусти действие"
-              value={view.spring.active ? view.spring.power : 0}
-              target={force}
-              danger={view.spring.power > force[1]}
-            />
-          )}
+          ) : null}
         </>
       );
     }

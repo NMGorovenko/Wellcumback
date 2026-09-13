@@ -45,6 +45,9 @@ import {
 } from '@/lib/game/clean/episodes';
 import CleanScene, { type CleanCameraMode } from './scene';
 import CleanStatus from './clean-status';
+import { SpeechBubble } from '../world/speech-bubble';
+import { cleanSpeech } from '@/lib/game/clean/dialogue';
+import { cleanActiveActorCount } from '@/lib/game/clean/cast';
 import {
   cleanChapter,
   cleanChapters,
@@ -117,7 +120,7 @@ export default function CleanGame({
   const [touchActor, setTouchActor] = useState(0);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [view, setView] = useState(initial),
-    [cameraMode, setCameraMode] = useState<CleanCameraMode>('wide');
+    [cameraMode, setCameraMode] = useState<CleanCameraMode>('auto');
   const [pads, setPads] = useState<
     Pick<PadFrame, 'assignments' | 'unsupported'>
   >({
@@ -127,6 +130,7 @@ export default function CleanGame({
   const [pauseChoice, setPauseChoice] = useState(0);
   const [episodeOpen, setEpisodeOpen] = useState(false);
   const [episodeChoice, setEpisodeChoice] = useState(0);
+  const speechRef = useRef<HTMLOutputElement | null>(null);
   const cueRefs = useRef<(HTMLDivElement | null)[]>([]);
   const cueKeys = useRef<ReadonlySet<string>>(new Set());
   const [heldKeys, setHeldKeys] = useState<ReadonlySet<string>>(new Set());
@@ -163,7 +167,15 @@ export default function CleanGame({
     setControlsOpen(true);
   };
   const toggleCamera = () =>
-    setCameraMode((mode) => (mode === 'wide' ? 'faces' : 'wide'));
+    setCameraMode((mode) =>
+      mode === 'auto' ? 'wide' : mode === 'wide' ? 'faces' : 'auto',
+    );
+  const nextCameraLabel =
+    cameraMode === 'auto'
+      ? 'Вся казарма'
+      : cameraMode === 'wide'
+        ? 'Лицо'
+        : 'За персонажем';
   const openEpisodes = () => {
     if (!canManage) return;
     setPause(true);
@@ -254,10 +266,14 @@ export default function CleanGame({
     players,
     onFinish,
   ]);
-  const inputActor = online ? 0 : touchActor;
+  const activeCount = cleanActiveActorCount(view);
+  const selectedActor = Math.min(touchActor, activeCount - 1);
+  const spectator = online && localActor >= activeCount;
+  const speech = cleanSpeech(view);
+  const inputActor = online ? 0 : selectedActor;
   const touchPrompts = cleanPrompts(
     view,
-    online ? Math.max(0, localActor) : touchActor,
+    online ? Math.max(0, localActor) : selectedActor,
   );
   const touchAction = touchPrompts.find(
     (prompt) => prompt.control === 'action',
@@ -275,28 +291,32 @@ export default function CleanGame({
         <CleanScene
           players={view.players}
           game={game}
+          speechRef={speechRef}
           cameraMode={cameraMode}
+          localActor={online ? Math.max(0, localActor) : undefined}
           cueRefs={cueRefs}
         />
-        {settings.showWorldPrompts && (
-          <CleanActionPrompts
-            state={view}
-            pads={pads}
-            cueRefs={cueRefs}
-            heldKeys={heldKeys}
-            localSlot={online ? localActor : undefined}
-          />
-        )}
+        <CleanActionPrompts
+          showPrompts={settings.showWorldPrompts}
+          state={view}
+          pads={pads}
+          cueRefs={cueRefs}
+          heldKeys={heldKeys}
+          localSlot={online ? localActor : undefined}
+        />
+        <SpeechBubble
+          bubbleRef={speechRef}
+          speaker={speech?.speaker ?? ''}
+          text={speech?.text ?? ''}
+          visible={!!speech}
+        />
         <button
           className="clean-camera-toggle"
           type="button"
           onClick={toggleCamera}
-          aria-pressed={cameraMode === 'faces'}
-          aria-label={
-            cameraMode === 'faces' ? 'Показать всю казарму' : 'Приблизить лицо'
-          }
+          aria-label={`Камера: ${nextCameraLabel}`}
         >
-          <Camera size={16} /> {cameraMode === 'faces' ? 'Вся казарма' : 'Лицо'}
+          <Camera size={16} /> {nextCameraLabel}
         </button>
         <div className="world-heading">
           <span>02 / ДРУГАЯ РОТА</span>
@@ -359,9 +379,11 @@ export default function CleanGame({
             </p>
             <p className="quiet">
               {online
-                ? `Ты — ${cleanRole(view, Math.max(0, localActor)).name}.`
+                ? spectator
+                  ? 'Сейчас играет солдат.'
+                  : `Ты — ${cleanRole(view, Math.max(0, localActor)).name}.`
                 : Array.from(
-                    { length: view.players },
+                    { length: activeCount },
                     (_, actor) =>
                       `${actor + 1} · ${cleanRole(view, actor).name}`,
                   ).join(' / ')}
@@ -412,11 +434,7 @@ export default function CleanGame({
           </div>
         ) : (
           <>
-            <CleanStatus
-              localActor={online ? localActor : undefined}
-              game={view}
-              pads={pads}
-            />
+            <CleanStatus game={view} />
           </>
         )}
         <details className="clean-help">
@@ -429,20 +447,20 @@ export default function CleanGame({
           </p>
           <p>
             {Array.from(
-              { length: view.players },
+              { length: activeCount },
               (_, actor) => `${actor + 1} · ${cleanRole(view, actor).name}`,
             ).join(' / ')}
           </p>
-          {active && (
+          {active && !spectator && (
             <details className="touch-controls">
               <summary>Кнопки на экране</summary>
-              {!online && players > 1 && (
+              {!online && activeCount > 1 && (
                 <div className="touch-row" aria-label="Кем управлять на экране">
-                  {Array.from({ length: players }, (_, actor) => (
+                  {Array.from({ length: activeCount }, (_, actor) => (
                     <button
                       key={actor}
                       className="touch-key"
-                      aria-pressed={touchActor === actor}
+                      aria-pressed={selectedActor === actor}
                       onClick={() => {
                         keys.current.clear();
                         setTouchActor(actor);
@@ -550,8 +568,7 @@ export default function CleanGame({
               setPause(false);
             }}
           >
-            <Camera size={17} />{' '}
-            {cameraMode === 'faces' ? 'Вернуть общий вид' : 'Рассмотреть лицо'}
+            <Camera size={17} /> {nextCameraLabel}
           </button>
           <button
             className={`secondary-button${pauseChoice === 3 ? ' pad-selected' : ''}`}

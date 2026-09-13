@@ -70,7 +70,10 @@ for (const players of [1, 2, 3])
       assert.equal(s.score, 0);
       assert.equal(s.paused, false);
       assert.equal(s.players, players);
-      assert.equal(s.actorCount, players);
+      assert.equal(
+        s.actorCount,
+        ['clean', 'result'].includes(s.phase) ? players : 1,
+      );
       assert.deepEqual(
         cleanCast(s).map((person) => person.id),
         s.phase === 'clean'
@@ -136,7 +139,7 @@ for (const players of [1, 2, 3])
         assert.equal(s.pantsLoaded, true);
         assert.equal(s.laundryProgress, 1);
         assert.equal(s.machineClean, 0);
-        assert.ok(s.spin > 0 && s.spin < 1);
+        assert.ok(s.spin > 0 && s.spin <= 1);
         assert.equal(s.valve, 0);
       }
       if (s.phase === 'clean') {
@@ -167,7 +170,9 @@ void test('every non-cleanup checkpoint proceeds through its next normal chapter
       run(s, 2.7, ['KeyE']);
     }
     if (ep.id === 'spin') run(s, 4.1);
-    if (ep.id === 'response') run(s, 35);
+    if (ep.id === 'response') {
+      for (let i = 0; i < 2400 && s.phase !== 'clean'; i++) run(s, 0.025);
+    }
     const next = {
       duty: 'find',
       find: 'accident',
@@ -217,7 +222,10 @@ for (const players of [1, 2, 3])
     assert.equal(s.phase, 'result');
     assert.equal(s.score, 0);
     assert.equal(s.practice, true);
-    assert.equal(s.actorCount, players);
+    assert.equal(
+      s.actorCount,
+      ['clean', 'result'].includes(s.phase) ? players : 1,
+    );
     assert.deepEqual(
       cleanCast(s),
       cleanupCast,

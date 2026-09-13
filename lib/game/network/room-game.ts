@@ -6,7 +6,7 @@ import {
   isRoomLeader,
   transferRoles,
 } from './room-roles.ts';
-import { cleanRole } from '../clean/cast.ts';
+import { cleanRole, cleanActiveActorCount } from '../clean/cast.ts';
 import {
   freshClean,
   cleanAction,
@@ -118,7 +118,8 @@ function includeStoryPlayers(world: RoomWorld) {
     }
   }
   state.players = count;
-  state.actorCount = count;
+  state.actorCount =
+    world.scene === 'clean' ? cleanActiveActorCount(state) : count;
 }
 export function mapRoomKeys(
   keys: ReadonlySet<string>,
@@ -445,6 +446,10 @@ function hostSteps(
       return;
     }
     step(current);
+    if (roomWorld()?.epoch !== world.epoch) {
+      hostAccumulator = 0;
+      return;
+    }
   }
 }
 export function tickRoomCity(
@@ -596,10 +601,18 @@ function tickRoomStory<T extends CleanState | MovingState>(
           merged.add(code);
     }
     localActionPulse = '';
+    const priorPhase = s.phase;
     tick(s, HOST_STEP, merged);
+    const cleanupHandoff =
+      scene === 'clean' && priorPhase !== 'clean' && s.phase === 'clean';
+    if (cleanupHandoff) {
+      suspendRemoteInput();
+      inputArmed = false;
+    }
     Object.assign(state, s);
     publishRoomWorld({
       ...current,
+      epoch: current.epoch + (cleanupHandoff ? 1 : 0),
       state: s as unknown as Record<string, unknown>,
     });
   });
@@ -616,6 +629,12 @@ export const tickRoomMoving = (
 ) => tickRoomStory('moving', state, dt, keys, movingTick);
 
 export function roomRoleName(world: RoomWorld | null, slot: number) {
+  if (
+    world?.scene === 'clean' &&
+    !['clean', 'result'].includes(String(world.state.phase)) &&
+    roomActor(world, slot) > 0
+  )
+    return 'Наблюдатель';
   const roles =
     world?.scene === 'moving'
       ? ['Ярик', 'Настя', 'Никита']
