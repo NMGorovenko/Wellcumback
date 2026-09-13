@@ -1,6 +1,7 @@
 /** Verify the packaged relay in its own Node process, including SQLite persistence. */
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { DatabaseSync } from 'node:sqlite';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
@@ -70,6 +71,15 @@ async function stop() {
 const request = (client, payload) =>
   client.request({ version: ROOM_VERSION, ...payload });
 try {
+  // Start from the previous release's schema, as an existing desktop host does.
+  const legacy = new DatabaseSync(path.join(folder, 'rooms.sqlite'));
+  legacy.exec(
+    await readFile(
+      new URL('../drizzle/0000_rooms.sql', import.meta.url),
+      'utf8',
+    ),
+  );
+  legacy.close();
   await start();
   const h = (await request(host, { op: 'create', name: 'Host', capacity: 2 }))
     .body;
@@ -80,6 +90,8 @@ try {
     epoch: 2,
     brief: true,
     driver: 0,
+    roles: [0, 1, 2],
+    attempt: 2,
     state: { players: 2, paused: true },
   };
   await request(host, {
@@ -104,8 +116,26 @@ try {
   assert.equal(restored.status, 200);
   assert.equal(restored.body.slot, 0);
   assert.deepEqual(restored.body.snapshot, snapshot);
+  const returning = await request(guest, {
+    op: 'poll',
+    code: h.code,
+    token: g.token,
+    rejoin: true,
+  });
+  assert.equal(returning.body.frozen, true);
+  assert.ok(returning.body.pauseRevision > 0);
+  const confirmed = await request(host, {
+    op: 'poll',
+    code: h.code,
+    token: h.token,
+    snapshot,
+    snapshotSeq: 2,
+    pauseAck: returning.body.pauseRevision,
+  });
+  assert.equal(confirmed.body.frozen, false);
+  assert.deepEqual(confirmed.body.snapshot, snapshot);
   console.log(
-    'SERVER_PACKAGE_OK: separate process, WebSocket, two clients, SQLite restart, graceful stop',
+    'SERVER_PACKAGE_OK: separate process, WebSocket, two clients, legacy SQLite upgrade, restart, reconnect pause barrier, graceful stop',
   );
 } finally {
   await stop();

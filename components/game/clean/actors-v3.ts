@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { people } from '../../../lib/game/presets.ts';
-import { cleanCrew } from '../../../lib/game/clean/engine.ts';
+import { cleanRole, isRomaWitness } from '../../../lib/game/clean/cast.ts';
 import type { RenderKit } from '../world/render-kit';
 import { createRig, type Pose } from '../world/rig.ts';
 import { makeLabel } from '../world/labels.ts';
@@ -63,12 +63,19 @@ export function createSoldier(kit: RenderKit) {
   };
 }
 
-export function createNpc(kit: RenderKit, index: number) {
-  const rig = createRig(kit, anonymousSoldier, kit.scene, { anonymous: true });
+export function createNpc(kit: RenderKit, index: number, players = 3) {
+  const roma = isRomaWitness(players, index);
+  const rig = createRig(
+    kit,
+    roma ? people.find((p) => p.id === 'roma')! : anonymousSoldier,
+    kit.scene,
+    { anonymous: !roma },
+  );
+  rig.root.name = roma ? 'witness-roma' : `npc-${index}`;
   rig.root.scale.setScalar(index === 0 ? 1.03 : index === 1 ? 0.97 : 1.0);
   const name = makeLabel(
     kit,
-    index === 0 ? 'ДНЕВАЛЬНЫЙ' : 'СОСЛУЖИВЕЦ',
+    roma ? 'Рома' : index === 0 ? 'ДНЕВАЛЬНЫЙ' : 'СОСЛУЖИВЕЦ',
     '#d9dfc1',
     index === 0 ? 1.7 : 1.4,
   );
@@ -146,9 +153,14 @@ export function createNpc(kit: RenderKit, index: number) {
 
 /** Friends provide practical help in clean clothes. None uses the incident rig. */
 export function createSupporter(kit: RenderKit, index: number) {
-  const role = cleanCrew[index];
-  const person = people.find((person) => person.id === role.id)!;
-  const rig = createRig(kit, { ...person, uniform: false });
+  const role = cleanRole({ phase: 'duty', players: 3 }, index);
+  const person =
+    role.id === 'roma'
+      ? people.find((p) => p.id === 'roma')!
+      : anonymousSoldier;
+  const rig = createRig(kit, person, kit.scene, {
+    anonymous: role.id !== 'roma',
+  });
   rig.root.name = `support-${role.id}`;
   const name = makeLabel(kit, role.name, '#eef0d5', 1.25);
   name.position.set(0, 2.29, 0);
@@ -161,11 +173,16 @@ export function createSupporter(kit: RenderKit, index: number) {
   return { rig, name, kitBag, previous: new THREE.Vector3() };
 }
 
-export function createCleaner(kit: RenderKit, index: number) {
+export function createCleaner(kit: RenderKit, index: number, players = 3) {
   const color = ['#b3bea0', '#a4b5a1', '#b2b493'][index];
-  const role = cleanCrew[index];
-  const person = people.find((person) => person.id === role.id)!;
-  const rig = createRig(kit, { ...person, uniform: false, color });
+  const role = cleanRole({ phase: 'clean', players }, index);
+  const person =
+    role.id === 'roma'
+      ? people.find((p) => p.id === 'roma')!
+      : anonymousSoldier;
+  const rig = createRig(kit, { ...person, uniform: false, color }, kit.scene, {
+    anonymous: role.id !== 'roma',
+  });
   rig.root.name = `cleaner-${role.id}`;
   // Hood and side filter leave the photographed face readable through a clear visor.
   kit.sphere(0.191, 0.233, 0.13, color, 0, 0.018, -0.065, rig.head);

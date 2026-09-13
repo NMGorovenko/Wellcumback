@@ -1,4 +1,5 @@
 'use client';
+import { isRoomLeader, roomActor } from '@/lib/game/network/room-roles';
 import { useRoom } from '@/hooks/use-room';
 import { roomWorld, roomFresh } from '@/lib/game/network/room-client';
 import { roomCommand, tickRoomMoving } from '@/lib/game/network/room-game';
@@ -61,7 +62,8 @@ export default function MovingGame({
   onNext?: () => void;
 }) {
   const room = useRoom();
-  const canManage = !online || room.slot === 0;
+  const canManage = !online || isRoomLeader(room.world, room.slot);
+  const localActor = roomActor(room.world, room.slot);
   const canResume = canManage && (!online || roomFresh());
   const [initial] = useState(() =>
     online && roomWorld()?.scene === 'moving'
@@ -246,7 +248,7 @@ export default function MovingGame({
             state={view}
             pads={pads}
             cueRefs={cueRefs}
-            localSlot={online ? room.slot : undefined}
+            localSlot={online ? localActor : undefined}
           />
         )}
         <div className="world-heading">
@@ -322,7 +324,7 @@ export default function MovingGame({
               </p>
               <div className="moving-brief-bindings">
                 {(online
-                  ? [movingCrew[Math.max(0, room.slot)]]
+                  ? [movingCrew[Math.max(0, localActor)]]
                   : movingCrew.slice(0, view.players)
                 ).map((person, i) => (
                   <p key={person.name}>
@@ -507,7 +509,7 @@ export default function MovingGame({
         players={online ? 1 : view.players}
         playerNames={
           online
-            ? [movingCrew[Math.max(0, room.slot)].name]
+            ? [movingCrew[Math.max(0, localActor)].name]
             : movingCrew.map((person) => person.name)
         }
         pads={pads}

@@ -28,6 +28,7 @@ const COMMANDS = new Set([
   'episode',
   'exit',
   'wheel',
+  'leader',
   'start-screen',
   'start-story',
   'ready',
@@ -58,6 +59,8 @@ export type RoomSnapshot = {
   state: Record<string, unknown>;
   brief: boolean;
   driver?: number;
+  roles?: [number, number, number];
+  attempt?: number;
 };
 export type RoomView = {
   version: typeof ROOM_VERSION;
@@ -79,6 +82,7 @@ export type RoomView = {
   ack: number;
   frozen: boolean;
   resumed: boolean;
+  pauseRevision: number;
 };
 type RoomRow = {
   code: string;
@@ -89,6 +93,8 @@ type RoomRow = {
   created_at: number;
   expires_at: number;
   closed_at: number | null;
+  pause_revision: number;
+  pause_ack: number;
 };
 type MemberRow = {
   room_code: string;
@@ -161,6 +167,13 @@ function readSnapshot(value: unknown): RoomSnapshot {
     typeof value.brief !== 'boolean' ||
     (value.driver !== undefined &&
       (!safeInt(value.driver) || value.driver > 2)) ||
+    (value.roles !== undefined &&
+      (!Array.isArray(value.roles) ||
+        value.roles.length !== 3 ||
+        new Set(value.roles).size !== 3 ||
+        value.roles.some((slot) => !safeInt(slot) || slot > 2))) ||
+    (value.attempt !== undefined &&
+      (!safeInt(value.attempt) || value.attempt > value.epoch)) ||
     !boundedJson(value.state)
   ) {
     return fail(400, 'INVALID_SNAPSHOT', 'Неверный снимок комнаты.');
@@ -168,8 +181,10 @@ function readSnapshot(value: unknown): RoomSnapshot {
   const snapshot: RoomSnapshot = {
     scene: value.scene as RoomSnapshot['scene'],
     epoch: value.epoch,
-    state: value.state,
+    state: { ...value.state },
     brief: value.brief,
+    roles: (value.roles ?? [0, 1, 2]) as [number, number, number],
+    attempt: value.attempt === undefined ? value.epoch : Number(value.attempt),
     driver: value.driver === undefined ? 0 : Number(value.driver),
   };
   if (jsonBytes(snapshot) > MAX_SNAPSHOT_BYTES)
@@ -302,7 +317,7 @@ function validateRoom(room: RoomRow | null, now: number): RoomRow {
   if (!room)
     return fail(404, 'ROOM_NOT_FOUND', 'Комната не найдена. Проверьте код.');
   if (room.closed_at !== null)
-    return fail(410, 'ROOM_CLOSED', 'Ведущий закрыл комнату.');
+    return fail(410, 'ROOM_CLOSED', 'Создатель закрыл комнату.');
   if (room.expires_at <= now)
     return fail(410, 'ROOM_EXPIRED', 'Время комнаты истекло. Создайте новую.');
   return room;
@@ -378,7 +393,11 @@ async function roomView(
     snapshotSeq: room.snapshot_seq,
     frames,
     ack: members.find((member) => member.slot === slot)?.last_seq ?? 0,
-    frozen: resumed || roster.some((member) => !member.connected),
+    frozen:
+      resumed ||
+      room.pause_revision > room.pause_ack ||
+      roster.some((member) => !member.connected),
+    pauseRevision: room.pause_revision,
     resumed,
   };
 }
@@ -517,12 +536,23 @@ async function pollRoom(
     room = await getRoom(db, code, now),
     member = await memberFor(db, code, body.token);
   const resumed =
-    member.left_at !== null || now - member.last_seen > MEMBER_STALE_MS;
+    member.left_at !== null ||
+    now - member.last_seen > MEMBER_STALE_MS ||
+    body.rejoin === true;
   const frames = readFrames(body.frames);
   const snapshot =
     body.snapshot === undefined ? undefined : readSnapshot(body.snapshot);
-  if (member.slot !== 0 && (snapshot !== undefined || body.acks !== undefined))
-    return fail(403, 'HOST_ONLY', 'Эту команду выполняет ведущий.');
+  if (
+    member.slot !== 0 &&
+    (snapshot !== undefined ||
+      body.acks !== undefined ||
+      body.pauseAck !== undefined)
+  )
+    return fail(
+      403,
+      'HOST_ONLY',
+      'Снимок отправляет приложение создателя комнаты.',
+    );
   if (member.slot === 0 && frames.length)
     return fail(
       403,
@@ -553,6 +583,54 @@ async function pollRoom(
     Number(body.snapshotSeq) <= room.snapshot_seq
   )
     return fail(409, 'STALE_SNAPSHOT', 'Нужен новый номер снимка.');
+  const previous = room.snapshot
+    ? (JSON.parse(room.snapshot) as RoomSnapshot)
+    : null;
+  const rolesChanged =
+    snapshot &&
+    JSON.stringify(snapshot.roles) !==
+      JSON.stringify(previous?.roles ?? [0, 1, 2]);
+  if (
+    snapshot &&
+    snapshot
+      .roles!.slice(0, room.capacity)
+      .some((slot) => slot >= room.capacity)
+  )
+    return fail(400, 'INVALID_SNAPSHOT', 'Неверное назначение ролей.');
+  if (snapshot && rolesChanged) {
+    if (snapshot.epoch <= room.epoch || snapshot.state.paused !== true)
+      return fail(
+        409,
+        'STALE_EPOCH',
+        'Для передачи ведущего нужна пауза и новая версия управления.',
+      );
+    const target = await db
+      .prepare('SELECT * FROM room_members WHERE room_code = ? AND slot = ?')
+      .bind(code, snapshot.roles![0])
+      .first<MemberRow>();
+    if (
+      !target ||
+      target.left_at !== null ||
+      now - target.last_seen > MEMBER_STALE_MS
+    )
+      return fail(
+        400,
+        'INVALID_SNAPSHOT',
+        'Дождитесь подключения нового ведущего.',
+      );
+  }
+  if (
+    body.pauseAck !== undefined &&
+    (!safeInt(body.pauseAck) ||
+      body.pauseAck > room.pause_revision ||
+      !snapshot ||
+      snapshot.state.paused !== true)
+  )
+    return fail(
+      400,
+      'INVALID_PAUSE_ACK',
+      'Подтвердить ожидание можно только сохранённой паузой.',
+    );
   const acks: [number, number][] = [];
   if (body.acks !== undefined) {
     if (!object(body.acks) || Object.keys(body.acks).length > 2)
@@ -588,7 +666,21 @@ async function pollRoom(
     if ((count?.total ?? 0) + fresh.length > MAX_INPUT_FRAMES)
       return fail(409, 'INPUT_QUEUE_FULL', 'Ждём подтверждение ведущего.');
   }
-  const statements: RoomStatement[] = [];
+  const statements: RoomStatement[] = [
+    db
+      .prepare(
+        'UPDATE rooms SET expires_at = MAX(expires_at, ?) WHERE code = ? AND closed_at IS NULL',
+      )
+      .bind(now + ROOM_TTL_MS, code),
+  ];
+  if (resumed)
+    statements.push(
+      db
+        .prepare(
+          'UPDATE rooms SET pause_revision = pause_revision + 1 WHERE code = ?',
+        )
+        .bind(code),
+    );
   // Reconnection is a neutral-input boundary, never a replay of actions made
   // while a peer was away. Sequence acknowledgement still advances below.
   if (resumed)
@@ -600,12 +692,15 @@ async function pollRoom(
             .bind(code, member.slot),
     );
   if (snapshot) {
+    if (resumed || room.pause_revision > room.pause_ack)
+      snapshot.state.paused = true;
     statements.push(
       db
         .prepare(
-          `UPDATE rooms SET snapshot = ?, snapshot_seq = ?, epoch = ? WHERE code = ? AND closed_at IS NULL AND expires_at > ? AND snapshot_seq < ? AND epoch <= ?`,
+          `UPDATE rooms SET snapshot = CASE WHEN pause_revision > pause_ack THEN json_set(?, '$.state.paused', json('true')) ELSE ? END, snapshot_seq = ?, epoch = ? WHERE code = ? AND closed_at IS NULL AND expires_at > ? AND snapshot_seq < ? AND epoch <= ?`,
         )
         .bind(
+          JSON.stringify(snapshot),
           JSON.stringify(snapshot),
           Number(body.snapshotSeq),
           snapshot.epoch,
@@ -623,6 +718,19 @@ async function pollRoom(
         .bind(code, code),
     );
   }
+  if (snapshot && body.pauseAck !== undefined)
+    statements.push(
+      db
+        .prepare(
+          `UPDATE rooms SET pause_ack = MAX(pause_ack, ?) WHERE code = ? AND snapshot_seq = ? AND epoch = ? AND json_extract(snapshot, '$.state.paused') = 1`,
+        )
+        .bind(
+          Number(body.pauseAck),
+          code,
+          Number(body.snapshotSeq),
+          snapshot.epoch,
+        ),
+    );
   for (const [slot, seq] of acks)
     statements.push(
       db
@@ -654,13 +762,21 @@ async function pollRoom(
         ),
     );
   const newest = fresh.at(-1)?.seq ?? member.last_seq;
+  // Presence belongs to the authenticated member, not a simulation epoch.
+  // A concurrent host snapshot must not make a successful return look offline.
   statements.push(
     db
       .prepare(
-        `UPDATE room_members SET last_seen = ?, left_at = NULL, last_seq = ? WHERE room_code = ? AND slot = ? AND token_hash = ? AND last_seq = ? AND EXISTS (SELECT 1 FROM rooms WHERE code = ? AND closed_at IS NULL AND expires_at > ? AND epoch = ?)`,
+        `UPDATE room_members SET last_seen = MAX(last_seen, ?), left_at = CASE WHEN left_at <= ? THEN NULL ELSE left_at END WHERE room_code = ? AND slot = ? AND token_hash = ? AND EXISTS (SELECT 1 FROM rooms WHERE code = ? AND closed_at IS NULL AND expires_at > ?)`,
+      )
+      .bind(now, now, code, member.slot, member.token_hash, code, now),
+  );
+  statements.push(
+    db
+      .prepare(
+        `UPDATE room_members SET last_seq = ? WHERE room_code = ? AND slot = ? AND token_hash = ? AND last_seq = ? AND EXISTS (SELECT 1 FROM rooms WHERE code = ? AND closed_at IS NULL AND expires_at > ? AND epoch = ?)`,
       )
       .bind(
-        now,
         newest,
         code,
         member.slot,

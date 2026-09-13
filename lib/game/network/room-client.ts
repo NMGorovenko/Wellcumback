@@ -1,3 +1,5 @@
+import { roomRoles } from './room-roles.ts';
+import { pauseRoomWorld } from './room-pause.ts';
 import { desktopNetwork } from './desktop-bridge.ts';
 import {
   getRoomConnection,
@@ -27,7 +29,11 @@ const EMPTY: RoomView = {
   ping: 0,
   frozen: false,
 };
-const STORAGE = 'wellcum-room-v4';
+const STORAGE = 'wellcum-room-v5';
+const SAVED_ROOM = 'wellcum-room-return-v5';
+let pauseRevision = 0;
+let rejoining = false;
+let pendingRoleEpoch: number | null = null;
 const REQUEST_TIMEOUT_MS = 8000;
 let latencyMs = 0;
 let pendingSince: number | null = null;
@@ -89,21 +95,24 @@ export const roomFresh = () =>
   !!credential &&
   view.status === 'connected' &&
   performance.now() - acceptedAt < freshnessDeadlineMs() &&
-  !view.frozen;
+  !view.frozen &&
+  pendingRoleEpoch === null;
 
-function saveCredential() {
+function saveCredential(remember = false) {
   try {
-    if (credential)
-      sessionStorage.setItem(
-        STORAGE,
-        JSON.stringify({
-          ...credential,
-          sequence,
-          snapshotSeq,
-          connection: getRoomConnection(),
-        }),
-      );
-    else sessionStorage.removeItem(STORAGE);
+    if (credential) {
+      const saved = JSON.stringify({
+        ...credential,
+        sequence,
+        snapshotSeq,
+        connection: getRoomConnection(),
+      });
+      sessionStorage.setItem(STORAGE, saved);
+      if (remember && typeof localStorage !== 'undefined')
+        localStorage.setItem(SAVED_ROOM, saved);
+    } else {
+      sessionStorage.removeItem(STORAGE);
+    }
   } catch {
     /* Storage availability never grants or changes a room role. */
   }
@@ -130,7 +139,9 @@ function ingest(reply: RoomReply, elapsed: number) {
   recordLatency(elapsed);
   acceptedAt = performance.now();
   snapshotSeq = Math.max(snapshotSeq, reply.snapshotSeq || 0);
-  if (reply.resumed) {
+  const pauseChanged = reply.pauseRevision > pauseRevision;
+  pauseRevision = Math.max(pauseRevision, reply.pauseRevision ?? 0);
+  if (reply.resumed || pauseChanged) {
     outbox = [];
     incoming.clear();
     readyForInput = false;
@@ -150,7 +161,19 @@ function ingest(reply: RoomReply, elapsed: number) {
       let after = queue.at(-1)?.seq ?? acks[slotKey] ?? 0;
       for (const frame of frames)
         if (frame.seq > after) {
-          queue.push(frame);
+          const previous = queue.at(-1);
+          // Repeated held/neutral keepalives must not bury a menu command when
+          // a browser throttles the host tab. Preserve every actual key edge.
+          if (
+            previous &&
+            !previous.command &&
+            !frame.command &&
+            previous.epoch === frame.epoch &&
+            JSON.stringify([previous.keys, previous.drive]) ===
+              JSON.stringify([frame.keys, frame.drive])
+          )
+            queue[queue.length - 1] = frame;
+          else queue.push(frame);
           after = frame.seq;
         }
       incoming.set(slot, queue);
@@ -169,6 +192,24 @@ function ingest(reply: RoomReply, elapsed: number) {
       readyForInput = false;
     }
   }
+  if (world && (reply.resumed || pauseChanged || reply.frozen))
+    pauseRoomWorld(world);
+  if (world && pauseChanged && credential?.slot === 0) {
+    // Keep the simulation, invalidate every command queued before the break.
+    world = {
+      ...world,
+      attempt: world.attempt ?? world.epoch,
+      epoch: world.epoch + 1,
+    };
+  }
+  if (
+    pendingRoleEpoch !== null &&
+    reply.snapshot &&
+    reply.snapshot.epoch >= pendingRoleEpoch &&
+    JSON.stringify(roomRoles(reply.snapshot)) ===
+      JSON.stringify(roomRoles(world))
+  )
+    pendingRoleEpoch = null;
   outbox = outbox.filter((frame) => frame.seq > reply.ack);
   sequence = outbox.length ? Math.max(sequence, reply.ack) : reply.ack;
   announce({
@@ -178,13 +219,16 @@ function ingest(reply: RoomReply, elapsed: number) {
     capacity: reply.capacity,
     roster: reply.roster,
     world,
-    frozen: reply.frozen,
+    frozen: reply.frozen || pendingRoleEpoch !== null,
     ping: Math.round(elapsed),
-    message: reply.frozen
-      ? 'Друг отошёл или потерял связь. История ждёт.'
-      : elapsed > 700
-        ? 'Медленная связь: действия приходят с задержкой.'
-        : '',
+    message:
+      pendingRoleEpoch !== null
+        ? 'Передаём ведущего…'
+        : reply.frozen
+          ? 'Друг отошёл или потерял связь. История ждёт.'
+          : elapsed > 700
+            ? 'Медленная связь: действия приходят с задержкой.'
+            : '',
   });
   saveCredential();
 }
@@ -196,10 +240,17 @@ async function poll(run: number) {
     const reply = await request({
       op: 'poll',
       ...credential,
+      ...(rejoining ? { rejoin: true } : {}),
       ...(credential.slot === 0
         ? {
             ...(!needsResync && world
-              ? { snapshot: world, snapshotSeq: ++snapshotSeq }
+              ? {
+                  snapshot: world,
+                  snapshotSeq: ++snapshotSeq,
+                  ...(world.state.paused === true
+                    ? { pauseAck: pauseRevision }
+                    : {}),
+                }
               : {}),
             acks,
           }
@@ -209,11 +260,23 @@ async function poll(run: number) {
     pendingSince = null;
     ingest(reply, performance.now() - started);
     needsResync = false;
+    rejoining = false;
   } catch (error) {
     if (run !== generation) return;
     pendingSince = null;
     readyForInput = false;
     const code = (error as { code?: string }).code;
+    // A routine input epoch resync is not another disconnect. Otherwise each
+    // late frame would create a pause revision and invalidate the next one.
+    if (
+      ![
+        'STALE_EPOCH',
+        'STALE_SNAPSHOT',
+        'INPUT_SEQUENCE_GAP',
+        'INPUT_QUEUE_FULL',
+      ].includes(code ?? '')
+    )
+      rejoining = true;
     if (['STALE_EPOCH', 'INPUT_SEQUENCE_GAP'].includes(code ?? '')) {
       outbox = [];
       needsResync = true;
@@ -284,6 +347,7 @@ export async function openRoom(
     readyForInput = false;
     pendingSince = null;
     ingest(reply, performance.now() - started);
+    saveCredential(true);
     void poll(run);
   } catch (error) {
     if (run === generation) {
@@ -325,13 +389,47 @@ export function restoreRoom() {
       frozen: true,
       message: 'Возвращаемся в комнату…',
     });
+    rejoining = true;
+    saveCredential(true);
     void poll(++generation);
   } catch {
     /* Ignore damaged local resume data. */
   }
 }
+/** A closed tab/app can explicitly return; invitations never include this token. */
+export function savedRoomCode(): string | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVED_ROOM) || 'null');
+    return saved &&
+      /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(saved.code) &&
+      /^[a-f0-9]{64}$/.test(saved.token) &&
+      Number.isInteger(saved.slot) &&
+      saved.slot >= 0 &&
+      saved.slot <= 2
+      ? saved.code
+      : null;
+  } catch {
+    return null;
+  }
+}
+export function returnToSavedRoom() {
+  if (credential || !savedRoomCode()) return;
+  try {
+    sessionStorage.setItem(STORAGE, localStorage.getItem(SAVED_ROOM)!);
+    restoreRoom();
+  } catch {
+    /* Unavailable storage leaves the connection untouched. */
+  }
+}
 export async function leaveRoom() {
   const previous = credential;
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVED_ROOM) || 'null');
+    if (previous && saved?.token === previous.token)
+      localStorage.removeItem(SAVED_ROOM);
+  } catch {
+    /* Other tabs' saved return options remain intact. */
+  }
   const run = ++generation;
   clearTimeout(timer);
   credential = null;
@@ -342,8 +440,12 @@ export async function leaveRoom() {
   sequence = 0;
   snapshotSeq = 0;
   latencyMs = 0;
+  pauseRevision = 0;
+  rejoining = false;
+  pendingRoleEpoch = null;
   pendingSince = null;
   lastInput = '';
+  lastDriveAt = 0;
   readyForInput = false;
   needsResync = false;
   saveCredential();
@@ -370,11 +472,18 @@ export async function closeRoomSession() {
 export function publishRoomWorld(next: RoomWorld) {
   if (!roomHost()) return;
   const changed = world?.epoch !== next.epoch || world?.scene !== next.scene;
+  if (JSON.stringify(roomRoles(world)) !== JSON.stringify(roomRoles(next)))
+    pendingRoleEpoch = next.epoch;
   world = next;
   if (changed) {
     readyForInput = false;
     lastInput = '';
-    announce({ world });
+    announce({
+      world,
+      ...(pendingRoleEpoch !== null
+        ? { frozen: true, message: 'Передаём ведущего…' }
+        : {}),
+    });
   }
 }
 export function captureRoomInput(

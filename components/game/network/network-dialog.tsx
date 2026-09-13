@@ -1,4 +1,5 @@
 'use client';
+import { isRoomLeader } from '@/lib/game/network/room-roles';
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Radio, Unplug } from 'lucide-react';
 import {
@@ -9,7 +10,12 @@ import {
 } from '@/components/ui/dialog';
 import { roomCommand, roomRoleName } from '@/lib/game/network/room-game';
 import { useRoom } from '@/hooks/use-room';
-import { closeRoomSession, openRoom } from '@/lib/game/network/room-client';
+import {
+  closeRoomSession,
+  openRoom,
+  savedRoomCode,
+  returnToSavedRoom,
+} from '@/lib/game/network/room-client';
 import { getRoomConnection } from '@/lib/game/network/room-transport';
 import {
   makeInvitation,
@@ -71,6 +77,7 @@ export function NetworkDialog({
       clearInterval(timer);
     };
   }, [open, desktop]);
+  const savedCode = open ? savedRoomCode() : null;
   const busy = working || room.status === 'connecting';
   const connection = getRoomConnection();
   const invitation =
@@ -121,6 +128,16 @@ export function NetworkDialog({
         </DialogDescription>
         {!room.code ? (
           <>
+            {savedCode && (
+              <button
+                data-form-control
+                className="play-button"
+                disabled={busy}
+                onClick={() => returnToSavedRoom()}
+              >
+                Вернуться в комнату {savedCode}
+              </button>
+            )}
             <label className="network-label" htmlFor="room-name">
               Как тебя подписать
             </label>
@@ -303,42 +320,62 @@ export function NetworkDialog({
                   </strong>
                   <span>
                     {roomRoleName(room.world, member.slot)}
-                    {member.slot === 0 ? ' · ведущий' : ''}
+                    {isRoomLeader(room.world, member.slot) ? ' · ведущий' : ''}
                   </span>
+                  {isRoomLeader(room.world, room.slot) &&
+                    member.slot !== room.slot && (
+                      <button
+                        data-form-control
+                        className="secondary-button"
+                        disabled={
+                          !member.connected ||
+                          room.frozen ||
+                          room.status !== 'connected' ||
+                          !room.world
+                        }
+                        onClick={() =>
+                          roomCommand({ kind: 'leader', value: member.slot })
+                        }
+                      >
+                        Передать ведущего · {member.name}
+                      </button>
+                    )}
                 </div>
               ))}
             </div>
             <p className="quiet">
               При разрыве связи история ждёт. Вернувшийся игрок занимает прежнее
-              место; ведущий продолжает игру. Приложение ведущего должно
-              оставаться открытым.
+              место; ведущий нажимает «Продолжить». Передача ведущего меняет
+              основного героя и водителя, сохраняя этап. Приложение создателя
+              комнаты должно оставаться открытым, даже после передачи роли.
             </p>
-            {room.slot === 0 && room.world?.scene === 'city' && (
-              <div className="network-stories">
-                {[
-                  ['screen', 'Собрать экран'],
-                  ['clean', 'Байка из казармы'],
-                  ['moving', 'Переезд Ярика'],
-                ].map(([story, title]) => (
-                  <button
-                    data-form-control
-                    key={story}
-                    className="secondary-button"
-                    disabled={
-                      room.roster.length < 2 ||
-                      room.roster.some((p) => !p.connected) ||
-                      room.frozen
-                    }
-                    onClick={() => {
-                      roomCommand({ kind: 'start-story', value: story });
-                      onOpenChange(false);
-                    }}
-                  >
-                    {title}
-                  </button>
-                ))}
-              </div>
-            )}
+            {isRoomLeader(room.world, room.slot) &&
+              room.world?.scene === 'city' && (
+                <div className="network-stories">
+                  {[
+                    ['screen', 'Собрать экран'],
+                    ['clean', 'Байка из казармы'],
+                    ['moving', 'Переезд Ярика'],
+                  ].map(([story, title]) => (
+                    <button
+                      data-form-control
+                      key={story}
+                      className="secondary-button"
+                      disabled={
+                        room.roster.length < 2 ||
+                        room.roster.some((p) => !p.connected) ||
+                        room.frozen
+                      }
+                      onClick={() => {
+                        roomCommand({ kind: 'start-story', value: story });
+                        onOpenChange(false);
+                      }}
+                    >
+                      {title}
+                    </button>
+                  ))}
+                </div>
+              )}
             <button
               data-form-control
               className="play-button"

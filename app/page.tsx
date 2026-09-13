@@ -1,4 +1,5 @@
 'use client';
+import { isRoomLeader } from '@/lib/game/network/room-roles';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -34,8 +35,11 @@ import { freshMoving } from '@/lib/game/moving/engine';
 import { ControlSettings } from '@/components/game/input/control-settings';
 import { NetworkDialog } from '@/components/game/network/network-dialog';
 import { useRoom } from '@/hooks/use-room';
-import { roomCommand, roomRoleName } from '@/lib/game/network/room-game';
-import { leaveRoom } from '@/lib/game/network/room-client';
+import {
+  initializeRoomCity,
+  roomCommand,
+  roomRoleName,
+} from '@/lib/game/network/room-game';
 import ScreenGame from '@/components/game/screen/screen-game';
 import CleanGame from '@/components/game/clean/clean-game';
 import { useGameFullscreen } from '@/hooks/use-game-fullscreen';
@@ -85,7 +89,7 @@ function Preview({ story }: { story: Story }) {
   ) : story === 'screen' ? (
     <Scene preview />
   ) : (
-    <CleanScene game={barracks} cameraMode="wide" />
+    <CleanScene players={3} game={barracks} cameraMode="wide" />
   );
 }
 export default function Home() {
@@ -94,6 +98,9 @@ export default function Home() {
   const [networkOpen, setNetworkOpen] = useState(false);
   const room = useRoom();
   const online = room.code.length > 0;
+  useEffect(() => {
+    initializeRoomCity();
+  }, [room.status, room.world]);
   const hubMode = online ? 'city' : localHubMode;
   const [players, setPlayers] = useState(2),
     [sound, setSound] = useState(true),
@@ -118,7 +125,7 @@ export default function Home() {
   const [results, recordResult] = useGameResults();
   const runId =
     online && room.world
-      ? `${room.code}:${room.world.scene}:${room.world.epoch}`
+      ? `${room.code}:${room.world.scene}:${room.world.attempt ?? room.world.epoch}`
       : undefined;
   const finish = useCallback<typeof recordResult>(
     (result) => recordResult({ ...result, runId }),
@@ -131,7 +138,8 @@ export default function Home() {
   const episode = episodes[selected];
   const play = (story: Story) => {
     if (online) {
-      if (room.slot === 0) roomCommand({ kind: 'start-story', value: story });
+      if (isRoomLeader(room.world, room.slot))
+        roomCommand({ kind: 'start-story', value: story });
       return;
     }
     if (!transition)
@@ -142,8 +150,8 @@ export default function Home() {
   };
   const exit = () => {
     if (online) {
-      if (room.slot === 0) roomCommand({ kind: 'exit' });
-      else void leaveRoom();
+      if (isRoomLeader(room.world, room.slot)) roomCommand({ kind: 'exit' });
+      else setNetworkOpen(true);
       return;
     }
     city.current.paused = false;
@@ -305,7 +313,21 @@ export default function Home() {
           <small>{room.ping ? `${room.ping} мс` : 'Соединяемся…'}</small>
         </div>
       )}
-      {active === 'screen' ? (
+      {online && !room.world ? (
+        <div className="room-recovery" aria-live="polite">
+          <span>ИСТОРИЯ ПОДОЖДЁТ</span>
+          <h1>Возвращаемся в игру…</h1>
+          <p>
+            {room.message || 'Получаем сохранённый этап и твоего персонажа.'}
+          </p>
+          <button
+            className="secondary-button"
+            onClick={() => setNetworkOpen(true)}
+          >
+            Открыть комнату
+          </button>
+        </div>
+      ) : active === 'screen' ? (
         <ScreenGame
           key={
             online ? `${room.code}-${room.world?.epoch}` : `screen-${players}`

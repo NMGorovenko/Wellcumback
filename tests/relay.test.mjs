@@ -84,6 +84,8 @@ void test('real WebSocket clients create, join, exchange all scene snapshots and
       const snapshot = {
         scene,
         epoch,
+        attempt: epoch,
+        roles: [0, 1, 2],
         brief: true,
         state: { paused: true, players: 2 },
         driver: 0,

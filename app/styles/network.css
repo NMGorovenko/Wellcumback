@@ -161,3 +161,32 @@
   outline: 2px solid #d6ecad;
   outline-offset: 3px;
 }
+
+.room-recovery {
+  min-height: 75vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 1rem;
+  text-align: center;
+  padding: 2rem;
+}
+.room-recovery > span {
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  opacity: 0.65;
+}
+.room-recovery h1 {
+  font-size: clamp(1.6rem, 4vw, 3rem);
+}
+.room-recovery p {
+  max-width: 32rem;
+  opacity: 0.8;
+}
+.room-members > div {
+  flex-wrap: wrap;
+}
+.room-members button {
+  margin-left: auto;
+  font-size: 0.75rem;
+}

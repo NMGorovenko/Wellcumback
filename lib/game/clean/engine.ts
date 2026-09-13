@@ -1,3 +1,5 @@
+import { cleanRole, cleanCast } from './cast.ts';
+export { cleanCrew, cleanRole, cleanCast } from './cast.ts';
 import {
   cleanSupportTask,
   freshSupport,
@@ -138,12 +140,6 @@ export type CleanState = {
     incidentAtDesk: boolean;
   };
 };
-/** Cleanup role slots are independent of the apartment cast order. */
-export const cleanCrew = [
-  { id: 'roma', name: 'Рома' },
-  { id: 'nikita', name: 'Никита' },
-  { id: 'yaroslav', name: 'Ярик' },
-] as const;
 export const dutyReprimand = 'Ты охуел, боец?! Иди, блять, сри в туалете!';
 export const cleanBindings = [
   ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyE'],
@@ -183,8 +179,8 @@ export function freshClean(players = 1): CleanState {
     phaseTime: 0,
     players: clamp(Math.floor(players) || 1, 1, 3),
     actorCount: clamp(Math.floor(players) || 1, 1, 3),
-    x: [stations[7].x, crewSpawn.x, crewSpawn.x + crewSpawn.spacing],
-    y: [stations[7].y, crewSpawn.y, crewSpawn.y],
+    x: [stations[7].x, 225, 300],
+    y: [stations[7].y, 555, 615],
     elapsed: 0,
     timer: 0,
     score: 0,
@@ -236,7 +232,7 @@ export function freshClean(players = 1): CleanState {
       },
       {
         id: 'witness1',
-        ...npcSpawns[1],
+        ...(players === 1 ? { x: 225, y: 555 } : npcSpawns[1]),
         action: 'idle',
         line: '',
         suited: false,
@@ -528,8 +524,7 @@ function startCleanup(s: CleanState) {
     'clean',
     s.players === 1
       ? 'Рома надел химзащиту. Теперь ты за Рому: перекрой воду, отмой машинку и все следы. Грязную швабру полоскай в ведре.'
-      : `${cleanCrew
-          .slice(0, s.players)
+      : `${cleanCast({ ...s, phase: 'clean' })
           .map((person) => person.name)
           .join(
             ', ',
@@ -657,7 +652,7 @@ function work(s: CleanState, i: number, dt: number) {
     if (s.rinse[i] >= 1) {
       s.dirt[i] = 0;
       s.rinse[i] = 0;
-      s.message = `${cleanCrew[i].name}: швабра чистая. Можно возвращаться к следам.`;
+      s.message = `${cleanRole(s, i).name}: швабра чистая. Можно возвращаться к следам.`;
     }
     return 'rinse';
   }
@@ -694,7 +689,7 @@ function work(s: CleanState, i: number, dt: number) {
   }
   s.dirt[i] = clamp(s.dirt[i] + spent * 0.44, 0, 0.98);
   if (spent && s.dirt[i] >= 0.98 - 1e-8)
-    s.message = `${cleanCrew[i].name}: швабра полная. К ведру — прополоскать до конца.`;
+    s.message = `${cleanRole(s, i).name}: швабра полная. К ведру — прополоскать до конца.`;
   return spent ? 'mop' : '';
 }
 /** Soft body separation plus a sideways yield keeps two people from blocking the same doorway forever. */
@@ -942,7 +937,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
         s.valve = clamp(s.valve + dt / task.seconds);
         s.activity[i] = 'valve';
         if (s.valve === 1)
-          s.message = `${cleanCrew[i].name} перекрыл воду. Новых протечек не будет.`;
+          s.message = `${cleanRole(s, i).name} перекрыл воду. Новых протечек не будет.`;
       } else {
         const progress = s.support.progress;
         if (task.id === 'kitPickup') s.support.kitOwner = i;
@@ -950,7 +945,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
         s.activity[i] = 'gear';
         if (progress[task.id] === 1) {
           s.support.completed++;
-          s.message = `${cleanCrew[i].name}: ${supportBenefits[task.id]}`;
+          s.message = `${cleanRole(s, i).name}: ${supportBenefits[task.id]}`;
         }
       }
     }

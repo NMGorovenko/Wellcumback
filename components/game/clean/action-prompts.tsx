@@ -1,6 +1,6 @@
 'use client';
 import type { CleanState } from '@/lib/game/clean/engine';
-import { cleanCrew } from '@/lib/game/clean/engine';
+import { cleanRole } from '@/lib/game/clean/engine';
 import { cleanPrompts, cleanPromptInput } from '@/lib/game/clean/prompts';
 import type { PadFrame } from '@/lib/game/input/gamepads';
 import type { ActionCueRefs } from '../world/action-cues';
@@ -33,11 +33,7 @@ export function CleanActionPrompts({
           className="context-worker"
         >
           <div className="context-worker-name">
-            <strong>
-              {actor === 0 && state.phase !== 'clean'
-                ? 'Солдат'
-                : cleanCrew[actor].name}
-            </strong>
+            <strong>{cleanRole(state, actor).name}</strong>
           </div>
           <div className="context-cues">
             {cleanPrompts(state, actor).map((prompt) => {

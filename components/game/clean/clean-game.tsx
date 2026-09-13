@@ -1,4 +1,5 @@
 'use client';
+import { isRoomLeader, roomActor } from '@/lib/game/network/room-roles';
 import { useRoom } from '@/hooks/use-room';
 import { roomWorld, roomFresh } from '@/lib/game/network/room-client';
 import { roomCommand, tickRoomClean } from '@/lib/game/network/room-game';
@@ -23,7 +24,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import {
-  cleanCrew,
+  cleanRole,
   cleanBindings,
   freshClean,
   cleanTick,
@@ -101,7 +102,8 @@ export default function CleanGame({
   onNext?: () => void;
 }) {
   const room = useRoom();
-  const canManage = !online || room.slot === 0;
+  const canManage = !online || isRoomLeader(room.world, room.slot);
+  const localActor = roomActor(room.world, room.slot);
   const canResume = canManage && (!online || roomFresh());
   const [initial] = useState(() =>
     online && roomWorld()?.scene === 'clean'
@@ -255,7 +257,7 @@ export default function CleanGame({
   const inputActor = online ? 0 : touchActor;
   const touchPrompts = cleanPrompts(
     view,
-    online ? Math.max(0, room.slot) : touchActor,
+    online ? Math.max(0, localActor) : touchActor,
   );
   const touchAction = touchPrompts.find(
     (prompt) => prompt.control === 'action',
@@ -270,14 +272,19 @@ export default function CleanGame({
       aria-label="Операция Чистый проход"
     >
       <div className="game-world">
-        <CleanScene game={game} cameraMode={cameraMode} cueRefs={cueRefs} />
+        <CleanScene
+          players={view.players}
+          game={game}
+          cameraMode={cameraMode}
+          cueRefs={cueRefs}
+        />
         {settings.showWorldPrompts && (
           <CleanActionPrompts
             state={view}
             pads={pads}
             cueRefs={cueRefs}
             heldKeys={heldKeys}
-            localSlot={online ? room.slot : undefined}
+            localSlot={online ? localActor : undefined}
           />
         )}
         <button
@@ -355,10 +362,10 @@ export default function CleanGame({
               последствия.
             </p>
             <p className="quiet">
-              Первый игрок начинает за безымянного солдата другой роты. Никита и
-              Ярик помогают с самого начала: готовят кабинку, форму, стиралку и
-              ведро. На уборку вместо солдата выходит Рома. В одиночку Рома
-              справляется сам.
+              Ведущий начинает за безымянного солдата другой роты. Рома рядом;
+              второй игрок управляет им и помогает с самого начала. Третий —
+              безымянный боец. В одиночку на уборке играешь за Рому; в компании
+              ведущий принимает другого сослуживца, а Рома остаётся у напарника.
             </p>
             <button
               className="play-button"
@@ -406,7 +413,11 @@ export default function CleanGame({
           </div>
         ) : (
           <>
-            <CleanStatus game={view} pads={pads} />
+            <CleanStatus
+              localActor={online ? localActor : undefined}
+              game={view}
+              pads={pads}
+            />
           </>
         )}
         <details className="clean-help">
@@ -418,9 +429,10 @@ export default function CleanGame({
             пауза.
           </p>
           <p>
-            Первый игрок — солдат, затем Рома. Второй — Никита, третий — Ярик на
-            протяжении всей истории. Друзья готовят вещи заранее и помогают со
-            стиралкой. Подготовка ускоряет работу, но без неё тоже можно пройти.
+            Первый игрок — солдат, затем другой сослуживец. Второй — Рома,
+            третий — безымянный боец. В соло на уборке играешь за Рому.
+            Помощники готовят вещи заранее и помогают со стиралкой. Подготовка
+            ускоряет работу, но без неё тоже можно пройти.
           </p>
           {active && (
             <details className="touch-controls">
@@ -437,9 +449,7 @@ export default function CleanGame({
                         setTouchActor(actor);
                       }}
                     >
-                      {actor === 0 && !['clean', 'result'].includes(view.phase)
-                        ? 'Солдат'
-                        : cleanCrew[actor].name}
+                      {cleanRole(view, actor).name}
                     </button>
                   ))}
                 </div>
@@ -564,12 +574,8 @@ export default function CleanGame({
         players={online ? 1 : players}
         playerNames={
           online
-            ? [
-                room.slot === 0 && view.phase !== 'clean'
-                  ? 'Солдат'
-                  : cleanCrew[Math.max(0, room.slot)].name,
-              ]
-            : cleanCrew.map((person) => person.name)
+            ? [cleanRole(view, Math.max(0, localActor)).name]
+            : [0, 1, 2].map((actor) => cleanRole(view, actor).name)
         }
         pads={pads}
       />

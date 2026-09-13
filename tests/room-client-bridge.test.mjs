@@ -16,6 +16,7 @@ const original = {
   location: globalThis.location,
   window: globalThis.window,
   sessionStorage: globalThis.sessionStorage,
+  localStorage: globalThis.localStorage,
 };
 let now = 0,
   timers = [],
@@ -29,6 +30,12 @@ function setup() {
   sqlite.exec('PRAGMA foreign_keys = ON');
   sqlite.exec(
     readFileSync(new URL('../drizzle/0000_rooms.sql', import.meta.url), 'utf8'),
+  );
+  sqlite.exec(
+    readFileSync(
+      new URL('../drizzle/0001_reconnect_pause.sql', import.meta.url),
+      'utf8',
+    ),
   );
   const prepare = (sql, values = []) => ({
     bind: (...next) => prepare(sql, next),
@@ -64,6 +71,12 @@ function setup() {
     getItem: (key) => storage.get(key) ?? null,
     setItem: (key, value) => storage.set(key, value),
     removeItem: (key) => storage.delete(key),
+  };
+  const durable = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => durable.get(key) ?? null,
+    setItem: (key, value) => durable.set(key, value),
+    removeItem: (key) => durable.delete(key),
   };
   globalThis.setTimeout = (fn, ms) => {
     const item = { fn, ms };
@@ -112,7 +125,7 @@ async function drain() {
   });
 }
 const api = (body) =>
-  handleRoomRequest(db, { version: 4, ...body }, 1000 + now);
+  handleRoomRequest(db, { version: 5, ...body }, 1000 + now);
 async function nextPoll() {
   const timer = timers.shift();
   assert.ok(timer, 'client must schedule the next poll');
@@ -158,7 +171,7 @@ void test('host reload first polls without a null snapshot and restores the serv
       snapshotSeq: 1,
     });
     sessionStorage.setItem(
-      'wellcum-room-v4',
+      'wellcum-room-v5',
       JSON.stringify({
         code: host.code,
         token: host.token,
@@ -177,7 +190,9 @@ void test('host reload first polls without a null snapshot and restores the serv
     );
     assert.equal(client.roomSnapshot().status, 'connected');
     assert.equal(client.roomWorld()?.scene, 'screen');
-    assert.equal(client.roomWorld()?.epoch, 4);
+    assert.equal(client.roomWorld()?.epoch, 5);
+    assert.equal(client.roomWorld()?.attempt, 4);
+    assert.equal(client.roomWorld()?.state.paused, true);
   } finally {
     await cleanup();
   }
@@ -943,6 +958,342 @@ void test('a guest exit and an ordinary room switch do not stop a desktop server
     assert.equal(client.roomSnapshot().slot, 1);
     await client.closeRoomSession();
     assert.equal(stopped, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('leader transfers only chosen actors, pauses without resetting and survives every scene transition', async () => {
+  setup();
+  try {
+    const { code } = await hostCity(0, 3);
+    await api({ op: 'join', code, name: 'Третий' });
+    await nextPoll();
+    const city = client.roomWorld().state;
+    city.x = 42;
+    bridge.roomCommand({ kind: 'leader', value: 2 });
+    await nextPoll();
+    assert.equal(client.roomHost(), true, 'simulator ownership does not move');
+    assert.deepEqual(client.roomWorld().roles, [2, 1, 0]);
+    assert.equal(client.roomWorld().driver, 2);
+    assert.equal(city.paused, true);
+    assert.equal(city.x, 42);
+    bridge.roomCommand({ kind: 'start-story', value: 'moving' }, 0);
+    assert.equal(
+      client.roomWorld().scene,
+      'city',
+      'former leader cannot launch',
+    );
+    bridge.roomCommand({ kind: 'start-story', value: 'moving' }, 2);
+    assert.equal(client.roomWorld().scene, 'moving');
+    assert.deepEqual(client.roomWorld().roles, [2, 1, 0]);
+    bridge.roomCommand({ kind: 'begin' }, 2);
+    const moving = client.roomWorld().state;
+    moving.actors[0].stamina = 42;
+    const attempt = client.roomWorld().attempt;
+    bridge.roomCommand({ kind: 'leader', value: 1 }, 2);
+    await nextPoll();
+    assert.deepEqual(client.roomWorld().roles, [1, 2, 0]);
+    assert.equal(client.roomWorld().state, moving);
+    assert.equal(client.roomWorld().state.actors[0].stamina, 42);
+    assert.equal(
+      client.roomWorld().attempt,
+      attempt,
+      'handoff cannot duplicate result credit',
+    );
+    assert.equal(bridge.roomRoleName(client.roomWorld(), 1), 'Ярик');
+    assert.equal(bridge.roomRoleName(client.roomWorld(), 2), 'Настя');
+    bridge.roomCommand({ kind: 'restart' }, 1);
+    assert.deepEqual(client.roomWorld().roles, [1, 2, 0]);
+    bridge.roomCommand({ kind: 'exit' }, 1);
+    bridge.roomCommand({ kind: 'start-story', value: 'clean' }, 1);
+    assert.equal(bridge.roomRoleName(client.roomWorld(), 1), 'Солдат');
+    assert.equal(bridge.roomRoleName(client.roomWorld(), 2), 'Рома');
+    bridge.roomCommand({ kind: 'episode', value: 'clean' }, 1);
+    assert.equal(bridge.roomRoleName(client.roomWorld(), 1), 'Сослуживец');
+    assert.equal(bridge.roomRoleName(client.roomWorld(), 2), 'Рома');
+    bridge.roomCommand({ kind: 'exit' }, 1);
+    bridge.roomCommand({ kind: 'start-story', value: 'screen' }, 1);
+    bridge.roomCommand({ kind: 'restart' }, 1);
+    assert.deepEqual(client.roomWorld().roles, [1, 2, 0]);
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('transfer invalidates remaining old-epoch commands and new leader can resume through the input latch', async () => {
+  setup();
+  try {
+    const { code, guest, epoch } = await hostCity(0, 3);
+    const third = (await api({ op: 'join', code, name: 'Третий' })).body;
+    await nextPoll();
+    bridge.roomCommand({ kind: 'leader', value: 1 });
+    await nextPoll();
+    const currentEpoch = client.roomWorld().epoch;
+    const send = (token, frames) => api({ op: 'poll', code, token, frames });
+    await send(guest.token, [
+      {
+        seq: 1,
+        epoch: currentEpoch,
+        keys: [],
+        command: { kind: 'leader', value: 2 },
+      },
+    ]);
+    await send(third.token, [
+      {
+        seq: 1,
+        epoch: currentEpoch,
+        keys: [],
+        command: { kind: 'start-story', value: 'moving' },
+      },
+    ]);
+    await nextPoll();
+    bridge.tickRoomCity(freshCity(), 0.1, new Set());
+    assert.equal(
+      client.roomWorld().scene,
+      'city',
+      'old command cannot gain authority through another member’s transfer',
+    );
+    assert.deepEqual(client.roomWorld().roles, [2, 0, 1]);
+    assert.ok(client.roomWorld().epoch > epoch);
+    await nextPoll();
+    await send(third.token, [
+      {
+        seq: 2,
+        epoch: client.roomWorld().epoch,
+        keys: [],
+        command: { kind: 'resume' },
+      },
+    ]);
+    await nextPoll();
+    bridge.tickRoomCity(freshCity(), 0.1, new Set());
+    assert.equal(
+      client.roomWorld().state.paused,
+      false,
+      'management command is independent of gameplay release latch',
+    );
+    const speed = client.roomWorld().state.speed;
+    await send(third.token, [
+      { seq: 3, epoch: client.roomWorld().epoch, keys: ['KeyW'] },
+    ]);
+    await nextPoll();
+    bridge.tickRoomCity(freshCity(), 0.1, new Set());
+    assert.equal(
+      client.roomWorld().state.speed,
+      speed,
+      'held control from before resume stays disarmed',
+    );
+    await send(third.token, [
+      { seq: 4, epoch: client.roomWorld().epoch, keys: [] },
+      { seq: 5, epoch: client.roomWorld().epoch, keys: ['KeyW'] },
+    ]);
+    await nextPoll();
+    bridge.tickRoomCity(freshCity(), 0.1, new Set());
+    assert.ok(client.roomWorld().state.speed > speed);
+  } finally {
+    await cleanup();
+  }
+});
+
+for (const scene of ['city', 'screen', 'clean', 'moving'])
+  void test(`${scene}: reconnect between host polls keeps progress, roles and score identity on a manual pause`, async () => {
+    setup();
+    try {
+      const { code, guest } = await hostCity();
+      if (scene !== 'city') {
+        bridge.roomCommand({ kind: 'start-story', value: scene });
+        bridge.roomCommand({ kind: 'begin' });
+      }
+      bridge.roomCommand({ kind: 'leader', value: 1 });
+      await nextPoll();
+      bridge.roomCommand({ kind: 'resume' }, 1);
+      const world = client.roomWorld();
+      world.state.elapsed = 143;
+      const state = structuredClone(world.state);
+      const epoch = world.epoch;
+      const attempt = world.attempt;
+      await nextPoll();
+      now += 100;
+      await api({ op: 'poll', code, token: guest.token, rejoin: true });
+      await nextPoll();
+      assert.equal(client.roomWorld().state.paused, true);
+      assert.deepEqual(client.roomWorld().roles, [1, 0, 2]);
+      assert.equal(client.roomWorld().attempt, attempt);
+      assert.equal(client.roomWorld().epoch, epoch + 1);
+      assert.equal(client.roomWorld().state.elapsed, state.elapsed);
+      assert.equal(client.roomSnapshot().frozen, true);
+      bridge.roomCommand({ kind: 'restart' }, 1);
+      assert.equal(
+        client.roomWorld().epoch,
+        epoch + 1,
+        'waiting room cannot restart from queued input',
+      );
+      await nextPoll();
+      assert.equal(client.roomSnapshot().frozen, false);
+      assert.equal(
+        client.roomWorld().state.paused,
+        true,
+        'successful reconnection does not resume itself',
+      );
+      bridge.roomCommand({ kind: 'resume' }, 1);
+      assert.equal(client.roomWorld().state.paused, false);
+    } finally {
+      await cleanup();
+    }
+  });
+
+void test('closed tab explicitly restores saved participant token without joining or taking another seat', async () => {
+  setup();
+  try {
+    const host = (await api({ op: 'create', name: 'Host', capacity: 2 })).body;
+    const guest = (await api({ op: 'join', code: host.code, name: 'Guest' }))
+      .body;
+    await api({
+      op: 'poll',
+      code: host.code,
+      token: host.token,
+      snapshotSeq: 1,
+      snapshot: {
+        scene: 'moving',
+        epoch: 4,
+        roles: [1, 0, 2],
+        attempt: 3,
+        brief: false,
+        driver: 1,
+        state: { paused: true, elapsed: 88 },
+      },
+    });
+    localStorage.setItem(
+      'wellcum-room-return-v5',
+      JSON.stringify({ code: host.code, token: guest.token, slot: 1 }),
+    );
+    assert.equal(client.savedRoomCode(), host.code);
+    client.restoreRoom();
+    assert.equal(
+      client.roomActive(),
+      false,
+      'new tabs never automatically steal an active session',
+    );
+    client.returnToSavedRoom();
+    await drain();
+    assert.equal(client.roomSnapshot().slot, 1);
+    assert.equal(client.roomWorld().scene, 'moving');
+    assert.equal(client.roomWorld().state.elapsed, 88);
+    assert.ok(requests.every(({ payload }) => payload.op === 'poll'));
+    assert.equal(requests[0].payload.rejoin, true);
+    assert.equal(client.roomSnapshot().roster.length, 2);
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('returning leader to simulator owner cannot resume before the paused role snapshot is acknowledged', async () => {
+  setup();
+  try {
+    await hostCity();
+    bridge.roomCommand({ kind: 'leader', value: 1 });
+    await nextPoll();
+    bridge.roomCommand({ kind: 'leader', value: 0 }, 1);
+    assert.equal(client.roomFresh(), false);
+    bridge.roomCommand({ kind: 'resume' });
+    assert.equal(client.roomWorld().state.paused, true);
+    const epoch = client.roomWorld().epoch;
+    await nextPoll();
+    assert.equal(requests.at(-1).reply.status, 200);
+    assert.equal(client.roomWorld().epoch, epoch);
+    assert.equal(client.roomFresh(), true);
+    bridge.roomCommand({ kind: 'resume' });
+    assert.equal(client.roomWorld().state.paused, false);
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('late guest epoch resynchronizes without creating an endless chain of reconnect pauses', async () => {
+  setup();
+  try {
+    const host = (await api({ op: 'create', name: 'Host', capacity: 2 })).body;
+    await api({
+      op: 'poll',
+      code: host.code,
+      token: host.token,
+      snapshotSeq: 1,
+      snapshot: {
+        scene: 'city',
+        epoch: 1,
+        brief: false,
+        state: freshCity(),
+        driver: 0,
+      },
+    });
+    await client.openRoom('Guest', 2, host.code);
+    await drain();
+    now += 200;
+    client.captureRoomInput(new Set());
+    await api({
+      op: 'poll',
+      code: host.code,
+      token: host.token,
+      snapshotSeq: 2,
+      snapshot: {
+        scene: 'moving',
+        epoch: 2,
+        brief: true,
+        state: { paused: true },
+        driver: 0,
+      },
+    });
+    await nextPoll();
+    assert.equal(client.roomSnapshot().status, 'reconnecting');
+    await nextPoll();
+    assert.equal(
+      requests.at(-1).payload.rejoin,
+      undefined,
+      'stale input is not another transport break',
+    );
+    assert.equal(requests.at(-1).reply.body.pauseRevision, 0);
+    assert.equal(client.roomWorld().epoch, 2);
+    assert.equal(client.roomSnapshot().status, 'connected');
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('repeated neutral keepalives cannot bury a guest leader menu command behind a throttled host', async () => {
+  setup();
+  try {
+    const { code, guest } = await hostCity();
+    bridge.roomCommand({ kind: 'leader', value: 1 });
+    await nextPoll();
+    const epoch = client.roomWorld().epoch;
+    const frames = Array.from({ length: 50 }, (_, i) => ({
+      seq: i + 1,
+      epoch,
+      keys: [],
+    }));
+    frames.push({
+      seq: 51,
+      epoch,
+      keys: [],
+      command: { kind: 'start-story', value: 'clean' },
+    });
+    await api({ op: 'poll', code, token: guest.token, frames });
+    await nextPoll();
+    bridge.tickRoomCity(freshCity(), 0.05, new Set());
+    assert.equal(client.roomWorld().scene, 'clean');
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('background polling does not replace another tab’s explicitly selected return identity', async () => {
+  setup();
+  try {
+    const { code, guest } = await hostCity();
+    const saved = JSON.stringify({ code, token: guest.token, slot: 1 });
+    localStorage.setItem('wellcum-room-return-v5', saved);
+    await nextPoll();
+    assert.equal(localStorage.getItem('wellcum-room-return-v5'), saved);
   } finally {
     await cleanup();
   }

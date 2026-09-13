@@ -15,6 +15,12 @@ function database() {
   sqlite.exec(
     readFileSync(new URL('../drizzle/0000_rooms.sql', import.meta.url), 'utf8'),
   );
+  sqlite.exec(
+    readFileSync(
+      new URL('../drizzle/0001_reconnect_pause.sql', import.meta.url),
+      'utf8',
+    ),
+  );
   const prepare = (sql, values = []) => ({
     bind: (...next) => prepare(sql, next),
     first: async (column) => {
@@ -44,7 +50,7 @@ function database() {
   };
 }
 const call = (db, body, now = 1000) =>
-  handleRoomRequest(db, { version: 4, ...body }, now);
+  handleRoomRequest(db, { version: 5, ...body }, now);
 const frame = (seq, keys = [], epoch = 0, command) => ({
   seq,
   epoch,
@@ -53,6 +59,8 @@ const frame = (seq, keys = [], epoch = 0, command) => ({
 });
 const snapshot = (epoch = 0, scene = 'city', brief = false) => ({
   epoch,
+  attempt: epoch,
+  roles: [0, 1, 2],
   scene,
   brief,
   state: { phase: 'frame', paused: false },
@@ -221,7 +229,11 @@ void test('presence freezes disconnected party, reconnect preserves slot/ack; ex
     'first reconnect response freezes until neutral input',
   );
   assert.equal(rejoined.body.resumed, true);
-  assert.equal((await guestPoll({}, now)).body.frozen, false);
+  assert.equal(
+    (await guestPoll({}, now)).body.frozen,
+    true,
+    'return remains frozen until host saves a pause',
+  );
   assert.equal(rejoined.body.roster[1].id, guest.roster[1].id);
   await call(db, { op: 'leave', code: host.code, token: guest.token }, now);
   assert.equal((await hostPoll({}, now)).body.frozen, true);
@@ -230,7 +242,11 @@ void test('presence freezes disconnected party, reconnect preserves slot/ack; ex
     'ROOM_FULL',
   );
   assert.equal((await guestPoll({}, now)).body.resumed, true);
-  assert.equal((await guestPoll({}, now)).body.frozen, false);
+  assert.equal(
+    (await guestPoll({}, now)).body.frozen,
+    true,
+    'return remains frozen until host saves a pause',
+  );
   assert.deepEqual((await hostPoll({}, now)).body.frames, {});
 });
 
@@ -387,4 +403,177 @@ void test('slow 3s polling and one missed response retain presence; a real gap s
   assert.equal(resumed.body.resumed, true);
   assert.equal(resumed.body.ack, 4);
   assert.deepEqual((await hostPoll({}, lostAt)).body.frames, {});
+});
+
+void test('brief disconnect cannot disappear between host polls; only saved host pause acknowledges it', async () => {
+  const { hostPoll, guestPoll } = await party(2);
+  const world = snapshot(8, 'moving');
+  world.state = {
+    paused: false,
+    elapsed: 312,
+    bags: [{ id: 4, carriers: [0, 1] }],
+    alertProgress: 0.6,
+  };
+  world.roles = [1, 0, 2];
+  world.state.paused = true;
+  await hostPoll({ snapshot: world, snapshotSeq: 1 });
+  world.state.paused = false;
+  await hostPoll({ snapshot: world, snapshotSeq: 2 });
+  const returned = await guestPoll({ rejoin: true }, 1010);
+  assert.equal(returned.body.pauseRevision, 1);
+  assert.equal(returned.body.frozen, true);
+  const late = await hostPoll({ snapshot: world, snapshotSeq: 3 }, 1011);
+  assert.equal(late.body.frozen, true, 'host cannot overlook a fast reconnect');
+  assert.equal(late.body.snapshot.state.paused, true);
+  assert.deepEqual(late.body.snapshot.state.bags, world.state.bags);
+  assert.deepEqual(late.body.snapshot.roles, [1, 0, 2]);
+  assert.equal((await guestPoll({ pauseAck: 1 }, 1012)).status, 403);
+  assert.equal(
+    (await hostPoll({ snapshot: world, snapshotSeq: 4, pauseAck: 1 }, 1012))
+      .status,
+    400,
+  );
+  world.state.paused = true;
+  world.epoch++;
+  const ack = await hostPoll(
+    { snapshot: world, snapshotSeq: 4, pauseAck: 1 },
+    1013,
+  );
+  assert.equal(ack.body.frozen, false);
+  assert.equal(
+    ack.body.snapshot.state.paused,
+    true,
+    'ack is not an automatic resume',
+  );
+  world.state.paused = false;
+  assert.equal(
+    (await hostPoll({ snapshot: world, snapshotSeq: 5 }, 1014)).body.snapshot
+      .state.paused,
+    false,
+  );
+});
+
+void test('active host can keep a disconnected friend’s slot and progress beyond six hours', async () => {
+  const { host, guest, hostPoll, guestPoll } = await party(2);
+  const world = snapshot(7, 'clean');
+  world.state = {
+    paused: true,
+    spots: [{ x: 14, y: 30, clean: 0.7 }],
+    elapsed: 230,
+  };
+  await hostPoll({ snapshot: world, snapshotSeq: 1 });
+  for (let hour = 1; hour <= 12; hour++) {
+    const reply = await hostPoll({}, 1000 + hour * 3600000);
+    assert.equal(reply.status, 200);
+    assert.ok(reply.body.expiresAt > host.expiresAt);
+  }
+  const returned = await guestPoll({}, 1000 + 12 * 3600000 + 1);
+  assert.equal(returned.status, 200);
+  assert.equal(returned.body.slot, guest.slot);
+  assert.deepEqual(returned.body.snapshot.state, world.state);
+});
+
+void test('role permutation validates a connected target, new epoch and pause; guest leader remains unable to publish state', async () => {
+  const { db, host, hostPoll, guestPoll } = await party(3);
+  await hostPoll({ snapshot: snapshot(1), snapshotSeq: 1 });
+  const next = { ...snapshot(2), roles: [2, 1, 0], state: { paused: true } };
+  assert.equal(
+    (await hostPoll({ snapshot: next, snapshotSeq: 2 })).status,
+    400,
+    'missing member cannot lead',
+  );
+  await call(db, { op: 'join', code: host.code, name: 'Третий' });
+  assert.equal(
+    (
+      await hostPoll({
+        snapshot: { ...next, epoch: 1, attempt: 1 },
+        snapshotSeq: 2,
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await hostPoll({
+        snapshot: { ...next, state: { paused: false } },
+        snapshotSeq: 2,
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await hostPoll({
+        snapshot: { ...next, roles: [2, 2, 0] },
+        snapshotSeq: 2,
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await hostPoll({ snapshot: next, snapshotSeq: 2 })).status,
+    200,
+  );
+  assert.deepEqual((await guestPoll()).body.snapshot.roles, [2, 1, 0]);
+  assert.equal(
+    (await guestPoll({ snapshot: next, snapshotSeq: 3 })).status,
+    403,
+  );
+});
+
+void test('duplicate snapshot sequence cannot acknowledge a pause that was never saved', async () => {
+  const { hostPoll, guestPoll } = await party(2);
+  const world = snapshot(1);
+  await hostPoll({ snapshot: world, snapshotSeq: 5 });
+  await guestPoll({ rejoin: true });
+  const reply = await hostPoll({
+    snapshot: { ...world, state: { paused: true } },
+    snapshotSeq: 5,
+    pauseAck: 1,
+  });
+  assert.equal(reply.status, 200);
+  assert.equal(
+    reply.body.snapshot.state.paused,
+    false,
+    'stale snapshot correctly ignored',
+  );
+  assert.equal(
+    reply.body.frozen,
+    true,
+    'unsaved paused payload is not a valid acknowledgement',
+  );
+});
+
+void test('concurrent host epoch cannot keep a returning guest offline', async () => {
+  const { db, host, guestPoll, hostPoll } = await party(2);
+  await hostPoll({ snapshot: snapshot(1), snapshotSeq: 1 });
+  const now = 1000 + MEMBER_STALE_MS + 100;
+  const batch = db.batch.bind(db);
+  let interleave = true;
+  db.batch = async (statements) => {
+    if (interleave) {
+      interleave = false;
+      const next = snapshot(2);
+      next.state.paused = true;
+      await hostPoll({ snapshot: next, snapshotSeq: 2 }, now);
+    }
+    return batch(statements);
+  };
+  const returned = await guestPoll({}, now + 1);
+  assert.equal(returned.status, 200);
+  assert.equal(returned.body.resumed, true);
+  assert.equal(returned.body.roster.find((p) => p.slot === 1).connected, true);
+  const next = await guestPoll({}, now + 120);
+  assert.equal(next.body.resumed, false);
+  assert.equal(next.body.pauseRevision, returned.body.pauseRevision);
+  assert.equal(
+    next.body.frozen,
+    true,
+    'manual paused snapshot acknowledgement is still required',
+  );
+  assert.equal(
+    db.sqlite.prepare('SELECT epoch FROM rooms WHERE code = ?').get(host.code)
+      .epoch,
+    2,
+  );
 });

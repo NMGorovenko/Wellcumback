@@ -42,7 +42,7 @@ module.exports = async function inspectNetwork(contents) {
     assert.equal(status.state, 'ready', status.message);
     const connection = status.connection;
     const request = (payload) =>
-      invoke('request', connection, { version: 4, ...payload });
+      invoke('request', connection, { version: 5, ...payload });
     const created = await request({
       op: 'create',
       name: 'Native host',
@@ -70,6 +70,8 @@ module.exports = async function inspectNetwork(contents) {
       const snapshot = {
         scene,
         epoch: ++epoch,
+        attempt: epoch,
+        roles: [0, 1, 2],
         driver: 0,
         brief: true,
         state: { paused: true, players: 2 },

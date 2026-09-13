@@ -13,6 +13,12 @@ export function createRoomDatabase(schema: string, filename = ':memory:') {
       .get()
   )
     sqlite.exec(schema);
+  // Upgrade a saved relay database without replacing rooms or credentials.
+  const columns = sqlite.prepare('PRAGMA table_info(rooms)').all();
+  if (!columns.some((column) => column.name === 'pause_revision'))
+    sqlite.exec(
+      'ALTER TABLE rooms ADD COLUMN pause_revision INTEGER NOT NULL DEFAULT 0; ALTER TABLE rooms ADD COLUMN pause_ack INTEGER NOT NULL DEFAULT 0;',
+    );
   const prepare = (
     sql: string,
     values: (string | number | null)[] = [],

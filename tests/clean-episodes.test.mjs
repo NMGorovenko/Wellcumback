@@ -5,7 +5,7 @@ import {
   createCleanEpisode,
 } from '../lib/game/clean/episodes.ts';
 import {
-  cleanCrew,
+  cleanCast,
   cleanTick,
   cleanAction,
   canStand,
@@ -71,6 +71,14 @@ for (const players of [1, 2, 3])
       assert.equal(s.paused, false);
       assert.equal(s.players, players);
       assert.equal(s.actorCount, players);
+      assert.deepEqual(
+        cleanCast(s).map((person) => person.id),
+        s.phase === 'clean'
+          ? players === 1
+            ? ['roma']
+            : ['relief', 'roma', 'orderly'].slice(0, players)
+          : ['soldier', 'roma', 'orderly'].slice(0, players),
+      );
       for (let actor = 0; actor < s.actorCount; actor++)
         assert.ok(canStand(s.x[actor], s.y[actor]), `actor ${actor}`);
       assert.ok(
@@ -134,10 +142,6 @@ for (const players of [1, 2, 3])
       if (s.phase === 'clean') {
         assert.equal(s.responseStage, 'ready');
         assert.ok(s.npcs.slice(1).every((n) => n.suited));
-        assert.deepEqual(
-          cleanCrew.slice(0, s.actorCount).map((p) => p.id),
-          ['roma', 'nikita', 'yaroslav'].slice(0, players),
-        );
       }
     });
 
@@ -183,6 +187,7 @@ void test('every non-cleanup checkpoint proceeds through its next normal chapter
 for (const players of [1, 2, 3])
   void test(`cleanup checkpoint completes with ${players} players while retaining practice flag`, () => {
     const s = createCleanEpisode(players, 'clean');
+    const cleanupCast = cleanCast(s);
     for (
       let iterations = 0;
       s.phase === 'clean' && iterations < 200;
@@ -213,6 +218,11 @@ for (const players of [1, 2, 3])
     assert.equal(s.score, 0);
     assert.equal(s.practice, true);
     assert.equal(s.actorCount, players);
+    assert.deepEqual(
+      cleanCast(s),
+      cleanupCast,
+      'the result retains cleanup identities',
+    );
     assert.ok(s.spots.every((p) => p.progress === 1));
     assert.equal(s.machineClean, 1);
     assert.equal(s.valve, 1);

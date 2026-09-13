@@ -1,7 +1,7 @@
 import { inputPrompt, type PadFrame } from '@/lib/game/input/gamepads';
 import { cleanSupportTask } from '@/lib/game/clean/support';
 import {
-  cleanCrew,
+  cleanRole,
   cleanFloorProgress,
   type CleanState,
 } from '@/lib/game/clean/engine';
@@ -82,8 +82,10 @@ function RhythmCue({
 export default function CleanStatus({
   game,
   pads,
+  localActor,
 }: {
   game: CleanState;
+  localActor?: number;
   pads: Pick<PadFrame, 'assignments'>;
 }) {
   const s = game,
@@ -97,7 +99,12 @@ export default function CleanStatus({
           warning={s.urge > 0.7}
         />
       )}
-      {s.phase === 'find' && <RhythmCue game={s} pads={pads} />}
+      {s.phase === 'find' &&
+        (localActor === undefined || localActor === 0 ? (
+          <RhythmCue game={s} pads={pads} />
+        ) : (
+          <p className="quiet">Солдат пытается дотерпеть. Помоги ему пройти.</p>
+        ))}
       {s.phase === 'toilet' && s.relief === 0 && (
         <CleanMeter
           label={s.containment.suppressed ? 'Держим напор' : 'Силы сдержаться'}
@@ -141,7 +148,7 @@ export default function CleanStatus({
               task = cleanSupportTask(s, actor);
             return (
               <p key={actor}>
-                <strong>{cleanCrew[actor].name}</strong>
+                <strong>{cleanRole(s, actor).name}</strong>
                 <span>
                   {task ? task.destination : 'Всё готово. Сбор у прачечной.'}
                 </span>
@@ -165,7 +172,7 @@ export default function CleanStatus({
             {Array.from({ length: s.actorCount }, (_, i) => (
               <CleanMeter
                 key={i}
-                label={cleanCrew[i].name}
+                label={cleanRole(s, i).name}
                 value={s.dirt[i] / 0.98}
                 warning={s.dirt[i] > 0.75}
                 detail={

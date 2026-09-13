@@ -1,5 +1,5 @@
 import type { DriveAxes } from '../input/drive.ts';
-export const ROOM_VERSION = 4;
+export const ROOM_VERSION = 5;
 export type RoomScene = 'city' | 'screen' | 'clean' | 'moving';
 export type RoomCommand = {
   kind:
@@ -13,6 +13,7 @@ export type RoomCommand = {
     | 'episode'
     | 'exit'
     | 'wheel'
+    | 'leader'
     | 'start-screen'
     | 'start-story'
     | 'ready';
@@ -31,6 +32,10 @@ export type RoomWorld = {
   state: Record<string, unknown>;
   brief: boolean;
   driver?: number;
+  /** Actor index → stable room member slot. Never reorder engine actors. */
+  roles?: [number, number, number];
+  /** Stable score identity; handing over control is not a new attempt. */
+  attempt?: number;
 };
 export type RoomMember = {
   id: string;
@@ -51,6 +56,7 @@ export type RoomReply = {
   snapshot: RoomWorld | null;
   snapshotSeq: number;
   resumed: boolean;
+  pauseRevision: number;
   frames: Record<string, RoomFrame[]>;
   ack: number;
   frozen: boolean;

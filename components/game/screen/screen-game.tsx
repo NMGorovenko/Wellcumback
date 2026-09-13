@@ -1,4 +1,5 @@
 'use client';
+import { isRoomLeader, roomActor } from '@/lib/game/network/room-roles';
 import { useEffect, useRef, useState } from 'react';
 import { ControlSettings } from '@/components/game/input/control-settings';
 import { useControlSettings } from '@/hooks/use-control-settings';
@@ -94,7 +95,8 @@ export default function ScreenGame({
   externalMenuOpen = false,
 }: GameProps) {
   const room = useRoom();
-  const canManage = !online || room.slot === 0;
+  const canManage = !online || isRoomLeader(room.world, room.slot);
+  const localActor = roomActor(room.world, room.slot);
   const roomReady = !online || roomFresh();
   const canResume = canManage && roomReady;
   const { settings } = useControlSettings();
@@ -356,14 +358,15 @@ export default function ScreenGame({
   }
   function move(player: number, side: number) {
     if (online) {
-      if (player === room.slot) roomCommand({ kind: 'move-side', value: side });
+      if (player === localActor)
+        roomCommand({ kind: 'move-side', value: side });
       return;
     }
     moveToSide(game.current, player, side);
     snapshot();
   }
   function chooseChairs(count: 1 | 2) {
-    if (online && room.slot !== 0) return;
+    if (online && localActor !== 0) return;
     if (online) {
       roomCommand({ kind: 'chairs', value: count });
       return;
@@ -374,7 +377,7 @@ export default function ScreenGame({
   function clickAction(player = 0) {
     unlockAudio();
     if (online) {
-      if (player === room.slot) roomCommand({ kind: 'action' });
+      if (player === localActor) roomCommand({ kind: 'action' });
       return;
     }
     act(game.current, player);
@@ -396,12 +399,12 @@ export default function ScreenGame({
     currentAct = actNumber(view.phase);
 
   const ownPrompt = online
-    ? screenPrompts(view).find((row) => row.player === room.slot)
+    ? screenPrompts(view).find((row) => row.player === localActor)
     : null;
   const ownControls = (
     <div>
       <p className="hud-note">
-        Ты — {NAMES[room.slot]}. Здесь кнопки только твоего персонажа.
+        Ты — {NAMES[localActor]}. Здесь кнопки только твоего персонажа.
       </p>
       {ownPrompt && (
         <p className="hud-instruction">
@@ -441,11 +444,11 @@ export default function ScreenGame({
         label={`${keyboardPrompt(0, 'throw')} · бросок отвёртки`}
         keys={keys}
         unlock={unlockAudio}
-        disabled={view.phase !== 'tension' || view.tool.owner !== room.slot}
+        disabled={view.phase !== 'tension' || view.tool.owner !== localActor}
       />
       {view.phase === 'drill' &&
         view.drillMode === 'position' &&
-        room.slot === 0 && (
+        localActor === 0 && (
           <div className="hud-inline-choice">
             {([1, 2] as const).map((count) => (
               <button
@@ -510,7 +513,7 @@ export default function ScreenGame({
             state={view}
             pads={pads}
             cueRefs={cueRefs}
-            localPlayer={online ? room.slot : undefined}
+            localPlayer={online ? localActor : undefined}
           />
         )}
         <div key={view.phase} className="scene-cut" aria-hidden="true">
@@ -593,7 +596,7 @@ export default function ScreenGame({
             <>
               <ScreenCompactStatus
                 view={view}
-                localPlayer={online ? room.slot : undefined}
+                localPlayer={online ? localActor : undefined}
                 pads={pads}
               />
               <details className="hud-help-controls">
@@ -682,7 +685,7 @@ export default function ScreenGame({
           <div className="brief-players">
             {NAMES.slice(0, players)
               .map((name, index) => ({ name, index }))
-              .filter(({ index }) => !online || index === room.slot)
+              .filter(({ index }) => !online || index === localActor)
               .map(({ name, index }) => (
                 <div key={name}>
                   <strong>{name}</strong>
@@ -703,7 +706,7 @@ export default function ScreenGame({
           </div>
           <p className="brief-note">
             {online
-              ? `Ты — ${NAMES[room.slot]}. На своём компьютере используй обычные WASD + E или геймпад. Команды относятся только к твоему персонажу. ${canManage ? 'Начни, когда все готовы.' : 'Историю запускает ведущий.'}`
+              ? `Ты — ${NAMES[localActor]}. На своём компьютере используй обычные WASD + E или геймпад. Команды относятся только к твоему персонажу. ${canManage ? 'Начни, когда все готовы.' : 'Историю запускает ведущий.'}`
               : players === 1
                 ? `Один набор ${keyboardPrompt(0, 'move')} + ${keyboardPrompt(0, 'action')}. На полу управляешь Никитой, Ярик помогает напротив. У стены управляешь Яриком, Никита страхует и подаёт. Переключать героев не нужно. При сверлении держи ещё ${keyboardPrompt(0, 'secondary')} — пылесос.`
                 : `Никита слева, Ярик справа. На стульях Ярик сверлит ${keyboardPrompt(1, 'action')} и пылесосит ${keyboardPrompt(1, 'secondary')}; Никита держит ${keyboardPrompt(0, 'action')} и балансирует ${keyboardPrompt(0, 'horizontal')}. Кнопки рядом с персонажами показывают следующий шаг.`}
@@ -827,7 +830,7 @@ export default function ScreenGame({
         open={controlsOpen && !externalMenuOpen}
         onOpenChange={setControlsOpen}
         players={online ? 1 : players}
-        playerNames={online ? [NAMES[room.slot]] : NAMES}
+        playerNames={online ? [NAMES[localActor]] : NAMES}
         pads={pads}
       />
     </section>

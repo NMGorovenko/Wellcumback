@@ -1,4 +1,5 @@
 'use client';
+import { isRoomLeader } from '@/lib/game/network/room-roles';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
   ArrowUpRight,
@@ -64,13 +65,17 @@ export default function CityHub({
   const game = useRef(savedGame.current);
   const room = useRoom();
   const network = {
-    role: room.code ? (room.slot === 0 ? 'host' : 'guest') : null,
+    role: room.code
+      ? isRoomLeader(room.world, room.slot)
+        ? 'host'
+        : 'guest'
+      : null,
     status: room.status,
     driver: (room.world?.driver ?? 0) === 0 ? 'host' : 'guest',
   };
   const { settings } = useControlSettings();
   const shared = network.role !== null;
-  const canManage = !shared || room.slot === 0;
+  const canManage = !shared || isRoomLeader(room.world, room.slot);
   const canStart =
     !shared ||
     (canManage &&
@@ -161,13 +166,8 @@ export default function CityHub({
       ? [
           {
             id: 'wheel',
-            label:
-              room.roster.length > 2
-                ? 'Передать руль следующему игроку'
-                : network.driver === 'host'
-                  ? 'Передать руль другу'
-                  : 'Вернуть руль себе',
-            disabled: network.status !== 'connected',
+            label: 'Передать ведущего и руль следующему игроку',
+            disabled: !roomFresh() || room.roster.length < 2,
           },
         ]
       : []),

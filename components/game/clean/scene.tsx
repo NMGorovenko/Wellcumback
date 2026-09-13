@@ -1,4 +1,5 @@
 'use client';
+import { isRomaWitness } from '@/lib/game/clean/cast';
 import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
@@ -30,10 +31,12 @@ const isCleanup = (phase: CleanState['phase']) =>
 /** One continuous 3D barracks, one simulation: story actors hand over to the cleanup crew. */
 export default function CleanScene({
   game,
+  players,
   cameraMode = 'wide',
   cueRefs,
 }: {
   game: RefObject<CleanState>;
+  players: number;
   cameraMode?: CleanCameraMode;
   cueRefs?: ActionCueRefs;
 }) {
@@ -99,8 +102,8 @@ export default function CleanScene({
     const room = createBarracks(kit),
       traces = createTraceField(kit);
     const soldier = createSoldier(kit),
-      npcs = [0, 1, 2].map((i) => createNpc(kit, i));
-    const crew = [0, 1, 2].map((i) => createCleaner(kit, i));
+      npcs = [0, 1, 2].map((i) => createNpc(kit, i, players));
+    const crew = [0, 1, 2].map((i) => createCleaner(kit, i, players));
     const supporters = [1, 2].map((i) => createSupporter(kit, i));
     supporters.forEach((actor, i) => {
       actor.previous.copy(
@@ -384,7 +387,7 @@ export default function CleanScene({
             : state.action === 'react';
         npc.say(speaking && mode.current === 'faces' ? state.line : '');
         npc.shock.visible = state.action === 'react' && !state.line;
-        npc.name.visible = false;
+        npc.name.visible = isRomaWitness(players, i) && !cleaning;
         if (state.action === 'react') {
           npc.rig.head.rotation.z = Math.sin(time * 5 + i) * 0.14;
           hand.set(-0.1, 1.57, 0.22);
@@ -661,7 +664,7 @@ export default function CleanScene({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [game]);
+  }, [game, players]);
   return (
     <div
       ref={host}
