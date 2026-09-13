@@ -114,12 +114,46 @@ if args.desktop:
         if (record['version'] != version or record['source_html_sha256'] != build['html_sha256']
                 or record['bytes'] != len(data) or record['artifact_sha256'] != hashlib.sha256(data).hexdigest()):
             raise SystemExit(f'Rebuild stale desktop artifact: {binary.name}')
-        for filename in ('main.cjs', 'security.cjs'):
+        for filename in ('main.cjs', 'security.cjs', 'preload.cjs'):
             if record['runtime'][filename] != hashlib.sha256((ROOT / 'desktop' / filename).read_bytes()).hexdigest():
                 raise SystemExit(f'Rebuild desktop artifact after runtime changes: {binary.name}')
+        for filename, source in [('rooms.sql', ROOT / 'drizzle/0000_rooms.sql'),
+                                 ('network.cjs', ROOT / 'outputs/desktop-app/network.cjs')]:
+            if record['runtime'][filename] != hashlib.sha256(source.read_bytes()).hexdigest():
+                raise SystemExit(f'Rebuild desktop relay: {binary.name}')
+        for filename, digest in record['runtime_sources'].items():
+            source = (ROOT / filename).resolve()
+            if not source.is_relative_to(ROOT) or hashlib.sha256(source.read_bytes()).hexdigest() != digest:
+                raise SystemExit(f'Rebuild desktop after relay source changes: {filename}')
+        tunnel = record['tunnel']
+        pins = json.loads((ROOT / 'desktop/tunnel-binaries.json').read_text())
+        pinned = pins['assets'].get(tunnel['target'])
+        binary_name = 'cloudflared.exe' if tunnel['target'].startswith('win32') else 'cloudflared'
+        cached = ROOT / 'outputs/dependencies/cloudflared' / pins['version'] / tunnel['target'] / binary_name
+        if (tunnel['version'] != pins['version'] or not pinned
+                or tunnel['archive_sha256'] != pinned['sha256']
+                or tunnel['binary_sha256'] != hashlib.sha256(cached.read_bytes()).hexdigest()):
+            raise SystemExit(f'Rebuild desktop tunnel: {binary.name}')
         destination = output / binary.name
         shutil.copyfile(binary, destination)
         artifacts.append(destination)
+    server = ROOT / 'outputs/server'
+    server_info = json.loads((server / 'package.json').read_text())
+    if server_info['version'] != version:
+        raise SystemExit('Rebuild standalone relay for this version')
+    server_manifest = json.loads((server / 'build.json').read_text())
+    for filename, digest in server_manifest['sources'].items():
+        source = (ROOT / filename).resolve()
+        if not source.is_relative_to(ROOT) or hashlib.sha256(source.read_bytes()).hexdigest() != digest:
+            raise SystemExit(f'Rebuild standalone relay after source changes: {filename}')
+    for filename, digest in server_manifest['files'].items():
+        if hashlib.sha256((server / filename).read_bytes()).hexdigest() != digest:
+            raise SystemExit(f'Standalone relay file changed: {filename}')
+    server_zip = output / (prefix + '-server.zip')
+    with zipfile.ZipFile(server_zip, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for file in sorted(server.rglob('*')):
+            if file.is_file(): archive.write(file, file.relative_to(server))
+    artifacts.append(server_zip)
 checksums = '\n'.join(f'{hashlib.sha256(file.read_bytes()).hexdigest()}  {file.name}' for file in artifacts) + '\n'
 (output / 'SHA256SUMS.txt').write_text(checksums)
 print(f'Release {args.tag} at {commit}: {len(artifacts)} artifacts, {len(references)} original references verified')

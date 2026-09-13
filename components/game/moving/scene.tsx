@@ -1,4 +1,5 @@
 'use client';
+import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import {
@@ -40,6 +41,7 @@ export default function MovingScene({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
+    const countRenderedFrame = renderedFrameCounter();
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#b4baad');
     const kit = new RenderKit(scene);
@@ -533,6 +535,7 @@ export default function MovingScene({
         speechRect ? [speechRect] : [],
       );
       renderer.render(scene, camera);
+      countRenderedFrame(performance.now());
     };
     animation = requestAnimationFrame(draw);
     return () => {

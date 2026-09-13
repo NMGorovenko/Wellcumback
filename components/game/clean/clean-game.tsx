@@ -1,4 +1,8 @@
 'use client';
+import { useRoom } from '@/hooks/use-room';
+import { roomWorld, roomFresh } from '@/lib/game/network/room-client';
+import { roomCommand, tickRoomClean } from '@/lib/game/network/room-game';
+import type { CleanState } from '@/lib/game/clean/engine';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ControlSettings } from '@/components/game/input/control-settings';
 import { useControlSettings } from '@/hooks/use-control-settings';
@@ -81,24 +85,36 @@ function CleanTouchButton({
 
 export default function CleanGame({
   players,
+  online = false,
+  externalMenuOpen = false,
   sound,
   onExit,
   onFinish,
   onNext,
 }: {
   players: number;
+  online?: boolean;
+  externalMenuOpen?: boolean;
   sound: boolean;
   onExit: () => void;
   onFinish: (r: Result) => void;
   onNext?: () => void;
 }) {
-  const game = useRef(freshClean(players)),
+  const room = useRoom();
+  const canManage = !online || room.slot === 0;
+  const canResume = canManage && (!online || roomFresh());
+  const [initial] = useState(() =>
+    online && roomWorld()?.scene === 'clean'
+      ? (structuredClone(roomWorld()!.state) as unknown as CleanState)
+      : freshClean(players),
+  );
+  const game = useRef(initial),
     keys = useRef(new Set<string>()),
     saved = useRef(false);
   const { settings } = useControlSettings();
   const [touchActor, setTouchActor] = useState(0);
   const [controlsOpen, setControlsOpen] = useState(false);
-  const [view, setView] = useState(() => freshClean(players)),
+  const [view, setView] = useState(initial),
     [cameraMode, setCameraMode] = useState<CleanCameraMode>('wide');
   const [pads, setPads] = useState<
     Pick<PadFrame, 'assignments' | 'unsupported'>
@@ -116,11 +132,25 @@ export default function CleanGame({
   useGameInspection(game, keys);
   useCleanAudio(sound, view);
   const action = () => {
+    if (online) {
+      roomCommand(
+        game.current.phase === 'brief'
+          ? { kind: 'begin' }
+          : { kind: 'action', value: 'input' },
+      );
+      return;
+    }
     cleanAction(game.current);
     setView({ ...game.current });
   };
   const setPause = (paused: boolean) => {
     if (game.current.phase === 'result') return;
+    if (online) {
+      if (paused || canResume)
+        roomCommand({ kind: paused ? 'pause' : 'resume' });
+      keys.current.clear();
+      return;
+    }
     game.current.paused = paused;
     keys.current.clear();
     setView({ ...game.current });
@@ -133,12 +163,19 @@ export default function CleanGame({
   const toggleCamera = () =>
     setCameraMode((mode) => (mode === 'wide' ? 'faces' : 'wide'));
   const openEpisodes = () => {
-    if (game.current.phase !== 'result') game.current.paused = true;
+    if (!canManage) return;
+    setPause(true);
     keys.current.clear();
     setEpisodeOpen(true);
     setView({ ...game.current });
   };
   const jumpToEpisode = (id: string) => {
+    if (!canManage) return;
+    if (online) {
+      roomCommand({ kind: 'episode', value: id });
+      setEpisodeOpen(false);
+      return;
+    }
     game.current = createCleanEpisode(players, id as CleanEpisodeId);
     keys.current.clear();
     saved.current = false;
@@ -148,9 +185,12 @@ export default function CleanGame({
   useGameLoop({
     game,
     keys,
+    inputPlayers: online ? 1 : undefined,
+    tickWhileBlocked: online,
     tick: (state, dt, merged) => {
       cueKeys.current = merged;
-      cleanTick(state, dt, merged);
+      if (online) tickRoomClean(state, dt, merged);
+      else cleanTick(state, dt, merged);
     },
     action,
     pause,
@@ -171,6 +211,7 @@ export default function CleanGame({
       },
       onConfirm: () => {
         if (episodeOpen) jumpToEpisode(cleanEpisodes[episodeChoice].id);
+        else if (view.phase === 'brief') action();
         else if (view.paused) {
           if (pauseChoice === 0) setPause(false);
           else if (pauseChoice === 1) openEpisodes();
@@ -179,8 +220,7 @@ export default function CleanGame({
             setPause(false);
           } else if (pauseChoice === 3) openControls();
           else onExit();
-        } else if (view.phase === 'brief') action();
-        else (onNext ?? onExit)();
+        } else (onNext ?? onExit)();
       },
       onBack: () => {
         if (episodeOpen) setEpisodeOpen(false);
@@ -195,7 +235,7 @@ export default function CleanGame({
       onFinish({
         story: 'clean',
         score: view.score,
-        players,
+        players: view.players,
         seconds: Math.round(view.elapsed),
         date: new Date().toISOString(),
         details: `${view.spots.length} следов отмыто · стиралка чистая · ${Math.round(view.teamwork)} сек. сообща`,
@@ -203,6 +243,7 @@ export default function CleanGame({
     }
   }, [
     view.phase,
+    view.players,
     view.practice,
     view.score,
     view.elapsed,
@@ -211,7 +252,11 @@ export default function CleanGame({
     players,
     onFinish,
   ]);
-  const touchPrompts = cleanPrompts(view, touchActor);
+  const inputActor = online ? 0 : touchActor;
+  const touchPrompts = cleanPrompts(
+    view,
+    online ? Math.max(0, room.slot) : touchActor,
+  );
   const touchAction = touchPrompts.find(
     (prompt) => prompt.control === 'action',
   );
@@ -232,6 +277,7 @@ export default function CleanGame({
             pads={pads}
             cueRefs={cueRefs}
             heldKeys={heldKeys}
+            localSlot={online ? room.slot : undefined}
           />
         )}
         <button
@@ -271,6 +317,7 @@ export default function CleanGame({
           <button
             className="icon-button"
             onClick={openEpisodes}
+            disabled={!canManage}
             aria-label="Выбрать эпизод"
           >
             <SkipForward size={17} />
@@ -313,7 +360,11 @@ export default function CleanGame({
               ведро. На уборку вместо солдата выходит Рома. В одиночку Рома
               справляется сам.
             </p>
-            <button className="play-button" onClick={action}>
+            <button
+              className="play-button"
+              onClick={action}
+              disabled={!canResume}
+            >
               Заступить на смену <ArrowRight size={16} />
             </button>
           </div>
@@ -374,7 +425,7 @@ export default function CleanGame({
           {active && (
             <details className="touch-controls">
               <summary>Кнопки на экране</summary>
-              {players > 1 && (
+              {!online && players > 1 && (
                 <div className="touch-row" aria-label="Кем управлять на экране">
                   {Array.from({ length: players }, (_, actor) => (
                     <button
@@ -396,22 +447,22 @@ export default function CleanGame({
               <div className="touch-row">
                 <CleanTouchButton
                   input={keys}
-                  code={cleanBindings[touchActor][2]}
+                  code={cleanBindings[inputActor][2]}
                   label="↑"
                 />
                 <CleanTouchButton
                   input={keys}
-                  code={cleanBindings[touchActor][0]}
+                  code={cleanBindings[inputActor][0]}
                   label="←"
                 />
                 <CleanTouchButton
                   input={keys}
-                  code={cleanBindings[touchActor][3]}
+                  code={cleanBindings[inputActor][3]}
                   label="↓"
                 />
                 <CleanTouchButton
                   input={keys}
-                  code={cleanBindings[touchActor][1]}
+                  code={cleanBindings[inputActor][1]}
                   label="→"
                 />
                 {touchSecondary &&
@@ -429,7 +480,7 @@ export default function CleanGame({
                 {touchAction && (
                   <CleanTouchButton
                     input={keys}
-                    code={cleanBindings[touchActor][4]}
+                    code={cleanBindings[inputActor][4]}
                     label={touchAction.text}
                   />
                 )}
@@ -445,7 +496,7 @@ export default function CleanGame({
         </div>
       </footer>
       <EpisodeDialog
-        open={episodeOpen}
+        open={episodeOpen && !externalMenuOpen}
         options={cleanEpisodes}
         selected={episodeChoice}
         onSelect={setEpisodeChoice}
@@ -454,10 +505,12 @@ export default function CleanGame({
       />
       <Dialog
         open={
+          !externalMenuOpen &&
           !episodeOpen &&
           !controlsOpen &&
           view.paused &&
-          view.phase !== 'result'
+          view.phase !== 'result' &&
+          view.phase !== 'brief'
         }
         onOpenChange={setPause}
       >
@@ -469,6 +522,7 @@ export default function CleanGame({
           <button
             className={`play-button${pauseChoice === 0 ? ' pad-selected' : ''}`}
             onClick={() => setPause(false)}
+            disabled={!canResume}
           >
             <Play size={17} />
             Продолжить смену
@@ -476,6 +530,7 @@ export default function CleanGame({
           <button
             className={`secondary-button${pauseChoice === 1 ? ' pad-selected' : ''}`}
             onClick={openEpisodes}
+            disabled={!canManage}
           >
             <SkipForward size={17} /> Выбрать эпизод
           </button>
@@ -504,10 +559,18 @@ export default function CleanGame({
         </DialogContent>
       </Dialog>
       <ControlSettings
-        open={controlsOpen}
+        open={controlsOpen && !externalMenuOpen}
         onOpenChange={setControlsOpen}
-        players={players}
-        playerNames={cleanCrew.map((person) => person.name)}
+        players={online ? 1 : players}
+        playerNames={
+          online
+            ? [
+                room.slot === 0 && view.phase !== 'clean'
+                  ? 'Солдат'
+                  : cleanCrew[Math.max(0, room.slot)].name,
+              ]
+            : cleanCrew.map((person) => person.name)
+        }
         pads={pads}
       />
     </section>

@@ -60,7 +60,7 @@ const station = (x: number, y: number, facing: number) => ({
   },
 });
 export const movingStations = {
-  sofa: [440, 555].map((y) => ({
+  sofa: [440, 555, 615].map((y) => ({
     ...station(152, y, -Math.PI / 2),
     seatWorld: {
       x: (102 - 300) / MAP_UNITS_PER_METRE,

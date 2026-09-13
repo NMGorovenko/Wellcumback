@@ -9,6 +9,8 @@ import {
   readFile,
   writeFile,
   copyFile,
+  cp,
+  symlink,
   rm,
 } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -158,10 +160,40 @@ async function fixture(t) {
       path.join(project, 'scripts/build-desktop.mjs'),
     ),
   ]);
+  await cp(path.join(root, 'desktop'), path.join(project, 'desktop'), {
+    recursive: true,
+  });
+  await copyFile(
+    path.join(root, 'package-lock.json'),
+    path.join(project, 'package-lock.json'),
+  );
+  await cp(path.join(root, 'server'), path.join(project, 'server'), {
+    recursive: true,
+  });
+  await cp(path.join(root, 'lib'), path.join(project, 'lib'), {
+    recursive: true,
+  });
+  await cp(path.join(root, 'drizzle'), path.join(project, 'drizzle'), {
+    recursive: true,
+  });
+  await copyFile(
+    path.join(root, 'scripts/fetch-tunnel.mjs'),
+    path.join(project, 'scripts/fetch-tunnel.mjs'),
+  );
+  await symlink(
+    path.join(root, 'node_modules'),
+    path.join(project, 'node_modules'),
+    'dir',
+  );
+  await symlink(
+    path.join(root, 'outputs/dependencies'),
+    path.join(project, 'outputs/dependencies'),
+    'dir',
+  );
   return project;
 }
 
-await test('prepared app is self-contained and has no web-server or production Node dependencies', async (t) => {
+await test('prepared app contains the bundled relay and sandboxed preload, with no external runtime modules', async (t) => {
   const project = await fixture(t);
   const appDir = await prepareDesktopApp(project);
   const pkg = JSON.parse(
@@ -257,7 +289,11 @@ await test('main process sandboxes the trusted renderer and denies navigation, p
       return Promise.resolve();
     }
   }
+  const ipcHandlers = new Map();
+  let stops = 0;
   const electron = {
+    ipcMain: { handle: (name, fn) => ipcHandlers.set(name, fn) },
+    clipboard: { writeText() {} },
     app,
     BrowserWindow: FakeWindow,
     screen: {
@@ -284,6 +320,16 @@ await test('main process sandboxes the trusted renderer and denies navigation, p
         if (id === 'electron') return electron;
         if (id === 'node:path') return path;
         if (id === './security.cjs') return security;
+        if (id === './network.cjs')
+          return {
+            createDesktopNetwork: () => ({
+              status: () => ({ state: 'offline' }),
+              stop: async () => {
+                stops++;
+              },
+            }),
+            parseInvitation: () => ({}),
+          };
         if (id === 'node:fs/promises')
           return {
             readFile: (file) =>
@@ -306,7 +352,35 @@ await test('main process sandboxes the trusted renderer and denies navigation, p
   assert.equal(window.options.webPreferences.sandbox, true);
   assert.equal(window.options.webPreferences.contextIsolation, true);
   assert.equal(window.options.webPreferences.nodeIntegration, false);
-  assert.equal(window.options.webPreferences.preload, undefined);
+  assert.equal(window.options.webPreferences.preload, '/app/preload.cjs');
+  window.webContents.mainFrame = { url: security.GAME_URL };
+  const event = {
+    sender: window.webContents,
+    senderFrame: window.webContents.mainFrame,
+  };
+  assert.equal(
+    ipcHandlers.get('wellcum:network:status')(event).state,
+    'offline',
+  );
+  assert.throws(
+    () =>
+      ipcHandlers.get('wellcum:network:status')({
+        ...event,
+        senderFrame: { url: security.GAME_URL },
+      }),
+    /Untrusted/,
+  );
+  assert.throws(
+    () => ipcHandlers.get('wellcum:network:status')({ ...event, sender: {} }),
+    /Untrusted/,
+  );
+  assert.throws(
+    () => ipcHandlers.get('wellcum:network:request')(event, 'a'.repeat(300000)),
+    /Invalid/,
+  );
+  window.webContents.emit('render-process-gone');
+  assert.equal(stops, 1);
+
   assert.equal(window.options.webPreferences.webSecurity, true);
   assert.equal(handlers.schemes[0].privileges.bypassCSP, undefined);
   assert.equal(handlers.popup({ url: 'https://example.com' }).action, 'deny');

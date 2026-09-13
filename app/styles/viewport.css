@@ -507,3 +507,20 @@
     bottom: 65px;
   }
 }
+
+.fps-meter {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: #14251dda;
+  color: #e1edcc;
+  font:
+    12px/1.4 ui-monospace,
+    monospace;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}

@@ -1,0 +1,22 @@
+[Unit]
+Description=Wellcum back room relay
+After=network.target
+
+[Service]
+Type=simple
+User=wellcum
+Group=wellcum
+WorkingDirectory=/opt/wellcum
+EnvironmentFile=/etc/wellcum/relay.env
+ExecStart=/usr/bin/node /opt/wellcum/server.mjs
+Restart=on-failure
+RestartSec=3
+StateDirectory=wellcum
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

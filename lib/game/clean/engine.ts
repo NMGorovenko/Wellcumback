@@ -4,6 +4,7 @@ import {
   supportBenefits,
   type CleanSupport,
 } from './support.ts';
+import { reserveTrace } from './traces.ts';
 import {
   bounds,
   stations,
@@ -284,7 +285,7 @@ function phase(s: CleanState, value: CleanPhase, message: string) {
 function award(s: CleanState, points: number) {
   if (!s.practice) s.score += points;
 }
-function addTrace(
+export function addTrace(
   s: CleanState,
   kind: TraceKind,
   point: Point,
@@ -292,7 +293,8 @@ function addTrace(
   weight: number,
   rotation = 0,
 ) {
-  if (kind !== 'footprint') {
+  const compacted = reserveTrace(s.spots);
+  if (!compacted && kind !== 'footprint') {
     const old = s.spots.find(
       (p) => p.kind === kind && p.progress === 0 && distance(p, point) < 24,
     );

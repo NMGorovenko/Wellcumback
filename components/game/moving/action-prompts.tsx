@@ -17,7 +17,9 @@ export function MovingActionPrompts({
   state,
   pads,
   cueRefs,
+  localSlot,
 }: {
+  localSlot?: number;
   state: MovingState;
   pads: Pick<PadFrame, 'assignments'>;
   cueRefs: ActionCueRefs;
@@ -30,6 +32,8 @@ export function MovingActionPrompts({
     >
       {state.actors.map((actor, i) => {
         const automated = i >= state.players;
+        const owned = localSlot === undefined || localSlot === i;
+        const inputSlot = localSlot === undefined ? i : 0;
         const travellingForTask =
           actor.activity === 'alert-walk' || actor.activity === 'toilet-walk';
         const intent = movingIntent(state, i),
@@ -40,7 +44,8 @@ export function MovingActionPrompts({
           ? 'move'
           : (intent.control ?? 'action');
         const prompt = (kind: InputControl) =>
-          gamepadPrompt(pads, i, kind) || keyboardPrompt(i, kind);
+          gamepadPrompt(pads, inputSlot, kind) ||
+          keyboardPrompt(inputSlot, kind);
         const canOpen =
           actor.bagId === null &&
           actor.heldItem === null &&
@@ -75,6 +80,7 @@ export function MovingActionPrompts({
             <div className="context-cues">
               <span className={`context-cue${actor.working ? ' is-held' : ''}`}>
                 {!automated &&
+                  owned &&
                   !travellingForTask &&
                   actor.activity !== 'toilet' && (
                     <kbd>
@@ -84,11 +90,12 @@ export function MovingActionPrompts({
                     </kbd>
                   )}
                 <span>
-                  {intent.hold && !automated && <small>держи</small>}
+                  {intent.hold && !automated && owned && <small>держи</small>}
                   {intent.label}
                 </span>
               </span>
               {!automated &&
+                owned &&
                 (actor.heldItem !== null ||
                   actor.bagId !== null ||
                   canOpen) && (

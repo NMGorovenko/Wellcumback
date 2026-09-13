@@ -75,6 +75,7 @@ type GameProps = {
   onFinish: (result: Result) => void;
   onNext?: () => void;
   online?: boolean;
+  externalMenuOpen?: boolean;
 };
 
 function initialGame(players: number) {
@@ -90,6 +91,7 @@ export default function ScreenGame({
   onFinish,
   onNext,
   online = false,
+  externalMenuOpen = false,
 }: GameProps) {
   const room = useRoom();
   const canManage = !online || room.slot === 0;
@@ -645,7 +647,7 @@ export default function ScreenGame({
         )}
       </aside>
       <EpisodeDialog
-        open={episodeOpen}
+        open={episodeOpen && !externalMenuOpen}
         options={screenEpisodes}
         selected={episodeChoice}
         onSelect={setEpisodeChoice}
@@ -654,7 +656,7 @@ export default function ScreenGame({
       />
 
       <Dialog
-        open={briefOpen && !episodeOpen && !controlsOpen}
+        open={briefOpen && !episodeOpen && !controlsOpen && !externalMenuOpen}
         disablePointerDismissal
         onOpenChange={(_open, details) => details.cancel()}
       >
@@ -748,6 +750,7 @@ export default function ScreenGame({
       </Dialog>
       <Dialog
         open={
+          !externalMenuOpen &&
           view.paused &&
           !briefOpen &&
           !episodeOpen &&
@@ -821,7 +824,7 @@ export default function ScreenGame({
         </DialogContent>
       </Dialog>
       <ControlSettings
-        open={controlsOpen}
+        open={controlsOpen && !externalMenuOpen}
         onOpenChange={setControlsOpen}
         players={online ? 1 : players}
         playerNames={online ? [NAMES[room.slot]] : NAMES}

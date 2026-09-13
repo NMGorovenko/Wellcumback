@@ -1,4 +1,5 @@
 'use client';
+import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import type { CleanState } from '@/lib/game/clean/engine';
@@ -46,6 +47,7 @@ export default function CleanScene({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
+    const countRenderedFrame = renderedFrameCounter();
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#a5b1a0');
     // An indoor overview must remain crisp even across the enlarged floorplan.
@@ -649,6 +651,7 @@ export default function CleanScene({
         !s.paused && mode.current !== 'faces',
       );
       renderer.render(scene, camera);
+      countRenderedFrame(performance.now());
     };
     animation = requestAnimationFrame(draw);
     return () => {

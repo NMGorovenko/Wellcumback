@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,6 +23,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import Scene from '@/components/game/screen/scene';
+import { FpsMeter } from '@/components/game/fps-meter';
 import { EveningResults } from '@/components/game/evening-results';
 import CleanScene from '@/components/game/clean/scene';
 import CityHub from '@/components/game/city/city-hub';
@@ -33,7 +34,7 @@ import { freshMoving } from '@/lib/game/moving/engine';
 import { ControlSettings } from '@/components/game/input/control-settings';
 import { NetworkDialog } from '@/components/game/network/network-dialog';
 import { useRoom } from '@/hooks/use-room';
-import { roomCommand } from '@/lib/game/network/room-game';
+import { roomCommand, roomRoleName } from '@/lib/game/network/room-game';
 import { leaveRoom } from '@/lib/game/network/room-client';
 import ScreenGame from '@/components/game/screen/screen-game';
 import CleanGame from '@/components/game/clean/clean-game';
@@ -73,7 +74,7 @@ const episodes = [
     kicker: 'ПЕРЕЕЗД ЯРИКА',
     title: 'Это ещё не всё.',
     line: 'Ярик, Настя, жёлтые сумки и ещё одна последняя вещь.',
-    duration: 'Упаковать и вынести · 1–2 игрока',
+    duration: 'Упаковать и вынести · 1–3 игрока',
   },
 ];
 function Preview({ story }: { story: Story }) {
@@ -98,11 +99,11 @@ export default function Home() {
     [sound, setSound] = useState(true),
     [localActive, setActive] = useState<Story | null>(null);
   const active = online
-    ? room.world?.scene === 'screen'
-      ? 'screen'
+    ? room.world?.scene && room.world.scene !== 'city'
+      ? room.world.scene
       : null
     : localActive;
-  const screenPlayers = online
+  const storyPlayers = online
     ? Number(room.world?.state.players ?? room.capacity)
     : players;
   const [selected, setSelected] = useState(0),
@@ -114,7 +115,15 @@ export default function Home() {
   const [pads, setPads] = useState<
     Pick<PadFrame, 'assignments' | 'unsupported'>
   >({ assignments: [], unsupported: [] });
-  const [results, finish] = useGameResults();
+  const [results, recordResult] = useGameResults();
+  const runId =
+    online && room.world
+      ? `${room.code}:${room.world.scene}:${room.world.epoch}`
+      : undefined;
+  const finish = useCallback<typeof recordResult>(
+    (result) => recordResult({ ...result, runId }),
+    [recordResult, runId],
+  );
   const fullscreen = useGameFullscreen();
   useDialogInput(panel === 'people' || panel === 'scores', () =>
     setPanel(null),
@@ -122,7 +131,7 @@ export default function Home() {
   const episode = episodes[selected];
   const play = (story: Story) => {
     if (online) {
-      if (story === 'screen') roomCommand({ kind: 'start-screen' });
+      if (room.slot === 0) roomCommand({ kind: 'start-story', value: story });
       return;
     }
     if (!transition)
@@ -193,6 +202,7 @@ export default function Home() {
     <main
       className={`shell${active || hubMode === 'city' ? ' play-viewport' : ''}${active ? ' game-active' : ' hub'}${!active && hubMode === 'city' ? ' city-mode' : ''}${fullscreen.mode === 'window' ? ' window-fullscreen' : ''}`}
     >
+      <FpsMeter />
       <header className="topbar">
         <button
           className="hub-brand"
@@ -289,7 +299,7 @@ export default function Home() {
           <span>
             {room.message ||
               (active
-                ? `Ты — ${['Никита', 'Ярик', 'Рома'][room.slot]}`
+                ? `Ты — ${roomRoleName(room.world, room.slot)}`
                 : `Руль: ${room.roster.find((p) => p.slot === (room.world?.driver ?? 0))?.name ?? 'ведущий'}`)}
           </span>
           <small>{room.ping ? `${room.ping} мс` : 'Соединяемся…'}</small>
@@ -300,8 +310,9 @@ export default function Home() {
           key={
             online ? `${room.code}-${room.world?.epoch}` : `screen-${players}`
           }
-          players={screenPlayers}
+          players={storyPlayers}
           online={online}
+          externalMenuOpen={networkOpen}
           sound={sound}
           onExit={exit}
           onFinish={finish}
@@ -309,8 +320,14 @@ export default function Home() {
         />
       ) : active === 'clean' ? (
         <CleanGame
-          key={`clean-${players}`}
-          players={players}
+          key={
+            online
+              ? `${room.code}:clean:${room.world?.epoch}`
+              : `clean-${players}`
+          }
+          players={storyPlayers}
+          online={online}
+          externalMenuOpen={networkOpen}
           sound={sound}
           onExit={exit}
           onFinish={finish}
@@ -318,8 +335,14 @@ export default function Home() {
         />
       ) : active === 'moving' ? (
         <MovingGame
-          key={`moving-${players}`}
-          players={players}
+          key={
+            online
+              ? `${room.code}:moving:${room.world?.epoch}`
+              : `moving-${players}`
+          }
+          players={storyPlayers}
+          online={online}
+          externalMenuOpen={networkOpen}
           sound={sound}
           onExit={exit}
           onFinish={finish}
@@ -327,6 +350,7 @@ export default function Home() {
         />
       ) : hubMode === 'city' ? (
         <CityHub
+          sound={sound}
           onControls={() => setPanel('controls')}
           onFullscreen={() => {
             fullscreen.toggle();

@@ -1,6 +1,6 @@
 import type { DriveAxes } from '../input/drive.ts';
-export const ROOM_VERSION = 3;
-export type RoomScene = 'city' | 'screen';
+export const ROOM_VERSION = 4;
+export type RoomScene = 'city' | 'screen' | 'clean' | 'moving';
 export type RoomCommand = {
   kind:
     | 'action'
@@ -14,6 +14,7 @@ export type RoomCommand = {
     | 'exit'
     | 'wheel'
     | 'start-screen'
+    | 'start-story'
     | 'ready';
   value?: string | number;
 };

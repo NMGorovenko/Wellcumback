@@ -28,6 +28,7 @@ export type ControlSettings = {
   keys: Record<CanonicalKey, string>;
   cityKeys: Record<CityKey, string>;
   showWorldPrompts: boolean;
+  showFps: boolean;
 };
 export const CONTROL_STORAGE_KEY = 'wellcum.controls.v1';
 export const CONTROL_NAMES: Record<PlayerControl, string> = {
@@ -53,6 +54,7 @@ export function defaultControlSettings(): ControlSettings {
       CITY_KEYS.map((key) => [key, key === 'ShiftLeft' ? 'Space' : key]),
     ) as ControlSettings['cityKeys'],
     showWorldPrompts: true,
+    showFps: false,
   };
 }
 export function physicalKeyLabel(code: string): string {
@@ -233,6 +235,7 @@ export function parseControlSettings(raw: string | null): ControlSettings {
       version: 1,
       keys,
       cityKeys,
+      showFps: obj.showFps === true,
       showWorldPrompts:
         typeof obj.showWorldPrompts === 'boolean' ? obj.showWorldPrompts : true,
     };

@@ -8,6 +8,7 @@ import {
   Play,
   Camera,
 } from 'lucide-react';
+import { useCityAudio } from '@/hooks/use-city-audio';
 import { useGameLoop } from '@/hooks/use-game-loop';
 import {
   gamepadPrompt,
@@ -27,13 +28,13 @@ import { CITY_CAMERA_MODES, type CityCameraMode } from './camera';
 import { useGameInspection } from '@/hooks/use-game-inspection';
 import { useRoom } from '@/hooks/use-room';
 import {
-  leaveRoom,
+  closeRoomSession,
   roomActive,
   roomFresh,
 } from '@/lib/game/network/room-client';
 import { roomCommand, tickRoomCity } from '@/lib/game/network/room-game';
 const disconnectNetwork = () => {
-  void leaveRoom();
+  void closeRoomSession();
 };
 const isNetworkDrive = roomActive;
 const passNetworkWheel = () => roomCommand({ kind: 'wheel' });
@@ -41,6 +42,7 @@ import { useControlSettings } from '@/hooks/use-control-settings';
 
 export default function CityHub({
   game: savedGame,
+  sound,
   onPlay,
   onStories,
   players,
@@ -50,6 +52,7 @@ export default function CityHub({
   onFullscreen,
 }: {
   game: RefObject<CityState>;
+  sound: boolean;
   onPlay: (story: CityMission) => void;
   onStories: () => void;
   onControls: () => void;
@@ -68,9 +71,16 @@ export default function CityHub({
   const { settings } = useControlSettings();
   const shared = network.role !== null;
   const canManage = !shared || room.slot === 0;
+  const canStart =
+    !shared ||
+    (canManage &&
+      roomFresh() &&
+      room.roster.length >= 2 &&
+      room.roster.every((p) => p.connected));
   const canResume = canManage && (!shared || roomFresh());
   const isDriver = !shared || (room.world?.driver ?? 0) === room.slot;
   const [view, setView] = useState(freshCity);
+  useCityAudio(sound, view);
   const [target, setTarget] = useState(0);
   const [cameraMode, setCameraMode] = useState<CityCameraMode>('drive');
   const cameraNames = { drive: 'За машиной', map: 'Весь город', faces: 'Лица' };
@@ -106,11 +116,7 @@ export default function CityHub({
   const launch = () => {
     const s = game.current,
       stop = cityStops[s.nearStop];
-    if (
-      (!isNetworkDrive() || (room.slot === 0 && stop?.mission === 'screen')) &&
-      stop?.mission &&
-      s.speed < 2.3
-    ) {
+    if (canStart && stop?.mission && s.speed < 2.3) {
       if (!shared) {
         s.vx = s.vz = s.speed = 0;
         s.paused = true;
@@ -330,26 +336,22 @@ export default function CityHub({
               <strong>{stop.title}</strong>
               <span>{stop.subtitle}</span>
             </div>
-            {stop.mission &&
-              (!shared || (room.slot === 0 && stop.mission === 'screen')) && (
-                <button onClick={launch} disabled={view.speed >= 2.3}>
-                  <kbd>{control('action')}</kbd>
-                  {view.speed >= 2.3
-                    ? 'Остановись'
-                    : shared
-                      ? 'Начать вместе'
-                      : 'Начать историю'}
-                </button>
-              )}
-            {shared &&
-              stop.mission &&
-              (room.slot !== 0 || stop.mission !== 'screen') && (
-                <span>
-                  {stop.mission === 'screen'
-                    ? 'Историю запускает ведущий'
-                    : 'В комнате доступен «Экран на полстены»'}
-                </span>
-              )}
+            {stop.mission && canManage && (
+              <button
+                onClick={launch}
+                disabled={view.speed >= 2.3 || !canStart}
+              >
+                <kbd>{control('action')}</kbd>
+                {view.speed >= 2.3
+                  ? 'Остановись'
+                  : shared
+                    ? 'Начать вместе'
+                    : 'Начать историю'}
+              </button>
+            )}
+            {shared && stop.mission && !canManage && (
+              <span>Историю запускает ведущий</span>
+            )}
           </div>
         )}
         {settings.showWorldPrompts && isDriver && !stop && !view.paused && (

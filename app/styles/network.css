@@ -131,3 +131,33 @@
     flex-wrap: wrap;
   }
 }
+
+.network-options {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.network-options button {
+  border: 1px solid #748669;
+  background: #203022;
+  color: #e5ecd7;
+  padding: 8px 13px;
+  border-radius: 6px;
+}
+.network-options button[aria-pressed='true'] {
+  background: #c2d795;
+  color: #19221b;
+}
+.network-stories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.network-advanced[open] {
+  display: grid;
+  gap: 8px;
+}
+.network-dialog [data-form-control]:focus-visible {
+  outline: 2px solid #d6ecad;
+  outline-offset: 3px;
+}

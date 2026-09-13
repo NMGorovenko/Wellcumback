@@ -14,6 +14,7 @@ const original = {
   fetch: globalThis.fetch,
   performance: globalThis.performance,
   location: globalThis.location,
+  window: globalThis.window,
   sessionStorage: globalThis.sessionStorage,
 };
 let now = 0,
@@ -111,7 +112,7 @@ async function drain() {
   });
 }
 const api = (body) =>
-  handleRoomRequest(db, { version: 3, ...body }, 1000 + now);
+  handleRoomRequest(db, { version: 4, ...body }, 1000 + now);
 async function nextPoll() {
   const timer = timers.shift();
   assert.ok(timer, 'client must schedule the next poll');
@@ -157,7 +158,7 @@ void test('host reload first polls without a null snapshot and restores the serv
       snapshotSeq: 1,
     });
     sessionStorage.setItem(
-      'wellcum-room-v3',
+      'wellcum-room-v4',
       JSON.stringify({
         code: host.code,
         token: host.token,
@@ -781,6 +782,167 @@ void test('screen resume discards held controls delivered during pause and requi
       state.frameTwist > before,
       'release and new press restore control after resume',
     );
+  } finally {
+    await cleanup();
+  }
+});
+
+for (const scene of ['clean', 'moving'])
+  void test(`${scene}: begin, late third slot, shared pause and restart preserve host authority`, async () => {
+    setup();
+    try {
+      const { code } = await hostCity(0, 3);
+      bridge.roomCommand({ kind: 'start-story', value: scene });
+      const world = client.roomWorld();
+      assert.equal(world.scene, scene);
+      assert.equal(world.brief, true);
+      await nextPoll();
+      const third = await api({ op: 'join', code, name: 'Third' });
+      assert.equal(third.status, 200);
+      bridge.roomCommand({ kind: 'begin' }, 1);
+      assert.equal(client.roomWorld().brief, true);
+      bridge.roomCommand({ kind: 'begin' }, 0);
+      await nextPoll();
+      const tick =
+        scene === 'clean' ? bridge.tickRoomClean : bridge.tickRoomMoving;
+      const state = structuredClone(client.roomWorld().state);
+      tick(state, 1 / 60, new Set());
+      assert.equal(state.players, 3);
+      assert.equal(state.actorCount, 3);
+      if (scene === 'moving') assert.equal(state.actors.length, 3);
+      assert.equal(state.phase, scene === 'clean' ? 'duty' : 'moving');
+      bridge.roomCommand({ kind: 'pause' }, 2);
+      tick(state, 1 / 60, new Set());
+      assert.equal(state.paused, true);
+      bridge.roomCommand({ kind: 'resume' }, 2);
+      tick(state, 1 / 60, new Set());
+      assert.equal(state.paused, true);
+      bridge.roomCommand({ kind: 'resume' }, 0);
+      tick(state, 1 / 60, new Set());
+      assert.equal(state.paused, false);
+      const epoch = client.roomWorld().epoch;
+      bridge.roomCommand({ kind: 'restart' }, 1);
+      assert.equal(client.roomWorld().epoch, epoch);
+      bridge.roomCommand({ kind: 'restart' }, 0);
+      assert.equal(client.roomWorld().epoch, epoch + 1);
+      assert.equal(client.roomWorld().brief, true);
+      bridge.roomCommand({ kind: 'exit' }, 0);
+      assert.equal(client.roomWorld().scene, 'city');
+    } finally {
+      await cleanup();
+    }
+  });
+
+void test('moving: host sub-frame action and remote short press/release pick up once with independent slots', async () => {
+  setup();
+  try {
+    const { code, guest } = await hostCity();
+    bridge.roomCommand({ kind: 'start-story', value: 'moving' });
+    bridge.roomCommand({ kind: 'begin' });
+    const world = client.roomWorld(),
+      state = world.state;
+    Object.assign(state.actors[0], {
+      x: state.items[0].x,
+      y: state.items[0].y + 35,
+    });
+    Object.assign(state.actors[1], {
+      x: state.items[1].x,
+      y: state.items[1].y + 35,
+    });
+    await nextPoll();
+    bridge.tickRoomMoving(state, 1 / 60, new Set());
+    bridge.roomCommand({ kind: 'action', value: 'input' });
+    for (let frame = 0; frame < 4; frame++)
+      bridge.tickRoomMoving(state, 1 / 240, new Set());
+    assert.equal(state.actors[0].heldItem, 0);
+    await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [
+        { seq: 1, epoch: world.epoch, keys: [] },
+        {
+          seq: 2,
+          epoch: world.epoch,
+          keys: ['KeyE'],
+          command: { kind: 'action', value: 'input' },
+        },
+        { seq: 3, epoch: world.epoch, keys: [] },
+      ],
+    });
+    await nextPoll();
+    for (let frame = 0; frame < 16; frame++)
+      bridge.tickRoomMoving(state, 1 / 240, new Set());
+    assert.equal(state.actors[1].heldItem, 1);
+    assert.equal(state.items[0].carrier, 0);
+    assert.equal(state.items[1].carrier, 1);
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('clean: Q only controls the anonymous soldier, not another participant', () => {
+  assert.equal(bridge.mapRoomKeys(new Set(['KeyQ']), 0, 0).has('KeyQ'), true);
+  assert.equal(bridge.mapRoomKeys(new Set(['KeyQ']), 1, 0).has('KeyQ'), false);
+  assert.equal(bridge.mapRoomKeys(new Set(['KeyQ']), 2, 0).has('KeyQ'), false);
+});
+
+void test('explicit host exit stops its desktop server before a delayed leave can affect a new session', async () => {
+  setup();
+  try {
+    await hostCity();
+    let stopped = 0;
+    globalThis.window = {
+      wellcumNetwork: {
+        stop: async () => {
+          stopped++;
+        },
+        disconnect: async () => {},
+      },
+    };
+    nextResponseDelay = 30;
+    const closing = client.closeRoomSession();
+    assert.equal(
+      stopped,
+      1,
+      'stop must be queued synchronously with explicit exit',
+    );
+    await client.openRoom('Новая компания', 2);
+    await drain();
+    const nextCode = client.roomSnapshot().code;
+    await closing;
+    assert.equal(client.roomSnapshot().code, nextCode);
+    assert.equal(client.roomActive(), true);
+    assert.equal(stopped, 1);
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('a guest exit and an ordinary room switch do not stop a desktop server', async () => {
+  setup();
+  try {
+    let stopped = 0;
+    globalThis.window = {
+      wellcumNetwork: {
+        stop: async () => {
+          stopped++;
+        },
+        disconnect: async () => {},
+      },
+    };
+    await client.openRoom('Ведущий', 2);
+    await drain();
+    await client.openRoom('Новая компания', 2);
+    await drain();
+    assert.equal(stopped, 0);
+    await client.leaveRoom();
+    const host = (await api({ op: 'create', name: 'Друг' })).body;
+    await client.openRoom('Гость', 2, host.code);
+    await drain();
+    assert.equal(client.roomSnapshot().slot, 1);
+    await client.closeRoomSession();
+    assert.equal(stopped, 0);
   } finally {
     await cleanup();
   }

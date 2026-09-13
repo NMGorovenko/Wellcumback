@@ -72,6 +72,9 @@ export const resetControlSettings = () => update(defaultControlSettings());
 export const setWorldPrompts = (showWorldPrompts: boolean) =>
   update({ ...snapshot.settings, showWorldPrompts });
 
+export const setShowFps = (showFps: boolean) =>
+  update({ ...snapshot.settings, showFps });
+
 /** A modal owns input while open. It does not alter device-to-player assignment. */
 export const isControlInputBlocked = () => blockers > 0;
 export function acquireControlInputBlock() {

@@ -1,6 +1,7 @@
 'use client';
 import { useSyncExternalStore } from 'react';
 import type { Result } from '@/lib/game/types';
+import { appendResult } from '@/lib/game/results';
 
 const STORAGE_KEY = 'wellcum-results-v1';
 const EMPTY: Result[] = [];
@@ -17,7 +18,9 @@ function read(): Result[] {
         if (!value || typeof value !== 'object') return false;
         const r = value as Partial<Result>;
         return (
-          (r.story === 'screen' || r.story === 'clean' || r.story === 'moving') &&
+          (r.story === 'screen' ||
+            r.story === 'clean' ||
+            r.story === 'moving') &&
           typeof r.score === 'number' &&
           Number.isFinite(r.score) &&
           r.score >= 0 &&
@@ -26,6 +29,8 @@ function read(): Result[] {
           typeof r.players === 'number' &&
           [1, 2, 3].includes(r.players) &&
           typeof r.date === 'string' &&
+          (r.runId === undefined ||
+            (typeof r.runId === 'string' && r.runId.length <= 200)) &&
           typeof r.details === 'string'
         );
       })
@@ -58,7 +63,9 @@ function subscribe(listener: () => void) {
   };
 }
 function addResult(result: Result) {
-  current = [...snapshot(), result].slice(-30);
+  const updated = appendResult(snapshot(), result);
+  if (updated === current) return;
+  current = updated;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
   } catch {

@@ -209,9 +209,11 @@ class Driver {
   }
 }
 function invariant(s, previous) {
-  assert.equal(s.actors.length, 2);
+  assert.equal(s.actors.length, Math.max(2, s.players));
   assert.ok(
-    dist(...s.actors) >= ACTOR_RADIUS * 2 - 1e-6,
+    s.actors.every((a, i) =>
+      s.actors.slice(i + 1).every((b) => dist(a, b) >= ACTOR_RADIUS * 2 - 1e-6),
+    ),
     'characters do not overlap',
   );
   for (const actor of s.actors) {
@@ -251,10 +253,13 @@ function invariant(s, previous) {
     if (item.status === 'packed') assert.equal(item.carrier, null);
   }
 }
-for (const players of [1, 2])
+for (const players of [1, 2, 3])
   void test(`${players} humans complete both chapters by walking and pressing controls, including recurring duties`, () => {
     const s = start(players),
-      drivers = [new Driver(), new Driver()];
+      drivers = Array.from(
+        { length: Math.max(2, players) },
+        () => new Driver(),
+      );
     let seenPacking = false,
       seenRest = false,
       seenLaptop = false,
@@ -267,6 +272,8 @@ for (const players of [1, 2])
         ),
       );
       movingTick(s, 0.025, keys);
+      if (players === 3 && frame % 100 === 0)
+        Object.assign(s, JSON.parse(JSON.stringify(s)));
       invariant(s, before);
       seenPacking ||= s.actors.some(
         (a) =>
@@ -292,8 +299,14 @@ for (const players of [1, 2])
     );
     assert.equal(s.items.filter((i) => i.status === 'packed').length, 22);
     assert.ok(s.bags.every((b) => b.weight === 0 || b.status === 'delivered'));
-    assert.ok(seenPacking && seenRest && seenLaptop && seenToilet);
-    assert.ok(s.alert.count >= 1 && s.toilet.count >= 1);
+    assert.ok(seenPacking && seenRest && seenLaptop);
+    assert.ok(s.alert.count >= 1);
+    // Three coordinated people can finish before the first toilet interruption.
+    // Otherwise the driver must actually complete it, not skip its animation.
+    assert.ok(
+      (seenToilet && s.toilet.count >= 1) ||
+        s.elapsed < freshMoving(players).toilet.nextAt,
+    );
     if (players === 1)
       assert.ok(s.actors[1].stamina < 100, 'the solo assistant did real work');
     assert.ok(s.score >= 22 * 30 + 82 * 12);
@@ -301,16 +314,16 @@ for (const players of [1, 2])
     run(s, 10, ['KeyE', 'Enter', 'KeyS']);
     assert.deepEqual(s, finished, 'result cannot farm score or timers');
   });
-void test('crew is Yarik and Nastya; global three-player setting still exposes only two human slots', () => {
+void test('moving preserves the solo couple and adds Nikita as the third human helper', () => {
   assert.deepEqual(
     movingCrew.map((p) => p.name),
-    ['Ярик', 'Настя'],
+    ['Ярик', 'Настя', 'Никита'],
   );
   for (const players of [0, 1, 2, 3, 99, NaN]) {
     const s = freshMoving(players);
-    assert.equal(s.actors.length, 2);
+    assert.equal(s.actors.length, Math.max(2, s.players));
     assert.equal(s.actorCount, s.players);
-    assert.ok(s.players === 1 || s.players === 2);
+    assert.ok(s.players >= 1 && s.players <= 3);
   }
   const s = start(3);
   run(s, 0.1, ['KeyO', 'KeyU']);

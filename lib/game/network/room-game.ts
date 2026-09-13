@@ -1,4 +1,21 @@
 import {
+  freshClean,
+  cleanAction,
+  cleanTick,
+  type CleanState,
+} from '../clean/engine.ts';
+import {
+  cleanEpisodes,
+  createCleanEpisode,
+  type CleanEpisodeId,
+} from '../clean/episodes.ts';
+import {
+  freshMoving,
+  movingAction,
+  movingTick,
+  type MovingState,
+} from '../moving/engine.ts';
+import {
   freshCity,
   resetCityCar,
   tickCity,
@@ -49,6 +66,48 @@ const HOST_STEP = 1 / 60;
 let lastWorldKey = '';
 let hostAccumulator = 0;
 let inputArmed = false;
+let localActionPulse = '';
+const pulseKey = (world: RoomWorld) =>
+  `${roomSnapshot().code}:${world.scene}:${world.epoch}`;
+type RoomStory = 'screen' | 'clean' | 'moving';
+function freshStoryWorld(
+  scene: RoomStory,
+  players: number,
+  epoch: number,
+): RoomWorld {
+  const state =
+    scene === 'screen'
+      ? freshGame(players)
+      : scene === 'clean'
+        ? freshClean(players)
+        : freshMoving(players);
+  state.paused = true;
+  return {
+    scene,
+    epoch,
+    brief: true,
+    driver: 0,
+    state: state as unknown as Record<string, unknown>,
+  };
+}
+function includeStoryPlayers(world: RoomWorld) {
+  const state = world.state as unknown as CleanState | MovingState;
+  const count = Math.min(
+    3,
+    Math.max(state.players, ...roomSnapshot().roster.map((p) => p.slot + 1)),
+  );
+  if (world.scene === 'moving') {
+    const s = state as MovingState;
+    const seed = s.actors.length < count ? freshMoving(count) : null;
+    while (s.actors.length < count) {
+      s.actors.push(structuredClone(seed!.actors[s.actors.length]));
+      s.previousAction.push(false);
+      s.previousSecondary.push(false);
+    }
+  }
+  state.players = count;
+  state.actorCount = count;
+}
 export function mapRoomKeys(
   keys: ReadonlySet<string>,
   slot: number,
@@ -131,16 +190,24 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
     state.previousAction = false;
     publishRoomWorld({ ...world, epoch: world.epoch + 1 });
   } else if (
-    command.kind === 'start-screen' &&
+    (command.kind === 'start-screen' ||
+      (command.kind === 'start-story' &&
+        ['screen', 'clean', 'moving'].includes(String(command.value)))) &&
     isOwner &&
     world.scene === 'city'
   ) {
     const members = roomSnapshot().roster;
     if (members.length < 2 || members.some((p) => !p.connected) || !roomFresh())
       return;
-    const state = freshGame(Math.max(...members.map((p) => p.slot)) + 1);
-    setPaused(state, true);
-    publishRoomWorld(screenWorld(state, true, world.epoch + 1));
+    const scene =
+      command.kind === 'start-screen' ? 'screen' : (command.value as RoomStory);
+    publishRoomWorld(
+      freshStoryWorld(
+        scene,
+        Math.max(...members.map((p) => p.slot)) + 1,
+        world.epoch + 1,
+      ),
+    );
   } else if (command.kind === 'exit' && isOwner) {
     publishRoomWorld({
       scene: 'city',
@@ -156,6 +223,61 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
     const driver =
       slots[(slots.indexOf(world.driver ?? 0) + 1) % slots.length] ?? 0;
     publishRoomWorld({ ...world, epoch: world.epoch + 1, driver });
+  } else if (world.scene === 'clean' || world.scene === 'moving') {
+    includeStoryPlayers(world);
+    const s = world.state as unknown as CleanState | MovingState;
+    if (
+      command.kind === 'pause' ||
+      (command.kind === 'resume' && isOwner && roomFresh())
+    ) {
+      s.paused = command.kind === 'pause';
+      suspendRemoteInput();
+      inputArmed = false;
+      localActionPulse = '';
+    } else if (
+      command.kind === 'begin' &&
+      isOwner &&
+      roomFresh() &&
+      world.brief
+    ) {
+      s.paused = false;
+      if (world.scene === 'clean') cleanAction(s as CleanState);
+      else movingAction(s as MovingState);
+      world.brief = false;
+      inputArmed = false;
+      localActionPulse = '';
+    } else if (command.kind === 'restart' && isOwner) {
+      publishRoomWorld(
+        freshStoryWorld(world.scene, s.players, world.epoch + 1),
+      );
+      return;
+    } else if (
+      command.kind === 'episode' &&
+      isOwner &&
+      world.scene === 'clean' &&
+      cleanEpisodes.some((p) => p.id === command.value)
+    ) {
+      publishRoomWorld({
+        ...world,
+        epoch: world.epoch + 1,
+        brief: false,
+        state: createCleanEpisode(
+          s.players,
+          command.value as CleanEpisodeId,
+        ) as unknown as Record<string, unknown>,
+      });
+      return;
+    } else if (
+      command.kind === 'action' &&
+      command.value === 'input' &&
+      isOwner &&
+      !world.brief &&
+      !s.paused
+    ) {
+      // A keyboard tap can start and end between two RAF simulation steps.
+      localActionPulse = pulseKey(world);
+    }
+    publishRoomWorld({ ...world });
   } else if (world.scene === 'screen') {
     const s = world.state as unknown as GameState;
     includeJoinedPlayers(s);
@@ -367,4 +489,80 @@ export function tickRoomScreen(
       state: s as unknown as Record<string, unknown>,
     });
   });
+}
+
+/** Story engines own their E edges. Unlike the screen, no extra action callback is executed. */
+function tickRoomStory<T extends CleanState | MovingState>(
+  scene: 'clean' | 'moving',
+  state: T,
+  dt: number,
+  keys: ReadonlySet<string>,
+  tick: (s: T, dt: number, keys: Set<string>) => void,
+) {
+  const world = roomWorld();
+  if (!world || world.scene !== scene) return;
+  if (!roomHost()) {
+    captureRoomInput(keys);
+    Object.assign(state, world.state);
+    return;
+  }
+  hostSteps(world, dt, (current) => {
+    includeStoryPlayers(current);
+    const s = current.state as unknown as T;
+    if (!roomFresh()) {
+      s.paused = true;
+      suspendRemoteInput();
+      inputArmed = false;
+      localActionPulse = '';
+    }
+    if (!keys.size && roomFresh()) inputArmed = true;
+    const merged = mapRoomKeys(
+      inputArmed ? keys : new Set<string>(),
+      0,
+      scene === 'clean' ? 0 : -1,
+    );
+    if (inputArmed) {
+      if (localActionPulse === pulseKey(current)) merged.add('KeyE');
+      for (const [slot, frame] of held)
+        for (const code of mapRoomKeys(
+          new Set(frame.keys),
+          slot,
+          scene === 'clean' ? 0 : -1,
+        ))
+          merged.add(code);
+    }
+    localActionPulse = '';
+    tick(s, HOST_STEP, merged);
+    Object.assign(state, s);
+    publishRoomWorld({
+      ...current,
+      state: s as unknown as Record<string, unknown>,
+    });
+  });
+}
+export const tickRoomClean = (
+  state: CleanState,
+  dt: number,
+  keys: ReadonlySet<string>,
+) => tickRoomStory('clean', state, dt, keys, cleanTick);
+export const tickRoomMoving = (
+  state: MovingState,
+  dt: number,
+  keys: ReadonlySet<string>,
+) => tickRoomStory('moving', state, dt, keys, movingTick);
+
+export function roomRoleName(world: RoomWorld | null, slot: number) {
+  const roles =
+    world?.scene === 'moving'
+      ? ['Ярик', 'Настя', 'Никита']
+      : world?.scene === 'clean'
+        ? [
+            world.state.phase === 'clean' || world.state.phase === 'result'
+              ? 'Рома'
+              : 'Солдат',
+            'Никита',
+            'Ярик',
+          ]
+        : ['Никита', 'Ярик', 'Рома'];
+  return roles[slot] ?? 'Друг';
 }

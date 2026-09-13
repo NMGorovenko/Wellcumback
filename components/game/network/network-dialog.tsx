@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Copy, Radio, Unplug } from 'lucide-react';
 import {
   Dialog,
@@ -7,10 +7,22 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { roomCommand } from '@/lib/game/network/room-game';
+import { roomCommand, roomRoleName } from '@/lib/game/network/room-game';
 import { useRoom } from '@/hooks/use-room';
-import { leaveRoom, openRoom } from '@/lib/game/network/room-client';
-import { acquireControlInputBlock } from '@/lib/game/input/settings-store';
+import { closeRoomSession, openRoom } from '@/lib/game/network/room-client';
+import { getRoomConnection } from '@/lib/game/network/room-transport';
+import {
+  makeInvitation,
+  parseInvitation,
+  validateConnection,
+} from '@/lib/game/network/connection';
+import {
+  desktopNetwork,
+  type DesktopHostStatus,
+  type HostMode,
+} from '@/lib/game/network/desktop-bridge';
+import { useFormGamepad } from '@/hooks/use-form-gamepad';
+
 export function NetworkDialog({
   open,
   onOpenChange,
@@ -21,24 +33,91 @@ export function NetworkDialog({
   onDrive: () => void;
 }) {
   const room = useRoom();
+  const desktop = desktopNetwork();
+  const canNetwork =
+    !!desktop ||
+    (typeof location !== 'undefined' && /^https?:$/.test(location.protocol));
   const [name, setName] = useState('Друг'),
-    [code, setCode] = useState(''),
-    [capacity, setCapacity] = useState<2 | 3>(2),
-    [copied, setCopied] = useState(false);
+    [code, setCode] = useState('');
+  const [capacity, setCapacity] = useState<2 | 3>(2),
+    [mode, setMode] = useState<HostMode>('internet');
+  const [copied, setCopied] = useState(false),
+    [working, setWorking] = useState(false),
+    [error, setError] = useState('');
+  const [server, setServer] = useState<DesktopHostStatus>({
+    state: 'offline',
+    message: '',
+  });
+  const [serverURL, setServerURL] = useState(''),
+    [serverKey, setServerKey] = useState('');
+  const form = useRef<HTMLDivElement>(null),
+    inviteField = useRef<HTMLTextAreaElement>(null);
+  useFormGamepad(open, form, () => onOpenChange(false));
   useEffect(() => {
-    if (open) return acquireControlInputBlock();
-  }, [open]);
-  const busy = room.status === 'connecting';
+    if (!open || !desktop) return;
+    let cancelled = false;
+    const read = () => {
+      void desktop
+        .status()
+        .then((value) => {
+          if (!cancelled) setServer(value);
+        })
+        .catch(() => {});
+    };
+    read();
+    const timer = setInterval(read, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [open, desktop]);
+  const busy = working || room.status === 'connecting';
+  const connection = getRoomConnection();
+  const invitation =
+    room.code && connection ? makeInvitation(connection, room.code) : room.code;
+  const attempt = async (operation: () => Promise<unknown>) => {
+    if (busy) return;
+    setWorking(true);
+    setError('');
+    setCopied(false);
+    try {
+      await operation();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не получилось подключиться.');
+    } finally {
+      setWorking(false);
+    }
+  };
+  const create = async () => {
+    if (desktop) {
+      const status = await desktop.host(mode);
+      setServer(status);
+      if (status.state !== 'ready' || !status.connection)
+        throw new Error(status.message);
+      await openRoom(name, capacity, undefined, status.connection);
+    } else await openRoom(name, capacity, undefined, null);
+  };
+  const join = async () => {
+    if (code.trim().startsWith('WCB1:')) {
+      const invite = parseInvitation(code);
+      await openRoom(name, capacity, invite.code, invite);
+    } else if (
+      !desktop &&
+      /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(code.trim().toUpperCase())
+    )
+      await openRoom(name, capacity, code.trim().toUpperCase(), null);
+    else
+      throw new Error('Вставь всю строку WCB1:, которую скопировал ведущий.');
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="help-dialog network-dialog">
-        <span className="tiny-label">ОНЛАЙН · ПЕРВАЯ СОВМЕСТНАЯ ИСТОРИЯ</span>
+      <DialogContent className="help-dialog network-dialog" ref={form}>
+        <span className="tiny-label">ОНЛАЙН · WINDOWS + MAC + БРАУЗЕР</span>
         <DialogTitle>
           {room.code ? 'Компания собирается' : 'Позови друга'}
         </DialogTitle>
         <DialogDescription>
-          Ездите по городу и собирайте экран с разных компьютеров. У каждого
-          свои WASD + E или геймпад.
+          Город и все три истории вместе. У каждого свои WASD + E или геймпад.
         </DialogDescription>
         {!room.code ? (
           <>
@@ -46,75 +125,174 @@ export function NetworkDialog({
               Как тебя подписать
             </label>
             <input
+              data-form-control
               id="room-name"
               maxLength={24}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <div className="network-actions">
-              <label>
-                Мест{' '}
-                <select
-                  aria-label="Мест в комнате"
-                  value={capacity}
-                  onChange={(e) => setCapacity(Number(e.target.value) as 2 | 3)}
+            <div className="network-options" aria-label="Мест в комнате">
+              <span>Мест</span>
+              {([2, 3] as const).map((value) => (
+                <button
+                  data-form-control
+                  key={value}
+                  aria-pressed={capacity === value}
+                  onClick={() => setCapacity(value)}
+                  disabled={busy}
                 >
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                </select>
-              </label>
-              <button
-                className="play-button"
-                disabled={busy}
-                onClick={() => void openRoom(name, capacity)}
-              >
-                <Radio size={15} />
-                Создать комнату
-              </button>
+                  {value}
+                </button>
+              ))}
             </div>
+            {desktop && (
+              <div className="network-options" aria-label="Тип сервера">
+                {(['internet', 'lan'] as const).map((value) => (
+                  <button
+                    data-form-control
+                    key={value}
+                    disabled={busy}
+                    aria-pressed={mode === value}
+                    onClick={() => setMode(value)}
+                  >
+                    {value === 'internet'
+                      ? 'Через интернет'
+                      : 'Одна сеть / VPN'}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              data-form-control
+              className="play-button"
+              disabled={busy || !canNetwork}
+              onClick={() => void attempt(create)}
+            >
+              <Radio size={16} />
+              {working ? 'Подключаем…' : 'Создать игру'}
+            </button>
+            {desktop && (
+              <p className="quiet">
+                {mode === 'internet'
+                  ? 'VPS не нужен. Игра откроет временный туннель Cloudflare и подготовит приглашение. Его адрес действует, пока сервер открыт.'
+                  : 'Подключитесь к одной локальной сети или VPN. Ведущему нужно разрешить входящие соединения игры в системном брандмауэре.'}
+              </p>
+            )}
             <label className="network-label" htmlFor="room-code">
-              Код от друга
+              Строка подключения от друга
             </label>
-            <input
+            <textarea
+              data-form-control
               id="room-code"
-              className="room-code"
               value={code}
-              maxLength={8}
-              autoCapitalize="characters"
+              maxLength={1500}
+              autoCapitalize="off"
               autoComplete="off"
               spellCheck={false}
-              onChange={(e) =>
-                setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+              onChange={(e) => setCode(e.target.value)}
+              placeholder={
+                desktop
+                  ? 'WCB1:…'
+                  : 'WCB1:… или 8 символов комнаты на этом сайте'
               }
-              placeholder="8 символов"
             />
             <button
+              data-form-control
               className="secondary-button"
-              disabled={busy || code.length !== 8}
-              onClick={() => void openRoom(name, capacity, code)}
+              disabled={busy || !code.trim() || !canNetwork}
+              onClick={() => void attempt(join)}
             >
-              Войти по коду
+              Подключиться
             </button>
+            {canNetwork && (
+              <details className="network-advanced">
+                <summary data-form-control>Свой постоянный сервер</summary>
+                <label className="network-label" htmlFor="server-url">
+                  Адрес сервера
+                </label>
+                <input
+                  data-form-control
+                  id="server-url"
+                  type="url"
+                  value={serverURL}
+                  placeholder="wss://game.example.com/rooms"
+                  onChange={(e) => setServerURL(e.target.value)}
+                />
+                <label className="network-label" htmlFor="server-key">
+                  Ключ сервера
+                </label>
+                <input
+                  data-form-control
+                  id="server-key"
+                  type="password"
+                  autoComplete="off"
+                  maxLength={64}
+                  value={serverKey}
+                  onChange={(e) => setServerKey(e.target.value)}
+                />
+                <button
+                  data-form-control
+                  className="secondary-button"
+                  disabled={busy || !serverURL || !serverKey}
+                  onClick={() =>
+                    void attempt(() =>
+                      openRoom(
+                        name,
+                        capacity,
+                        undefined,
+                        validateConnection({
+                          url: serverURL.trim(),
+                          accessKey: serverKey.trim(),
+                        }),
+                      ),
+                    )
+                  }
+                >
+                  Создать комнату на сервере
+                </button>
+              </details>
+            )}
           </>
         ) : (
           <>
             <div className="room-invite">
               <strong>{room.code}</strong>
               <button
-                aria-label="Скопировать код комнаты"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(room.code);
-                    setCopied(true);
-                  } catch {
-                    setCopied(false);
-                  }
-                }}
+                data-form-control
+                aria-label="Скопировать приглашение"
+                onClick={() =>
+                  void attempt(async () => {
+                    try {
+                      if (desktop && connection) await desktop.copy(invitation);
+                      else await navigator.clipboard.writeText(invitation);
+                      setCopied(true);
+                    } catch {
+                      inviteField.current?.focus();
+                      inviteField.current?.select();
+                      setError(
+                        'Строка выделена — скопируй её через Ctrl+C или ⌘C.',
+                      );
+                    }
+                  })
+                }
               >
                 <Copy size={18} />
-                {copied ? 'Скопировано' : 'Копировать'}
+                {copied ? 'Скопировано' : 'Копировать приглашение'}
               </button>
             </div>
+            <textarea
+              data-form-control
+              ref={inviteField}
+              aria-label="Приглашение для друга"
+              readOnly
+              value={invitation}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <p className="quiet">
+              {connection
+                ? 'Отправь другу эту строку. Он вставит её в «Онлайн → Подключиться». Нужна одинаковая версия игры.'
+                : 'Этот код работает на том же сайте. Всем участникам нужен доступ к веб-версии.'}
+            </p>
             <div className="room-members">
               {room.roster.map((member) => (
                 <div key={member.id}>
@@ -124,34 +302,45 @@ export function NetworkDialog({
                     {member.slot === room.slot ? ' · ты' : ''}
                   </strong>
                   <span>
-                    {['Никита', 'Ярик', 'Рома'][member.slot]}
+                    {roomRoleName(room.world, member.slot)}
                     {member.slot === 0 ? ' · ведущий' : ''}
                   </span>
                 </div>
               ))}
             </div>
             <p className="quiet">
-              На время короткого разрыва история встаёт на паузу. Перезагрузка
-              этой вкладки возвращает тебя на своё место; ведущий затем
-              продолжает игру.
+              При разрыве связи история ждёт. Вернувшийся игрок занимает прежнее
+              место; ведущий продолжает игру. Приложение ведущего должно
+              оставаться открытым.
             </p>
             {room.slot === 0 && room.world?.scene === 'city' && (
-              <button
-                className="play-button"
-                disabled={
-                  room.roster.length < 2 ||
-                  room.roster.some((p) => !p.connected) ||
-                  room.frozen
-                }
-                onClick={() => {
-                  roomCommand({ kind: 'start-screen' });
-                  onOpenChange(false);
-                }}
-              >
-                Собрать экран вместе
-              </button>
+              <div className="network-stories">
+                {[
+                  ['screen', 'Собрать экран'],
+                  ['clean', 'Байка из казармы'],
+                  ['moving', 'Переезд Ярика'],
+                ].map(([story, title]) => (
+                  <button
+                    data-form-control
+                    key={story}
+                    className="secondary-button"
+                    disabled={
+                      room.roster.length < 2 ||
+                      room.roster.some((p) => !p.connected) ||
+                      room.frozen
+                    }
+                    onClick={() => {
+                      roomCommand({ kind: 'start-story', value: story });
+                      onOpenChange(false);
+                    }}
+                  >
+                    {title}
+                  </button>
+                ))}
+              </div>
             )}
             <button
+              data-form-control
               className="play-button"
               disabled={room.status === 'failed'}
               onClick={() => {
@@ -162,21 +351,47 @@ export function NetworkDialog({
               Вернуться в игру
             </button>
             <button
+              data-form-control
               className="secondary-button"
-              onClick={() => void leaveRoom()}
+              disabled={busy}
+              onClick={() => void attempt(closeRoomSession)}
             >
-              <Unplug size={15} />
-              {room.slot === 0 ? 'Закрыть комнату' : 'Выйти из комнаты'}
+              <Unplug size={16} />
+              {room.slot === 0
+                ? 'Закрыть комнату и сервер'
+                : 'Выйти из комнаты'}
             </button>
           </>
         )}
-        {room.message && (
-          <output className="network-message">{room.message}</output>
+        {(error || server.message || room.message) && (
+          <output className="network-message">
+            {error ||
+              (server.state === 'starting' || server.state === 'failed'
+                ? server.message
+                : room.message || server.message)}
+          </output>
         )}
-        <p className="quiet">
-          Комнаты работают в веб-версии. Казарма и переезд пока доступны
-          локально. Всем участникам нужен доступ к одному сайту игры.
-        </p>
+        {!canNetwork && (
+          <p className="quiet">
+            Один HTML-файл работает офлайн. Для сети запусти приложение Windows
+            / Mac или веб-версию.
+          </p>
+        )}
+        {desktop &&
+          !room.code &&
+          (server.state === 'starting' || server.state === 'ready') && (
+            <button
+              data-form-control
+              className="secondary-button"
+              onClick={() =>
+                void desktop
+                  .stop()
+                  .then(() => setServer({ state: 'offline', message: '' }))
+              }
+            >
+              Остановить сервер
+            </button>
+          )}
       </DialogContent>
     </Dialog>
   );

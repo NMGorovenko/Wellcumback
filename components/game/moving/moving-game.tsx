@@ -1,4 +1,8 @@
 'use client';
+import { useRoom } from '@/hooks/use-room';
+import { roomWorld, roomFresh } from '@/lib/game/network/room-client';
+import { roomCommand, tickRoomMoving } from '@/lib/game/network/room-game';
+import type { MovingState } from '@/lib/game/moving/engine';
 import { movingLaptopCue } from '@/lib/game/moving/incidents';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -41,24 +45,36 @@ import { SpeechBubble } from '../world/speech-bubble';
 
 export default function MovingGame({
   players,
+  online = false,
+  externalMenuOpen = false,
   sound,
   onExit,
   onFinish,
   onNext,
 }: {
   players: number;
+  online?: boolean;
+  externalMenuOpen?: boolean;
   sound: boolean;
   onExit: () => void;
   onFinish: (result: Result) => void;
   onNext?: () => void;
 }) {
-  const game = useRef(freshMoving(players)),
+  const room = useRoom();
+  const canManage = !online || room.slot === 0;
+  const canResume = canManage && (!online || roomFresh());
+  const [initial] = useState(() =>
+    online && roomWorld()?.scene === 'moving'
+      ? (structuredClone(roomWorld()!.state) as unknown as MovingState)
+      : freshMoving(players),
+  );
+  const game = useRef(initial),
     keys = useRef(new Set<string>()),
     saved = useRef(false);
   const { settings } = useControlSettings();
   const [controlsOpen, setControlsOpen] = useState(false);
   const controlsWasPaused = useRef(false);
-  const [view, setView] = useState(() => freshMoving(players)),
+  const [view, setView] = useState(initial),
     [choice, setChoice] = useState(0);
   const [pads, setPads] = useState<
     Pick<PadFrame, 'assignments' | 'unsupported'>
@@ -75,11 +91,25 @@ export default function MovingGame({
   useGameInspection(game, keys);
   useMovingSound(sound, view.score, view.delivered, view.paused);
   const action = () => {
+    if (online) {
+      roomCommand(
+        game.current.phase === 'brief'
+          ? { kind: 'begin' }
+          : { kind: 'action', value: 'input' },
+      );
+      return;
+    }
     movingAction(game.current);
     setView({ ...game.current });
   };
   const setPause = (paused: boolean) => {
     if (game.current.phase !== 'moving') return;
+    if (online) {
+      if (paused || canResume)
+        roomCommand({ kind: paused ? 'pause' : 'resume' });
+      keys.current.clear();
+      return;
+    }
     game.current.paused = paused;
     keys.current.clear();
     setChoice(0);
@@ -97,6 +127,11 @@ export default function MovingGame({
       setPause(false);
   };
   const restart = () => {
+    if (!canManage) return;
+    if (online) {
+      roomCommand({ kind: 'restart' });
+      return;
+    }
     game.current = freshMoving(players);
     movingAction(game.current);
     keys.current.clear();
@@ -107,8 +142,13 @@ export default function MovingGame({
   useGameLoop({
     game,
     keys,
-    tick: (state, delta, held) =>
-      movingTick(state, delta, mapMovingCameraKeys(held, cameraAspect.current)),
+    inputPlayers: online ? 1 : undefined,
+    tickWhileBlocked: online,
+    tick: (state, delta, held) => {
+      const mapped = mapMovingCameraKeys(held, cameraAspect.current);
+      if (online) tickRoomMoving(state, delta, mapped);
+      else movingTick(state, delta, mapped);
+    },
     action,
     pause: () => setPause(!game.current.paused),
     snapshot: setView,
@@ -202,7 +242,12 @@ export default function MovingGame({
           }
         />
         {settings.showWorldPrompts && (
-          <MovingActionPrompts state={view} pads={pads} cueRefs={cueRefs} />
+          <MovingActionPrompts
+            state={view}
+            pads={pads}
+            cueRefs={cueRefs}
+            localSlot={online ? room.slot : undefined}
+          />
         )}
         <div className="world-heading">
           <span>
@@ -255,7 +300,8 @@ export default function MovingGame({
           <div className="moving-overlay">
             <div className="moving-card">
               <span className="tiny-label">
-                ОДНА КВАРТИРА · ДВОЕ · ЦЕЛЫЙ ДЕНЬ
+                ОДНА КВАРТИРА · {view.players === 3 ? 'ТРОЕ' : 'ДВОЕ'} · ЦЕЛЫЙ
+                ДЕНЬ
               </span>
               <h2>Как оно вообще здесь помещалось?</h2>
               <p>
@@ -269,11 +315,16 @@ export default function MovingGame({
               <p className="quiet">
                 {view.players === 1
                   ? 'Ты — Ярик. Настя собирает вещи сама и помогает с переездом.'
-                  : 'Первый игрок — Ярик, второй — Настя. У каждого свои руки и запас сил.'}{' '}
+                  : view.players === 3
+                    ? 'Ярик, Настя и Никита. У каждого свои руки и запас сил.'
+                    : 'Первый игрок — Ярик, второй — Настя. У каждого свои руки и запас сил.'}{' '}
                 Силы берегите: диван пока никуда не уехал.
               </p>
               <div className="moving-brief-bindings">
-                {movingCrew.slice(0, view.players).map((person, i) => (
+                {(online
+                  ? [movingCrew[Math.max(0, room.slot)]]
+                  : movingCrew.slice(0, view.players)
+                ).map((person, i) => (
                   <p key={person.name}>
                     <strong>
                       {i + 1} · {person.name}
@@ -289,7 +340,11 @@ export default function MovingGame({
                 Кнопки рядом с героями меняются по ситуации. Стик — ходьба, A/×
                 — действие, L2/LT — опустить.
               </p>
-              <button className="play-button" onClick={action}>
+              <button
+                className="play-button"
+                onClick={action}
+                disabled={!canResume}
+              >
                 Начать первую ходку <ArrowRight size={17} />
               </button>
             </div>
@@ -337,6 +392,7 @@ export default function MovingGame({
               <button
                 className={`secondary-button${choice === 1 ? ' pad-selected' : ''}`}
                 onClick={restart}
+                disabled={!canManage}
               >
                 <RotateCcw size={16} /> Ещё одна ходка
               </button>
@@ -410,7 +466,12 @@ export default function MovingGame({
         </details>
       </footer>
       <Dialog
-        open={!controlsOpen && view.paused && view.phase === 'moving'}
+        open={
+          !externalMenuOpen &&
+          !controlsOpen &&
+          view.paused &&
+          view.phase === 'moving'
+        }
         onOpenChange={setPause}
       >
         <DialogContent className="help-dialog">
@@ -422,6 +483,7 @@ export default function MovingGame({
           <button
             className={`play-button${choice === 0 ? ' pad-selected' : ''}`}
             onClick={() => setPause(false)}
+            disabled={!canResume}
           >
             <Play size={17} /> Продолжить
           </button>
@@ -440,10 +502,14 @@ export default function MovingGame({
         </DialogContent>
       </Dialog>
       <ControlSettings
-        open={controlsOpen}
+        open={controlsOpen && !externalMenuOpen}
         onOpenChange={closeControls}
-        players={view.players}
-        playerNames={movingCrew.map((person) => person.name)}
+        players={online ? 1 : view.players}
+        playerNames={
+          online
+            ? [movingCrew[Math.max(0, room.slot)].name]
+            : movingCrew.map((person) => person.name)
+        }
         pads={pads}
       />
     </section>

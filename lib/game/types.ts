@@ -1,5 +1,7 @@
 export type StoryId = 'screen' | 'clean' | 'moving';
 export type Result = {
+  /** Stable online run identity prevents a restored result from awarding twice. */
+  runId?: string;
   story: StoryId;
   score: number;
   seconds: number;

@@ -56,6 +56,7 @@ export { MOVING_DIALOGUE } from './dialogue.ts';
 export const movingCrew = [
   { name: 'Ярик', preset: 'yaroslav' },
   { name: 'Настя', preset: 'anastasia' },
+  { name: 'Никита', preset: 'nikita' },
 ] as const;
 export const MOVING_DAY_SECONDS = 480;
 export const PACK_SECONDS = 1.6;
@@ -70,7 +71,7 @@ const emptyBag = (id: number, p: Point): MovingBag => ({
   carriers: [],
 });
 export function freshMoving(players = 1): MovingState {
-  const count = clamp(Math.floor(Number.isFinite(players) ? players : 1), 1, 2);
+  const count = clamp(Math.floor(Number.isFinite(players) ? players : 1), 1, 3);
   return {
     players: count,
     actorCount: count,
@@ -80,7 +81,7 @@ export function freshMoving(players = 1): MovingState {
     elapsed: 0,
     dayRemaining: MOVING_DAY_SECONDS,
     score: 0,
-    actors: Array.from({ length: 2 }, (_, id) => ({
+    actors: Array.from({ length: Math.max(2, count) }, (_, id) => ({
       id,
       x: spawn.x + (id - 0.5) * spawn.spacing,
       y: spawn.y,
@@ -128,8 +129,8 @@ export function freshMoving(players = 1): MovingState {
     },
     toilet: { active: false, count: 0, progress: 0, nextAt: 105 },
     dutyGraceUntil: 0,
-    previousAction: [false, false],
-    previousSecondary: [false, false],
+    previousAction: Array(Math.max(2, count)).fill(false),
+    previousSecondary: Array(Math.max(2, count)).fill(false),
   };
 }
 export function movingAction(s: MovingState) {
@@ -186,7 +187,14 @@ function act(s: MovingState, actor: MovingActor) {
         x: station.x,
         y: station.y,
       };
-      say(s, actor.id === 0 ? 'yarikRest' : 'nastyaRest');
+      say(
+        s,
+        actor.id === 0
+          ? 'yarikRest'
+          : actor.id === 1
+            ? 'nastyaRest'
+            : 'nikitaRest',
+      );
     }
     clearMovingRoute(actor);
   } else if (intent.kind === 'carry' || intent.kind === 'join') {

@@ -1,5 +1,6 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- A live WebGL surface has no static image URL. */
 'use client';
+import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
 import { carrierStaging } from '@/lib/game/screen/carrier-staging';
@@ -89,6 +90,7 @@ export default function Scene({
     renderer.toneMappingExposure = 1.2;
     renderer.setClearColor('#181e25');
     element.appendChild(renderer.domElement);
+    const countRenderedFrame = renderedFrameCounter();
     const world = new THREE.Scene(),
       kit = new RenderKit(world);
     world.fog = new THREE.Fog('#21262a', 20, 42);
@@ -679,6 +681,7 @@ export default function Scene({
         speechRect ? [speechRect] : [],
       );
       renderer.render(world, camera);
+      countRenderedFrame(performance.now());
       raf = requestAnimationFrame(render);
     }
     raf = requestAnimationFrame(render);

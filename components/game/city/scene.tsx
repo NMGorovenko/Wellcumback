@@ -1,4 +1,5 @@
 'use client';
+import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
 import type { CityState } from '@/lib/game/city/engine';
@@ -39,6 +40,7 @@ export default function CityScene({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
+    const countRenderedFrame = renderedFrameCounter();
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#8cabb3');
     const kit = new RenderKit(scene);
@@ -329,6 +331,7 @@ export default function CityScene({
         puff.sprite.material.opacity = (1 - puff.age / 1.55) * 0.43;
       });
       renderer.render(scene, camera);
+      countRenderedFrame(performance.now());
       raf = requestAnimationFrame(render);
     };
     raf = requestAnimationFrame(render);

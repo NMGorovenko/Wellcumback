@@ -44,7 +44,7 @@ function database() {
   };
 }
 const call = (db, body, now = 1000) =>
-  handleRoomRequest(db, { version: 3, ...body }, now);
+  handleRoomRequest(db, { version: 4, ...body }, now);
 const frame = (seq, keys = [], epoch = 0, command) => ({
   seq,
   epoch,

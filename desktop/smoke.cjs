@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const appDir = process.env.WELLCUM_SMOKE_APP;
 const profile = process.env.WELLCUM_SMOKE_PROFILE;
 const phase = process.env.WELLCUM_SMOKE_PHASE;
-if (!appDir || !profile || !['write', 'read', 'moving'].includes(phase))
+if (!appDir || !profile || !['write', 'read', 'moving', 'lan'].includes(phase))
   throw new Error('Use scripts/smoke-desktop.mjs.');
 
 // Exercise the real main entry while keeping every test save in a disposable profile.
@@ -80,7 +80,25 @@ async function tapKey(contents, keyCode, held = 70) {
   await pause(70);
 }
 
-async function inspectCityInput(contents) {
+async function inspectCityInput(window) {
+  const contents = window.webContents;
+  window.focus();
+  app.focus({ steal: true });
+  contents.focus();
+  await waitFor(contents, `document.hasFocus()`, 'native focus before driving');
+  for (const keyCode of ['S', 'W'])
+    contents.sendInputEvent({ type: 'keyUp', keyCode });
+  if (
+    await contents.executeJavaScript(
+      `Boolean(document.querySelector('.city-pause-menu'))`,
+    )
+  )
+    await tapKey(contents, 'Escape');
+  await waitFor(
+    contents,
+    `!document.querySelector('.city-pause-menu')`,
+    'continuing after focus pause',
+  );
   // Native Electron key events, not DOM-dispatched KeyboardEvent objects.
   await contents.executeJavaScript(`window.__desktopSmokeSpace = false; window.addEventListener('keydown', (event) => {
     if (event.code === 'Space' && event.isTrusted) window.__desktopSmokeSpace = true;
@@ -278,6 +296,8 @@ async function inspect(window) {
   assert.equal(preferences.nodeIntegration, false);
   assert.equal(preferences.webSecurity, true);
 
+  if (phase === 'lan') await require('./smoke-network.cjs')(contents);
+
   if (phase === 'write') {
     await waitFor(
       contents,
@@ -311,7 +331,7 @@ async function inspect(window) {
       `Boolean(document.querySelector('.city-view-drive .city-minimap'))`,
       'minimap returns with the driving camera',
     );
-    await inspectCityInput(contents);
+    await inspectCityInput(window);
     await contents.executeJavaScript(
       `document.querySelector('[aria-label="Клавиатура и геймпады"]').click()`,
       true,
@@ -367,7 +387,7 @@ async function inspect(window) {
     await contents.executeJavaScript(
       `localStorage.removeItem('__wellcum_desktop_smoke')`,
     );
-  } else {
+  } else if (phase === 'moving') {
     await contents.executeJavaScript(
       `Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Все истории')).click()`,
       true,

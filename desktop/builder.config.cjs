@@ -13,6 +13,10 @@ module.exports = {
   files: [
     'main.cjs',
     'security.cjs',
+    'preload.cjs',
+    'network.cjs',
+    'rooms.sql',
+    'licenses/**',
     'renderer/index.html',
     'renderer/build.json',
     'package.json',
@@ -22,6 +26,15 @@ module.exports = {
   forceCodeSigning: false,
   artifactName: 'Wellcum-back-${version}-${os}-${arch}.${ext}',
   mac: {
+    extraResources: [
+      {
+        from: path.join(
+          root,
+          'outputs/dependencies/cloudflared/2026.9.1/darwin-${arch}/cloudflared',
+        ),
+        to: 'tunnel/cloudflared',
+      },
+    ],
     target: ['zip', 'dmg'],
     category: 'public.app-category.games',
     // Ad-hoc signature requires no credentials; this is not Developer ID/notarization.
@@ -31,6 +44,15 @@ module.exports = {
   },
   dmg: { sign: false },
   win: {
+    extraResources: [
+      {
+        from: path.join(
+          root,
+          'outputs/dependencies/cloudflared/2026.9.1/win32-${arch}/cloudflared.exe',
+        ),
+        to: 'tunnel/cloudflared.exe',
+      },
+    ],
     target: ['portable', 'nsis'],
     requestedExecutionLevel: 'asInvoker',
     signExecutable: false,

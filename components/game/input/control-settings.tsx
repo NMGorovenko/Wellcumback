@@ -168,8 +168,14 @@ function OpenControlSettings({
   playerNames = PLAYER_NAMES,
   profile = 'game',
 }: ControlSettingsProps) {
-  const { settings, storageWarning, rebind, reset, setWorldPrompts } =
-    useControlSettings();
+  const {
+    settings,
+    storageWarning,
+    rebind,
+    reset,
+    setWorldPrompts,
+    setShowFps,
+  } = useControlSettings();
   const [activeProfile, setActiveProfile] = useState<InputProfile>(profile);
   const [device, setDevice] = useState<'keyboard' | 'pad'>('keyboard');
   const [player, setPlayer] = useState(0);
@@ -416,6 +422,15 @@ function OpenControlSettings({
             onChange={(event) => setWorldPrompts(event.target.checked)}
           />
           <span>Показывать кнопки рядом с действиями</span>
+        </label>
+        <label className="control-prompts-toggle">
+          <input
+            data-control-focus
+            type="checkbox"
+            checked={settings.showFps}
+            onChange={(event) => setShowFps(event.target.checked)}
+          />
+          <span>Показывать FPS</span>
         </label>
         <p className="control-settings-shortcuts">
           <span>

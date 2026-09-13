@@ -6,6 +6,7 @@ import {
   readFile,
   writeFile,
   copyFile,
+  cp,
 } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
@@ -15,6 +16,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import security from '../desktop/security.cjs';
+import { build } from 'esbuild';
+import { fetchTunnel } from './fetch-tunnel.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(import.meta.url);
@@ -35,6 +38,45 @@ export async function prepareDesktopApp(projectRoot) {
   );
   const appDir = path.join(projectRoot, 'outputs/desktop-app');
   await mkdir(path.join(appDir, 'renderer'), { recursive: true });
+  const networkBuild = await build({
+    absWorkingDir: projectRoot,
+    entryPoints: [path.join(projectRoot, 'desktop/network.ts')],
+    outfile: path.join(appDir, 'network.cjs'),
+    bundle: true,
+    metafile: true,
+    platform: 'node',
+    format: 'cjs',
+    target: 'node22',
+    external: ['bufferutil', 'utf-8-validate'],
+  });
+  const runtimeSources = Object.fromEntries(
+    await Promise.all(
+      [
+        ...Object.keys(networkBuild.metafile.inputs),
+        'package-lock.json',
+        'desktop/tunnel-binaries.json',
+      ].map(async (file) => [
+        file,
+        createHash('sha256')
+          .update(await readFile(path.resolve(projectRoot, file)))
+          .digest('hex'),
+      ]),
+    ),
+  );
+  await writeFile(
+    path.join(appDir, 'network-source.json'),
+    JSON.stringify(runtimeSources, null, 2) + '\n',
+  );
+  const localTunnel = await fetchTunnel(process.platform, process.arch);
+  await mkdir(path.join(appDir, 'tunnel'), { recursive: true });
+  await copyFile(
+    localTunnel.binary,
+    path.join(appDir, 'tunnel', path.basename(localTunnel.binary)),
+  );
+  await writeFile(
+    path.join(appDir, 'tunnel/build.json'),
+    JSON.stringify(localTunnel.record, null, 2),
+  );
   await Promise.all([
     writeFile(path.join(appDir, 'renderer/index.html'), renderer.html),
     writeFile(
@@ -48,7 +90,8 @@ export async function prepareDesktopApp(projectRoot) {
           name: 'wellcum-back-desktop',
           version: pkg.version,
           private: true,
-          description: 'Ну, с возвращением! — локальная игра для 1–3 игроков',
+          description:
+            'Ну, с возвращением! — игра для 1–3 игроков, локально и по сети',
           main: 'main.cjs',
         },
         null,
@@ -62,6 +105,19 @@ export async function prepareDesktopApp(projectRoot) {
     copyFile(
       path.join(projectRoot, 'desktop/security.cjs'),
       path.join(appDir, 'security.cjs'),
+    ),
+    copyFile(
+      path.join(projectRoot, 'desktop/preload.cjs'),
+      path.join(appDir, 'preload.cjs'),
+    ),
+    copyFile(
+      path.join(projectRoot, 'drizzle/0000_rooms.sql'),
+      path.join(appDir, 'rooms.sql'),
+    ),
+    cp(
+      path.join(projectRoot, 'desktop/licenses'),
+      path.join(appDir, 'licenses'),
+      { recursive: true },
     ),
   ]);
   return appDir;
@@ -106,6 +162,19 @@ async function main() {
   // even after cleanup. Build outside that provider; copy only the finished archives.
   const staging = await mkdtemp(path.join(os.tmpdir(), 'wellcum-package-'));
   try {
+    const tunnelTargets =
+      mode === 'mac'
+        ? [
+            ['darwin', 'arm64'],
+            ['darwin', 'x64'],
+          ]
+        : mode === 'mac-arm64'
+          ? [['darwin', 'arm64']]
+          : mode.startsWith('win')
+            ? [['win32', 'x64']]
+            : [[process.platform, process.arch]];
+    for (const [platform, arch] of tunnelTargets)
+      await fetchTunnel(platform, arch);
     run(
       process.execPath,
       [
@@ -138,7 +207,13 @@ async function main() {
     const hash = (data) => createHash('sha256').update(data).digest('hex');
     const runtime = Object.fromEntries(
       await Promise.all(
-        ['main.cjs', 'security.cjs'].map(async (file) => [
+        [
+          'main.cjs',
+          'security.cjs',
+          'preload.cjs',
+          'network.cjs',
+          'rooms.sql',
+        ].map(async (file) => [
           file,
           hash(await readFile(path.join(appDir, file))),
         ]),
@@ -158,6 +233,15 @@ async function main() {
           {
             ...manifest,
             runtime,
+            runtime_sources: JSON.parse(
+              await readFile(path.join(appDir, 'network-source.json'), 'utf8'),
+            ),
+            tunnel: (
+              await fetchTunnel(
+                suffix.startsWith('mac') ? 'darwin' : 'win32',
+                suffix.includes('arm64') ? 'arm64' : 'x64',
+              )
+            ).record,
             bytes: bytes.length,
             artifact_sha256: hash(bytes),
           },

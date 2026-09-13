@@ -1,5 +1,6 @@
 /** Host-authoritative room relay. No game simulation or secrets belong in logs. */
-export const ROOM_VERSION = 3;
+import { ROOM_VERSION } from '../game/network/room-types.ts';
+export { ROOM_VERSION };
 export const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 // HTTP relay requests can take several seconds through the hosting gateway.
 export const MEMBER_STALE_MS = 10000;
@@ -28,6 +29,7 @@ const COMMANDS = new Set([
   'exit',
   'wheel',
   'start-screen',
+  'start-story',
   'ready',
 ]);
 
@@ -51,7 +53,7 @@ export type RoomInput = {
   command?: RoomCommand;
 };
 export type RoomSnapshot = {
-  scene: 'city' | 'screen';
+  scene: 'city' | 'screen' | 'clean' | 'moving';
   epoch: number;
   state: Record<string, unknown>;
   brief: boolean;
@@ -153,7 +155,7 @@ function jsonBytes(value: unknown): number {
 function readSnapshot(value: unknown): RoomSnapshot {
   if (
     !object(value) ||
-    !['city', 'screen'].includes(String(value.scene)) ||
+    !['city', 'screen', 'clean', 'moving'].includes(String(value.scene)) ||
     !safeInt(value.epoch) ||
     !object(value.state) ||
     typeof value.brief !== 'boolean' ||
@@ -446,7 +448,7 @@ async function joinRoom(
     const snapshot = room.snapshot
       ? (JSON.parse(room.snapshot) as RoomSnapshot)
       : null;
-    if (snapshot?.scene === 'screen' && !snapshot.brief)
+    if (snapshot && snapshot.scene !== 'city' && !snapshot.brief)
       return fail(
         409,
         'GAME_STARTED',

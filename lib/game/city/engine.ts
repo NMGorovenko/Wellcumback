@@ -21,6 +21,8 @@ export type CityState = {
   steering: number;
   speed: number;
   drifting: boolean;
+  /** Authoritative pedal load also drives remote engine audio. */
+  throttle?: number;
   /** Automatic cornering slip; the handbrake adds stronger oversteer. */
   driftBlend?: number;
   elapsed: number;
@@ -107,6 +109,7 @@ export function resetCityCar(s: CityState) {
     heading: CITY_SPAWN.heading,
     steering: 0,
     drifting: false,
+    throttle: 0,
     driftBlend: 0,
     nearStop: -1,
     interaction: null,
@@ -124,6 +127,7 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
   }
   s.previousHorn = horn;
   const { throttle: gas, steer: steering } = resolveDrive(keys, axes);
+  s.throttle = gas;
   const handbrake = keys.has('ShiftLeft');
   let fx = Math.sin(s.heading),
     fz = -Math.cos(s.heading);

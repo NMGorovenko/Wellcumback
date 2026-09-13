@@ -10,7 +10,9 @@ export function CleanActionPrompts({
   pads,
   cueRefs,
   heldKeys,
+  localSlot,
 }: {
+  localSlot?: number;
   state: CleanState;
   pads: Pick<PadFrame, 'assignments'>;
   cueRefs: ActionCueRefs;
@@ -39,13 +41,22 @@ export function CleanActionPrompts({
           </div>
           <div className="context-cues">
             {cleanPrompts(state, actor).map((prompt) => {
-              const input = cleanPromptInput(pads, actor, prompt, heldKeys);
+              const input = cleanPromptInput(
+                pads,
+                localSlot === undefined ? actor : 0,
+                prompt,
+                localSlot === undefined || localSlot === actor
+                  ? heldKeys
+                  : new Set(),
+              );
               return (
                 <span
                   className={`context-cue${input.held ? ' is-held' : ''}${prompt.mode === 'release' ? ' is-release' : ''}`}
                   key={prompt.control}
                 >
-                  <kbd>{input.label}</kbd>
+                  {(localSlot === undefined || localSlot === actor) && (
+                    <kbd>{input.label}</kbd>
+                  )}
                   <span>
                     {prompt.mode && (
                       <small>

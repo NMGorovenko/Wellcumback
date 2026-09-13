@@ -1,3 +1,11 @@
+import { desktopNetwork } from './desktop-bridge.ts';
+import {
+  getRoomConnection,
+  setRoomConnection,
+  requestRoom,
+  roomPollDelay,
+} from './room-transport.ts';
+import { type RoomConnection, validateConnection } from './connection.ts';
 import {
   ROOM_VERSION,
   type RoomCommand,
@@ -19,9 +27,8 @@ const EMPTY: RoomView = {
   ping: 0,
   frozen: false,
 };
-const STORAGE = 'wellcum-room-v3';
+const STORAGE = 'wellcum-room-v4';
 const REQUEST_TIMEOUT_MS = 8000;
-const POLL_IDLE_MS = 250;
 let latencyMs = 0;
 let pendingSince: number | null = null;
 // Successful RTT rises immediately and decays slowly, so one fast response
@@ -89,7 +96,12 @@ function saveCredential() {
     if (credential)
       sessionStorage.setItem(
         STORAGE,
-        JSON.stringify({ ...credential, sequence, snapshotSeq }),
+        JSON.stringify({
+          ...credential,
+          sequence,
+          snapshotSeq,
+          connection: getRoomConnection(),
+        }),
       );
     else sessionStorage.removeItem(STORAGE);
   } catch {
@@ -97,17 +109,11 @@ function saveCredential() {
   }
 }
 async function request(payload: Record<string, unknown>): Promise<RoomReply> {
-  const response = await fetch('/api/rooms', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, version: ROOM_VERSION }),
-    cache: 'no-store',
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  const body = (await response.json().catch(() => null)) as
+  const response = await requestRoom({ ...payload, version: ROOM_VERSION });
+  const body = response.body as
     | (Partial<RoomReply> & { error?: { code?: string; message?: string } })
     | null;
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     const error = new Error(
       body?.error?.message || 'Сервер комнаты не ответил. Проверяем связь…',
     );
@@ -240,22 +246,27 @@ async function poll(run: number) {
   if (run === generation)
     timer = setTimeout(() => {
       void poll(run);
-    }, POLL_IDLE_MS);
+    }, roomPollDelay());
 }
 export async function openRoom(
   name: string,
   capacity: 2 | 3 = 2,
   code?: string,
+  connection: RoomConnection | null = getRoomConnection(),
 ) {
-  if (typeof location === 'undefined' || !/^https?:$/.test(location.protocol)) {
+  if (
+    !connection &&
+    (typeof location === 'undefined' || !/^https?:$/.test(location.protocol))
+  ) {
     announce({
       status: 'failed',
       message:
-        'Онлайн-комнаты доступны в браузерной версии. Открой сайт игры и пригласи друга.',
+        'Создай сервер в приложении или вставь строку подключения от друга.',
     });
     return;
   }
   if (credential) await leaveRoom();
+  setRoomConnection(connection);
   const run = ++generation;
   announce({ ...EMPTY, status: 'connecting' });
   const started = performance.now();
@@ -298,6 +309,9 @@ export function restoreRoom() {
       !Number.isInteger(saved.slot)
     )
       return;
+    setRoomConnection(
+      saved.connection ? validateConnection(saved.connection) : null,
+    );
     credential = { code: saved.code, token: saved.token, slot: saved.slot };
     sequence = Number.isSafeInteger(saved.sequence) ? saved.sequence : 0;
     snapshotSeq = Number.isSafeInteger(saved.snapshotSeq)
@@ -318,7 +332,7 @@ export function restoreRoom() {
 }
 export async function leaveRoom() {
   const previous = credential;
-  generation++;
+  const run = ++generation;
   clearTimeout(timer);
   credential = null;
   world = null;
@@ -336,22 +350,23 @@ export async function leaveRoom() {
   announce(EMPTY);
   if (previous) {
     try {
-      await fetch('/api/rooms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          version: ROOM_VERSION,
-          op: 'leave',
-          ...previous,
-        }),
-        keepalive: true,
-        signal: AbortSignal.timeout(3000),
-      });
+      await requestRoom({ version: ROOM_VERSION, op: 'leave', ...previous });
     } catch {
       /* The abandoned session also expires server-side. */
     }
   }
+  if (run === generation) setRoomConnection(null);
 }
+
+// Explicit user exit closes an owned desktop relay as well as membership.
+// Queue stop before awaiting the leave reply: a slow old room must never
+// shut down a new server started while that reply is still in flight.
+export async function closeRoomSession() {
+  const owner = roomHost();
+  const leaving = leaveRoom();
+  await Promise.all([leaving, owner ? desktopNetwork()?.stop() : undefined]);
+}
+
 export function publishRoomWorld(next: RoomWorld) {
   if (!roomHost()) return;
   const changed = world?.epoch !== next.epoch || world?.scene !== next.scene;
@@ -385,7 +400,7 @@ export function captureRoomInput(
     !command &&
     safe.join() === JSON.parse(lastInput || '[[],{}]')[0].join() &&
     now - lastDriveAt <
-      Math.max(50, Math.min(250, (relayLatency() + POLL_IDLE_MS) / 30))
+      Math.max(50, Math.min(250, (relayLatency() + roomPollDelay()) / 30))
   )
     return;
   if (outbox.length >= 100) {
@@ -405,6 +420,14 @@ export function captureRoomInput(
   });
   lastInput = signature;
   lastDriveAt = now;
+  // Send a key edge immediately instead of waiting for the next idle heartbeat.
+  if (getRoomConnection() && pendingSince === null) {
+    clearTimeout(timer);
+    const run = generation;
+    timer = setTimeout(() => {
+      void poll(run);
+    }, 0);
+  }
 }
 export function takeRoomFrame(
   slot: number,
