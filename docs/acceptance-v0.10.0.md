@@ -21,3 +21,23 @@
 Доступные варианты: LAN, виртуальная LAN с подходящим адресом или постоянный WSS-сервер. Пример Caddy/systemd подготовлен, но VPS не покупался и не разворачивался. Два физических компьютера Windows/Mac, две отдельные сети, физический DualSense/Xbox и Intel Mac не проверены. Сохранение результатов защищает от повторного начисления для попыток в истории последних 30 результатов; миграции ведущего нет.
 
 Все оригинальные фото остаются в `references/`. Исходники, сценарии, лицензионные файлы и инструкции входят в исходный архив; выпуск проверяет SHA-256 renderer, desktop runtime, relay, закреплённых туннельных бинарников и ресурсов.
+
+
+## Дополнительная проверка интернет-пути — после выпуска 0.10.0
+
+Повторена 13 сентября 2026 на том же Mac, с опубликованным pinned cloudflared 2026.9.1. Каждый эксперимент поднимал отдельный временный relay и закрывал его вместе с дочерним туннелем. Ключи, приглашения и пользовательская конфигурация не сохранялись. Системные DNS/VPN/TLS-настройки не менялись.
+
+| Проверка | Фактический результат |
+| --- | --- |
+| HTTP/2, штатные настройки | Quick Tunnel API выдал адрес; регистрация edge не состоялась; публичный WebSocket hello не прошёл; TLS EOF / connection refused |
+| QUIC | Адрес выдан; регистрация и hello не прошли; timeout: no recent network activity / connection refused |
+| HTTP/2, только child env `GODEBUG=tlsmlkem=0` | Та же ошибка TLS EOF; переход на классические кривые не восстановил связь |
+| Node TLS, официальный набор CA, правильный SNI `h2.cftunnel.com` | ECONNRESET |
+| Node TLS, официальный набор CA, SNI `probe.cftunnel.com` | ECONNRESET |
+| Контроль без SNI, с обязательной проверкой цепочки и имени `h2.cftunnel.com` | TLS сначала authorized=true, затем alert bad_certificate. Это другой путь обработки; не рабочий Tunnel и не способ подключения игры |
+
+Чтение исходников подтвердило: ручной `--edge IP` выбирает адрес сокета и не меняет SNI; edge использует прямой TCP dial, поэтому HTTP proxy environment здесь не помогает. Для транспорта Tunnel документирован порт 7844 TCP/UDP, замена на 443 не является поддерживаемым решением. Локальный бинарник macOS arm64 собран Go 1.26.2; контроль `tlsmlkem=0` выполнен только как диагностика, в игру эта настройка не добавлена.
+
+Источники: [Cloudflare TLS settings](https://github.com/cloudflare/cloudflared/blob/2026.9.1/connection/protocol.go), [TCP dial](https://github.com/cloudflare/cloudflared/blob/2026.9.1/edgediscovery/dial.go), [Cloudflare CA](https://github.com/cloudflare/cloudflared/blob/2026.9.1/tlsconfig/cloudflare_ca.go), [кривые TLS](https://github.com/cloudflare/cloudflared/blob/2026.9.1/crypto/curves.go), [Go TLS defaults](https://github.com/golang/go/blob/go1.26.2/src/crypto/tls/defaults.go), [Go intersection](https://github.com/golang/go/blob/go1.26.2/src/crypto/tls/common.go), [порты Tunnel](https://developers.cloudflare.com/tunnel/configuration/).
+
+Вывод: текущие данные указывают на проблему сетевого/edge-пути; конкретная сторона, сбрасывающая соединение, не установлена. Не подтверждены ни ошибка игровой синхронизации, ни успешная связь через интернет. Для следующего сравнения нужен другой интернет-маршрут на Mac или доступный постоянный сервер. Запрошена информация о другой сети/уже имеющемся VPS. Оплаченные ресурсы не создавались. Релиз 0.10.0 и его файлы не изменялись.
