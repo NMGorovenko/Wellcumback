@@ -64,7 +64,7 @@ const options = {
 };
 const makeInvitation = (connection, code) =>
   'WCB1:' +
-  Buffer.from(JSON.stringify({ ...connection, code, version: 5 })).toString(
+  Buffer.from(JSON.stringify({ ...connection, code, version: 6 })).toString(
     'base64url',
   );
 const parse = (text) => original.parseInvitation(text);
@@ -141,7 +141,7 @@ async function inspectHost(contents) {
     accessKey: first.accessKey,
   };
   const request = (payload) =>
-    auxiliary.request(local, { version: 5, ...payload });
+    auxiliary.request(local, { version: 6, ...payload });
   const guest = (
     await request({ op: 'join', code: before.code, name: 'QA guest' })
   ).body;
@@ -296,7 +296,7 @@ async function inspectGuest(contents) {
   const status = await auxiliary.host('internet');
   assert.equal(status.state, 'ready');
   const request = (payload) =>
-    auxiliary.request(status.connection, { version: 5, ...payload });
+    auxiliary.request(status.connection, { version: 6, ...payload });
   const host = (await request({ op: 'create', name: 'QA host', capacity: 2 }))
     .body;
   const snapshot = JSON.parse(

@@ -257,13 +257,13 @@ export function decodeInvite(
   expected: 'offer' | 'answer',
 ): Invite {
   if (typeof code !== 'string' || code.length > 60000)
-    throw new Error('Нужен полный код приглашения Wellcum back.');
+    throw new Error('Нужен полный код приглашения FRIENDSLOP.');
   const trimmed = code.trim(),
     prefix = `WCB${NETWORK_VERSION}.`;
   if (/^WCB\d+\./.test(trimmed) && !trimmed.startsWith(prefix))
     throw new Error(VERSION_MISMATCH);
   if (!trimmed.startsWith(prefix))
-    throw new Error('Нужен полный код приглашения Wellcum back.');
+    throw new Error('Нужен полный код приглашения FRIENDSLOP.');
   try {
     const encoded = trimmed.slice(prefix.length).replace(/\s/g, '');
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error();

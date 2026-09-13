@@ -80,7 +80,7 @@ module.exports = async function inspectNetwork(contents) {
     assert.equal(status.state, 'ready', status.message);
     const connection = status.connection;
     const request = (payload) =>
-      invoke('request', connection, { version: 5, ...payload });
+      invoke('request', connection, { version: 6, ...payload });
     const created = await request({
       op: 'create',
       name: 'Native host',

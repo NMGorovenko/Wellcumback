@@ -1,0 +1,109 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:metalink xmlns:ns0="urn:ietf:params:xml:ns:metalink">
+    <ns0:generator>RLP-Met4Generator</ns0:generator>
+    <ns0:published>2026-08-12 10:00:05.281851+00:00</ns0:published><ns0:file name="dgm1_32_353_5581_1_rp_2025.tif">
+        <ns0:size>1739996</ns0:size>
+        <ns0:hash type="sha-256">d8eedf37e2b0ad729c66b013de014d50cc4eee5c626e038f0b7a7729065b339c</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_353_5581_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_355_5579_1_rp_2025.tif">
+        <ns0:size>1566211</ns0:size>
+        <ns0:hash type="sha-256">410f4e60fb38764a1092bc49411529e717ca11ea612fd243d322c8c4511b8c8f</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_355_5579_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_355_5578_1_rp_2025.tif">
+        <ns0:size>1388755</ns0:size>
+        <ns0:hash type="sha-256">9bfecf552999fdad58602bd143fde6d2a85dd07cea0e5fb8e1479c2aecd3f013</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_355_5578_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_353_5578_1_rp_2025.tif">
+        <ns0:size>1674235</ns0:size>
+        <ns0:hash type="sha-256">d33941e2e56cbe0c6ed6be2149dd3f5707f50fe60a95421cd177467ba4c8a9fe</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_353_5578_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_352_5578_1_rp_2025.tif">
+        <ns0:size>1565872</ns0:size>
+        <ns0:hash type="sha-256">f4b3788ce1f2942dd5e806b8dd52738f53820ab27072c61fdc8358f13898053a</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_352_5578_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_356_5581_1_rp_2025.tif">
+        <ns0:size>1812851</ns0:size>
+        <ns0:hash type="sha-256">d757bc7adfed07683d414647b0229559614a4c0d36eb15f295b4a58bd1a2a763</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_356_5581_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_352_5581_1_rp_2025.tif">
+        <ns0:size>1815760</ns0:size>
+        <ns0:hash type="sha-256">6d81fa7f613860d4e6110e32683cac3896eac2a4dfe680b4c227cd249877949c</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_352_5581_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_355_5582_1_rp_2025.tif">
+        <ns0:size>1765182</ns0:size>
+        <ns0:hash type="sha-256">a702b5cedee7670c07dfd99edde809a280e886d6bd033cfe02adbabda096ae2b</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_355_5582_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_353_5582_1_rp_2025.tif">
+        <ns0:size>1738265</ns0:size>
+        <ns0:hash type="sha-256">4ab10f9a9e38f116f2af939e3a732a2b72489ccc9c655f012c0804289c17e71b</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_353_5582_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_354_5582_1_rp_2025.tif">
+        <ns0:size>1813239</ns0:size>
+        <ns0:hash type="sha-256">8af0973f152bc6ccc0b1536682092f989ac7c0096e44da8382d576d77a396394</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_354_5582_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_352_5580_1_rp_2025.tif">
+        <ns0:size>1731646</ns0:size>
+        <ns0:hash type="sha-256">96506d7ecbcb03f96e559c49428c6aec364541857c781d803b31a73ede312a5e</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_352_5580_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_357_5580_1_rp_2025.tif">
+        <ns0:size>1640870</ns0:size>
+        <ns0:hash type="sha-256">dfa4614b3e0b85ebd4252da756917b038f47cdae3ea0ecc92424d9ba94e1d0f1</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_357_5580_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_358_5582_1_rp_2025.tif">
+        <ns0:size>1615745</ns0:size>
+        <ns0:hash type="sha-256">2f1e1838f1c7b780d67be4bb883db2ac9020a5a0b4f4a4e474b614609c0693c0</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_358_5582_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_357_5581_1_rp_2025.tif">
+        <ns0:size>1902066</ns0:size>
+        <ns0:hash type="sha-256">479c307199db5997d4851fa80ade308e3ebc5731be4fda39e66543650ecf0f8a</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_357_5581_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_352_5579_1_rp_2025.tif">
+        <ns0:size>1732534</ns0:size>
+        <ns0:hash type="sha-256">6b8b84be2317a7c3777e747661baa528e0b9102e0e7e5041d3a72ad5a73ce812</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_352_5579_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_356_5580_1_rp_2025.tif">
+        <ns0:size>1740423</ns0:size>
+        <ns0:hash type="sha-256">e82bd77d2ccadcc96b467425e345161fb259f7d85047da98042a6c17264d3769</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_356_5580_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_356_5582_1_rp_2025.tif">
+        <ns0:size>1693107</ns0:size>
+        <ns0:hash type="sha-256">d8ab24d471f35e1a722d9134b8274d305db237e916dccbbda35eeba676460068</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_356_5582_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_357_5582_1_rp_2025.tif">
+        <ns0:size>1695095</ns0:size>
+        <ns0:hash type="sha-256">b89dba0202626e28998a7d677d2519111b5f1417cd89e520c0172480a4ce4c4f</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_357_5582_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_354_5578_1_rp_2025.tif">
+        <ns0:size>1608076</ns0:size>
+        <ns0:hash type="sha-256">416adc7458b46776cce8a1c3b1f591c7adf5acc8b707821e65bde0274ab2562a</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_354_5578_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_358_5581_1_rp_2025.tif">
+        <ns0:size>1546399</ns0:size>
+        <ns0:hash type="sha-256">e84102b6214e337c341b6efdde19a2d85e93a033a6da57b7e5a52b9e44b48875</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_358_5581_1_rp_2025.tif</ns0:url>
+
+    </ns0:file><ns0:file name="dgm1_32_356_5579_1_rp_2025.tif">
+        <ns0:size>1466387</ns0:size>
+        <ns0:hash type="sha-256">dd0fa58111790a853285cddccefc3c78237ea243b02bf41a6476b327dba248df</ns0:hash>
+        <ns0:url>https://geobasis-rlp.de/data/dgm1/current/tif/dgm1_32_356_5579_1_rp_2025.tif</ns0:url>
+
+    </ns0:file></ns0:metalink>

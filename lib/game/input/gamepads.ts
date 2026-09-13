@@ -30,6 +30,7 @@ export type PadAssignment = PadIdentity & {
 export type PadFrame = {
   keys: Set<string>;
   drive?: DriveAxes;
+  raceDrives?: DriveAxes[];
   primaryActionPressed: boolean;
   pausePressed: boolean;
   assignments: PadAssignment[];
@@ -115,7 +116,12 @@ export function mapGamepads(
   profile: InputProfile = 'game',
 ): PadFrame {
   const count =
-    profile === 'city' ? 1 : Math.min(3, Math.max(1, Math.floor(players) || 1));
+    profile === 'city'
+      ? 1
+      : Math.min(
+          profile === 'race' ? 2 : 3,
+          Math.max(1, Math.floor(players) || 1),
+        );
   const connected = raw
     .filter((pad): pad is PadLike => !!pad?.connected)
     .sort((a, b) => a.index - b.index);
@@ -128,6 +134,9 @@ export function mapGamepads(
   const frame: PadFrame = {
     keys: new Set(),
     ...(profile === 'city' ? { drive: neutralDrive() } : {}),
+    ...(profile === 'race'
+      ? { raceDrives: Array.from({ length: count }, () => neutralDrive()) }
+      : {}),
     primaryActionPressed: false,
     pausePressed: false,
     assignments: [],
@@ -137,7 +146,23 @@ export function mapGamepads(
     navigation: { x: 0, y: 0, confirm: false, back: false },
   };
   standard.forEach((pad, ordinal) => {
-    const player = count > 1 && standard.length === 1 ? 1 : ordinal;
+    let player = count > 1 && standard.length === 1 ? 1 : ordinal;
+    if (profile === 'race') {
+      const old = state.pads.get(pad.index);
+      if (old?.profile === 'race' && old.id === pad.id && old.player < count)
+        player = old.player;
+      else {
+        const occupied = new Set(
+          [...state.pads.values()]
+            .filter((m) => m.profile === 'race')
+            .map((m) => m.player),
+        );
+        player =
+          [player, ...Array.from({ length: count }, (_, i) => i)].find(
+            (i) => !occupied.has(i),
+          ) ?? player;
+      }
+    }
     let memory = state.pads.get(pad.index);
     if (
       !memory ||
@@ -163,10 +188,18 @@ export function mapGamepads(
       Math.abs(axisValue(pad, 1)) <= 0.25 &&
       !pad.buttons[6]?.pressed &&
       buttonValue(pad, 6) <= 0.25 &&
-      [0, 1, 5, 9, 12, 13, 14, 15, ...(profile === 'city' ? [2, 7] : [])].every(
-        (index) => !pushed(pad, index),
-      ) &&
-      (profile !== 'city' ||
+      [
+        0,
+        1,
+        5,
+        9,
+        12,
+        13,
+        14,
+        15,
+        ...(profile !== 'game' ? [2, 3, 7] : []),
+      ].every((index) => !pushed(pad, index)) &&
+      (profile === 'game' ||
         (buttonValue(pad, 7) <= 0.05 &&
           buttonValue(pad, 6) <= 0.05 &&
           Math.abs(axisValue(pad, 0)) <= 0.15));
@@ -201,18 +234,21 @@ export function mapGamepads(
           buttonValue(pad, index) || Number(!!pad.buttons[index]?.pressed),
           0.05,
         );
-      frame.drive = {
+      const drive = {
         steer: horizontal || analogAxis(axisValue(pad, 0)),
         throttle: trigger(7) - trigger(6),
       };
+      if (profile === 'race') frame.raceDrives![player] = drive;
+      else frame.drive = drive;
     }
-    if (action) frame.keys.add(keys.action);
+    if (profile === 'race' ? pushed(pad, 3) : action)
+      frame.keys.add(keys.action);
     memory.secondary =
-      profile === 'city'
+      profile !== 'game'
         ? pushed(pad, 2)
         : secondaryHeld(pad, memory.secondary);
     if (memory.secondary) frame.keys.add(keys.secondary);
-    if (pushed(pad, 5)) frame.keys.add('KeyQ'); // Shared screwdriver; the engine determines its current owner.
+    if (profile !== 'race' && pushed(pad, 5)) frame.keys.add('KeyQ'); // Shared screwdriver; the engine determines its current owner.
     if (player === 0 && actionPressed) frame.primaryActionPressed = true;
     frame.pausePressed ||= pausePressed;
     // Every teammate can resume a pause they opened. Simultaneous direction
@@ -384,11 +420,12 @@ export function gamepadPrompt(
   if (control === 'move') return 'левый стик / крестовина';
   if (control === 'horizontal') return 'стик ←/→';
   if (control === 'vertical')
-    return profile === 'city'
+    return profile !== 'game'
       ? `${padButtonLabel(assignment.brand, 7)} / ${padButtonLabel(assignment.brand, 6)}`
       : 'стик ↑/↓';
   const label = (button: number) => padButtonLabel(assignment.brand, button);
-  if (profile === 'city' && control === 'secondary') return label(2);
+  if (profile !== 'game' && control === 'secondary') return label(2);
+  if (profile === 'race' && control === 'action') return label(3);
   if (control === 'pause') return `${label(1)} / ${label(9)}`;
   return label(control === 'action' ? 0 : control === 'secondary' ? 6 : 5);
 }

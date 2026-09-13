@@ -1,3 +1,10 @@
+import {
+  validRaceInputs,
+  validRaceState,
+  frozenRaceConfig,
+  validRaceCommand,
+} from '../game/race/validation.ts';
+import type { RaceInput } from '../game/race/types.ts';
 /** Host-authoritative room relay. No game simulation or secrets belong in logs. */
 import { ROOM_VERSION } from '../game/network/room-types.ts';
 export { ROOM_VERSION };
@@ -32,6 +39,15 @@ const COMMANDS = new Set([
   'start-screen',
   'start-story',
   'ready',
+  'start-race',
+  'race-local',
+  'race-car',
+  'race-track',
+  'race-mode',
+  'race-laps',
+  'race-ready',
+  'race-start',
+  'race-lobby',
 ]);
 
 type SqlValue = string | number | null;
@@ -51,10 +67,11 @@ export type RoomInput = {
   epoch: number;
   keys: string[];
   drive?: { throttle: number; steer: number };
+  raceInputs?: RaceInput[];
   command?: RoomCommand;
 };
 export type RoomSnapshot = {
-  scene: 'city' | 'screen' | 'clean' | 'moving';
+  scene: 'city' | 'screen' | 'clean' | 'moving' | 'race';
   epoch: number;
   state: Record<string, unknown>;
   brief: boolean;
@@ -161,7 +178,9 @@ function jsonBytes(value: unknown): number {
 function readSnapshot(value: unknown): RoomSnapshot {
   if (
     !object(value) ||
-    !['city', 'screen', 'clean', 'moving'].includes(String(value.scene)) ||
+    !['city', 'screen', 'clean', 'moving', 'race'].includes(
+      String(value.scene),
+    ) ||
     !safeInt(value.epoch) ||
     !object(value.state) ||
     typeof value.brief !== 'boolean' ||
@@ -178,6 +197,12 @@ function readSnapshot(value: unknown): RoomSnapshot {
   ) {
     return fail(400, 'INVALID_SNAPSHOT', 'Неверный снимок комнаты.');
   }
+  if (
+    value.scene === 'race' &&
+    (!validRaceState(value.state) ||
+      value.brief !== (value.state.phase === 'lobby'))
+  )
+    return fail(400, 'INVALID_SNAPSHOT', 'Неверный заезд.');
   const snapshot: RoomSnapshot = {
     scene: value.scene as RoomSnapshot['scene'],
     epoch: value.epoch,
@@ -231,11 +256,17 @@ function readFrames(value: unknown): RoomInput[] {
         steer: Number(drive.steer),
       };
     }
+    if (raw.raceInputs !== undefined) {
+      if (!validRaceInputs(raw.raceInputs))
+        return fail(400, 'INVALID_FRAMES', 'Неверный ввод гонщиков.');
+      frame.raceInputs = raw.raceInputs as RaceInput[];
+    }
     if (raw.command !== undefined) {
       if (
         !object(raw.command) ||
         typeof raw.command.kind !== 'string' ||
         !COMMANDS.has(raw.command.kind) ||
+        !validRaceCommand(raw.command) ||
         !boundedJson(raw.command, 5) ||
         jsonBytes(raw.command) > 1024
       )
@@ -467,7 +498,12 @@ async function joinRoom(
     const snapshot = room.snapshot
       ? (JSON.parse(room.snapshot) as RoomSnapshot)
       : null;
-    if (snapshot && snapshot.scene !== 'city' && !snapshot.brief)
+    if (
+      snapshot &&
+      (snapshot.scene === 'race'
+        ? !['lobby', 'result'].includes(String(snapshot.state.phase))
+        : snapshot.scene !== 'city' && !snapshot.brief)
+    )
       return fail(
         409,
         'GAME_STARTED',
@@ -494,7 +530,7 @@ async function joinRoom(
         .prepare(`INSERT INTO room_members (room_code, id, slot, name, token_hash, last_seen, last_seq, left_at)
         SELECT ?, ?, ?, ?, ?, ?, 0, NULL WHERE EXISTS (
           SELECT 1 FROM rooms WHERE code = ? AND closed_at IS NULL AND expires_at > ?
-          AND (snapshot IS NULL OR json_extract(snapshot, '$.scene') = 'city' OR json_extract(snapshot, '$.brief') = 1)
+          AND (snapshot IS NULL OR (json_extract(snapshot,'$.scene')='race' AND json_extract(snapshot,'$.state.phase') IN ('lobby','result')) OR (json_extract(snapshot,'$.scene')<>'race' AND (json_extract(snapshot,'$.scene')='city' OR json_extract(snapshot,'$.brief')=1)))
         )`)
         .bind(code, crypto.randomUUID(), slot, name, tokenHash, now, code, now)
         .run();
@@ -586,6 +622,41 @@ async function pollRoom(
   const previous = room.snapshot
     ? (JSON.parse(room.snapshot) as RoomSnapshot)
     : null;
+  const raceStart =
+    !!snapshot &&
+    snapshot.scene === 'race' &&
+    snapshot.state.phase === 'countdown' &&
+    !(
+      previous?.scene === 'race' &&
+      ['countdown', 'racing'].includes(String(previous.state.phase))
+    );
+  if (
+    snapshot?.scene === 'race' &&
+    !validRaceState(snapshot.state, room.capacity)
+  )
+    return fail(400, 'INVALID_SNAPSHOT', 'Неверный состав заезда.');
+  if (
+    raceStart &&
+    (previous?.scene !== 'race' ||
+      previous.state.phase !== 'lobby' ||
+      snapshot!.epoch <= room.epoch ||
+      previous.state.revision !== snapshot!.state.revision ||
+      !(previous.state.racers as { ready: boolean }[]).every((r) => r.ready) ||
+      frozenRaceConfig(previous.state) !== frozenRaceConfig(snapshot!.state))
+  )
+    return fail(
+      409,
+      'RACE_LOBBY_CHANGED',
+      'Состав заезда изменился. Подтвердите готовность ещё раз.',
+    );
+  if (
+    snapshot?.scene === 'race' &&
+    previous?.scene === 'race' &&
+    ['countdown', 'racing'].includes(String(previous.state.phase)) &&
+    snapshot.state.phase !== 'lobby' &&
+    frozenRaceConfig(previous.state) !== frozenRaceConfig(snapshot.state)
+  )
+    return fail(400, 'INVALID_SNAPSHOT', 'Машины закреплены до конца заезда.');
   const rolesChanged =
     snapshot &&
     JSON.stringify(snapshot.roles) !==
@@ -691,13 +762,30 @@ async function pollRoom(
             .prepare('DELETE FROM room_frames WHERE room_code = ? AND slot = ?')
             .bind(code, member.slot),
     );
+  let snapshotIndex = -1;
   if (snapshot) {
     if (resumed || room.pause_revision > room.pause_ack)
       snapshot.state.paused = true;
+    snapshotIndex = statements.length;
+    const raceGuard = raceStart
+      ? ` AND snapshot_seq = ? AND epoch = ? AND pause_revision = pause_ack
+      AND json_extract(snapshot,'$.scene')='race' AND json_extract(snapshot,'$.state.phase')='lobby'
+      AND NOT EXISTS (SELECT 1 FROM room_members m WHERE m.room_code=rooms.code AND (m.left_at IS NOT NULL OR m.last_seen < ? OR NOT EXISTS (SELECT 1 FROM json_each(?, '$.state.racers') j WHERE json_extract(j.value,'$.memberSlot')=m.slot)))
+      AND NOT EXISTS (SELECT 1 FROM json_each(?, '$.state.racers') j WHERE NOT EXISTS (SELECT 1 FROM room_members m WHERE m.room_code=rooms.code AND m.slot=json_extract(j.value,'$.memberSlot')))`
+      : '';
+    const raceArgs: SqlValue[] = raceStart
+      ? [
+          room.snapshot_seq,
+          room.epoch,
+          now - MEMBER_STALE_MS,
+          JSON.stringify(snapshot),
+          JSON.stringify(snapshot),
+        ]
+      : [];
     statements.push(
       db
         .prepare(
-          `UPDATE rooms SET snapshot = CASE WHEN pause_revision > pause_ack THEN json_set(?, '$.state.paused', json('true')) ELSE ? END, snapshot_seq = ?, epoch = ? WHERE code = ? AND closed_at IS NULL AND expires_at > ? AND snapshot_seq < ? AND epoch <= ?`,
+          `UPDATE rooms SET snapshot = CASE WHEN pause_revision > pause_ack THEN json_set(?, '$.state.paused', json('true')) ELSE ? END, snapshot_seq = ?, epoch = ? WHERE code = ? AND closed_at IS NULL AND expires_at > ? AND snapshot_seq < ? AND epoch <= ?${raceGuard}`,
         )
         .bind(
           JSON.stringify(snapshot),
@@ -708,6 +796,7 @@ async function pollRoom(
           now,
           Number(body.snapshotSeq),
           snapshot.epoch,
+          ...raceArgs,
         ),
     );
     statements.push(
@@ -735,9 +824,14 @@ async function pollRoom(
     statements.push(
       db
         .prepare(
-          'DELETE FROM room_frames WHERE room_code = ? AND slot = ? AND seq <= ?',
+          `DELETE FROM room_frames WHERE room_code = ? AND slot = ? AND seq <= ?${snapshot ? ' AND EXISTS (SELECT 1 FROM rooms WHERE code = ? AND snapshot_seq = ? AND epoch = ?)' : ''}`,
         )
-        .bind(code, slot, seq),
+        .bind(
+          code,
+          slot,
+          seq,
+          ...(snapshot ? [code, Number(body.snapshotSeq), snapshot.epoch] : []),
+        ),
     );
   if (fresh.length && !resumed)
     statements.push(
@@ -787,7 +881,17 @@ async function pollRoom(
         snapshot ? snapshot.epoch : room.epoch,
       ),
   );
-  await db.batch(statements);
+  const results = await db.batch(statements);
+  if (
+    raceStart &&
+    (results[snapshotIndex] as { meta?: { changes?: number } })?.meta
+      ?.changes !== 1
+  )
+    return fail(
+      409,
+      'RACE_LOBBY_CHANGED',
+      'Состав заезда изменился. Подтвердите готовность ещё раз.',
+    );
   return {
     status: 200,
     body: await roomView(db, code, member.slot, now, resumed),

@@ -29,9 +29,9 @@ with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as arch
     for path in files:
         relative = path.relative_to(ROOT).as_posix()
         data = path.read_bytes()
-        archive.writestr('wellcum-back/' + relative, data)
+        archive.writestr('friendslop/' + relative, data)
         manifest.append({'path': relative, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
-    archive.writestr('wellcum-back/SOURCE-MANIFEST.json', json.dumps(manifest, ensure_ascii=False, indent=2))
+    archive.writestr('friendslop/SOURCE-MANIFEST.json', json.dumps(manifest, ensure_ascii=False, indent=2))
 with zipfile.ZipFile(output) as archive:
     damaged = archive.testzip()
     if damaged:

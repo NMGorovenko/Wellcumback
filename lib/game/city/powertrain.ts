@@ -26,15 +26,38 @@ export const freshPowertrain = (): PowertrainState => ({
 });
 const clamp = (v: number, low: number, high: number) =>
   Math.max(low, Math.min(high, Number.isFinite(v) ? v : low));
-function shift(s: PowertrainState, nextGear: number) {
+export type TransmissionTuning = {
+  ratios: readonly number[];
+  idle: number;
+  maxRpm: number;
+  rpmPerSpeed: number;
+  shiftRpm: number;
+  duration: number;
+  maxSpeed: number;
+  downshiftRpm?: number;
+};
+const STANDARD: TransmissionTuning = {
+  ratios: AUTOMATIC_RATIOS,
+  idle: 780,
+  maxRpm: 5700,
+  rpmPerSpeed: 165,
+  shiftRpm: 5000,
+  duration: SHIFT_DURATION,
+  maxSpeed: CITY_TOP_SPEED,
+};
+function shift(
+  s: PowertrainState,
+  nextGear: number,
+  tuning: TransmissionTuning,
+) {
   s.shiftFromRpm = s.rpm;
   s.shiftToRpm = clamp(
-    (s.rpm * AUTOMATIC_RATIOS[nextGear - 1]) / AUTOMATIC_RATIOS[s.gear - 1],
-    1100,
-    5400,
+    (s.rpm * tuning.ratios[nextGear - 1]) / tuning.ratios[s.gear - 1],
+    Math.max(1100, tuning.idle),
+    tuning.maxRpm - 300,
   );
   s.shiftStartedAt = s.time;
-  s.shiftUntil = s.time + SHIFT_DURATION;
+  s.shiftUntil = s.time + tuning.duration;
   s.shiftReadyAt = s.shiftUntil + 0.12;
   s.gear = nextGear;
 }
@@ -43,33 +66,37 @@ export function advancePowertrain(
   forward: number,
   throttle: number,
   delta: number,
+  tuning: TransmissionTuning = STANDARD,
 ) {
   const dt = clamp(delta, 0, 0.1);
-  const speed = clamp(Math.abs(forward), 0, CITY_TOP_SPEED);
+  const speed = clamp(Math.abs(forward), 0, tuning.maxSpeed);
   const reversing = forward < -0.2;
   const pedal = clamp(reversing ? -throttle : throttle, 0, 1);
   s.time += dt;
-  let target = 780 + speed * AUTOMATIC_RATIOS[s.gear - 1] * 165 + pedal * 220;
+  let target =
+    tuning.idle +
+    speed * tuning.ratios[s.gear - 1] * tuning.rpmPerSpeed +
+    pedal * 220;
   if (reversing || (speed < 0.35 && pedal < 0.05)) {
     s.gear = 1;
     s.shiftUntil = 0;
-    target = 780 + speed * (reversing ? 400 : 165) + pedal * 220;
+    target = tuning.idle + speed * (reversing ? 400 : 165) + pedal * 220;
   } else if (s.time >= s.shiftReadyAt) {
-    const shiftPoint = 2900 + pedal * 2100;
+    const shiftPoint = tuning.shiftRpm * 0.58 + pedal * tuning.shiftRpm * 0.42;
     if (
       target > shiftPoint &&
       s.rpm > shiftPoint - 120 &&
-      s.gear < AUTOMATIC_RATIOS.length &&
+      s.gear < tuning.ratios.length &&
       speed > 2
     ) {
-      shift(s, s.gear + 1);
-    } else if (target < 1550 && s.gear > 1) {
-      shift(s, s.gear - 1);
+      shift(s, s.gear + 1, tuning);
+    } else if (target < (tuning.downshiftRpm ?? 1550) && s.gear > 1) {
+      shift(s, s.gear - 1, tuning);
     }
   }
-  target = clamp(target, 740, 5700);
+  target = clamp(target, tuning.idle - 40, tuning.maxRpm);
   if (s.time < s.shiftUntil) {
-    const progress = clamp((s.time - s.shiftStartedAt) / SHIFT_DURATION, 0, 1);
+    const progress = clamp((s.time - s.shiftStartedAt) / tuning.duration, 0, 1);
     const eased = progress * progress * (3 - 2 * progress);
     s.rpm = s.shiftFromRpm + (s.shiftToRpm - s.shiftFromRpm) * eased;
   } else {

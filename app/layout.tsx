@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 export const metadata: Metadata = {
-  title: 'Ну, с возвращением! — Вечер историй',
+  title: 'FRIENDSLOP — Вечер историй',
   icons: { icon: '/favicon.svg' },
   description:
     'Один год. Много историй. Очень большой экран. Кооперативная игра для своих.',

@@ -59,16 +59,32 @@ export function advanceV8(s: V8State, input: V8Input, delta: number) {
 }
 
 /** Fourier coefficients for uneven exhaust pulses from one bank of a cross-plane V8. */
-export function exhaustWave(bank: 0 | 1, harmonics = 64) {
-  const pulses = bank === 0 ? [0, 2, 5, 7] : [1, 3, 4, 6];
-  const weights = bank === 0 ? [1, 0.72, 1.22, 0.86] : [0.88, 1.18, 0.74, 1.05];
+export function exhaustWave(
+  bank: 0 | 1,
+  harmonics = 64,
+  voice: 'v8' | 'v6' = 'v8',
+) {
+  const pulses =
+    voice === 'v6'
+      ? bank === 0
+        ? [0, 2, 4]
+        : [1, 3, 5]
+      : bank === 0
+        ? [0, 2, 5, 7]
+        : [1, 3, 4, 6];
+  const weights =
+    voice === 'v6'
+      ? [1, 0.92, 1.06]
+      : bank === 0
+        ? [1, 0.72, 1.22, 0.86]
+        : [0.88, 1.18, 0.74, 1.05];
   const real = new Float32Array(harmonics + 1);
   const imag = new Float32Array(harmonics + 1);
   for (let k = 1; k <= harmonics; k++) {
     const envelope = Math.exp(-k * 0.1) / 4;
     for (let i = 0; i < pulses.length; i++) {
       const fire = pulses[i];
-      const phase = (2 * Math.PI * k * fire) / 8;
+      const phase = (2 * Math.PI * k * fire) / (voice === 'v6' ? 6 : 8);
       real[k] += Math.cos(phase) * envelope * weights[i];
       imag[k] -= Math.sin(phase) * envelope * weights[i];
     }
@@ -79,14 +95,30 @@ export function exhaustWave(bank: 0 | 1, harmonics = 64) {
 /** A bank of combustion puffs with cycle variation, rather than a perfectly
  * periodic sawtooth. Fixed seeded variation is shared by realtime/offline audio. */
 export const EXHAUST_REFERENCE_RPM = 1500;
-export function exhaustPuffs(bank: 0 | 1, sampleRate: number) {
+export function exhaustPuffs(
+  bank: 0 | 1,
+  sampleRate: number,
+  voice: 'v8' | 'v6' = 'v8',
+) {
   const cycleLength = 120 / EXHAUST_REFERENCE_RPM;
   const cycles = 24;
   const samples = new Float32Array(
     Math.round(cycleLength * cycles * sampleRate),
   );
-  const pulses = bank === 0 ? [0, 2, 5, 7] : [1, 3, 4, 6];
-  const weights = bank === 0 ? [1, 0.72, 1.22, 0.86] : [0.88, 1.18, 0.74, 1.05];
+  const pulses =
+    voice === 'v6'
+      ? bank === 0
+        ? [0, 2, 4]
+        : [1, 3, 5]
+      : bank === 0
+        ? [0, 2, 5, 7]
+        : [1, 3, 4, 6];
+  const weights =
+    voice === 'v6'
+      ? [1, 0.92, 1.06]
+      : bank === 0
+        ? [1, 0.72, 1.22, 0.86]
+        : [0.88, 1.18, 0.74, 1.05];
   let seed = 8191 + bank * 3571;
   const random = () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
@@ -96,7 +128,7 @@ export function exhaustPuffs(bank: 0 | 1, sampleRate: number) {
     const breath = 1 + random() * 0.22;
     for (let fire = 0; fire < pulses.length; fire++) {
       const start = Math.round(
-        (cycle + pulses[fire] / 8 + random() * 0.008) *
+        (cycle + pulses[fire] / (voice === 'v6' ? 6 : 8) + random() * 0.008) *
           cycleLength *
           sampleRate,
       );

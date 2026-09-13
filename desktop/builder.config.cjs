@@ -6,7 +6,7 @@ const signing = signingOptions(process.env.WELLCUM_MAC_SIGNING);
 
 module.exports = {
   appId: 'io.github.nmgorovenko.wellcumback',
-  productName: 'Wellcum back',
+  productName: 'FRIENDSLOP',
   electronVersion: '44.3.0',
   directories: {
     output:
@@ -26,7 +26,7 @@ module.exports = {
   asar: true,
   npmRebuild: false,
   forceCodeSigning: signing.signed,
-  artifactName: 'Wellcum-back-${version}-${os}-${arch}.${ext}',
+  artifactName: 'FRIENDSLOP-${version}-${os}-${arch}.${ext}',
   mac: {
     extraResources: [
       {
@@ -57,10 +57,10 @@ module.exports = {
     signExecutable: false,
   },
   portable: {
-    artifactName: 'Wellcum-back-${version}-windows-${arch}-portable.${ext}',
+    artifactName: 'FRIENDSLOP-${version}-windows-${arch}-portable.${ext}',
   },
   nsis: {
-    artifactName: 'Wellcum-back-${version}-windows-${arch}-setup.${ext}',
+    artifactName: 'FRIENDSLOP-${version}-windows-${arch}-setup.${ext}',
     oneClick: false,
     perMachine: false,
     allowToChangeInstallationDirectory: true,

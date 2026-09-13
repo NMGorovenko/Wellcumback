@@ -4,7 +4,12 @@ import type { CityState } from '@/lib/game/city/engine';
 import { advanceV8, freshV8 } from '@/lib/game/audio/v8-model';
 import { createCityFoley } from '@/lib/game/audio/city-foley';
 
-export function useCityAudio(enabled: boolean, state: CityState) {
+export function useCityAudio(
+  enabled: boolean,
+  state: CityState,
+  voice: 'v8' | 'v6' = 'v8',
+  mix = 1,
+) {
   const audio = useRef<{
     context: AudioContext;
     graph: ReturnType<typeof createCityFoley>;
@@ -37,7 +42,10 @@ export function useCityAudio(enabled: boolean, state: CityState) {
       try {
         if (!audio.current) {
           const context = new AudioContext();
-          audio.current = { context, graph: createCityFoley(context) };
+          audio.current = {
+            context,
+            graph: createCityFoley(context, voice, mix),
+          };
         }
         if (!latest.current.paused && document.hasFocus())
           void audio.current.context.resume().catch(() => {});
@@ -60,7 +68,7 @@ export function useCityAudio(enabled: boolean, state: CityState) {
       window.removeEventListener('blur', stop);
       document.removeEventListener('visibilitychange', hidden);
     };
-  }, [enabled]);
+  }, [enabled, voice, mix]);
   useEffect(() => {
     const current = audio.current;
     if (!current) return;

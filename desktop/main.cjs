@@ -21,7 +21,7 @@ const {
 } = require('./security.cjs');
 
 // Stable across architectures, portable/installed packages, and application versions.
-app.setName('Wellcum back');
+app.setName('FRIENDSLOP');
 app.setPath('userData', path.join(app.getPath('appData'), 'WellcumBack'));
 protocol.registerSchemesAsPrivileged([
   { scheme: 'wellcum', privileges: { standard: true, secure: true } },
@@ -43,7 +43,7 @@ function fatal(error) {
 async function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   const window = new BrowserWindow({
-    title: 'Ну, с возвращением!',
+    title: 'FRIENDSLOP',
     width: Math.min(1440, width),
     height: Math.min(900, height),
     minWidth: Math.min(720, width),

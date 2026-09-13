@@ -1,3 +1,4 @@
+import { neutralRaceInput, type RaceInput } from '../race/types.ts';
 import { roomRoles } from './room-roles.ts';
 import { pauseRoomWorld } from './room-pause.ts';
 import { desktopNetwork } from './desktop-bridge.ts';
@@ -34,6 +35,8 @@ const SAVED_ROOM = 'wellcum-room-return-v5';
 let pauseRevision = 0;
 let rejoining = false;
 let pendingRoleEpoch: number | null = null;
+let pendingRaceStartEpoch: number | null = null;
+export const raceStartConfirmed = () => pendingRaceStartEpoch === null;
 const REQUEST_TIMEOUT_MS = 8000;
 let latencyMs = 0;
 let pendingSince: number | null = null;
@@ -69,6 +72,24 @@ let generation = 0,
   snapshotSeq = 0,
   acceptedAt = 0;
 let world: RoomWorld | null = null;
+let confirmedWorld: RoomWorld | null = null;
+export const raceLobbyConfirmed = () =>
+  world?.scene === 'race' &&
+  confirmedWorld?.scene === 'race' &&
+  world.epoch === confirmedWorld.epoch &&
+  confirmedWorld.state.phase === 'lobby' &&
+  confirmedWorld.state.revision === world.state.revision &&
+  JSON.stringify(
+    (confirmedWorld.state.racers as { id: string; ready: boolean }[]).map(
+      (r) => [r.id, r.ready],
+    ),
+  ) ===
+    JSON.stringify(
+      (world.state.racers as { id: string; ready: boolean }[]).map((r) => [
+        r.id,
+        r.ready,
+      ]),
+    );
 let outbox: RoomFrame[] = [];
 let lastInput = '',
   lastDriveAt = 0;
@@ -136,6 +157,7 @@ async function request(payload: Record<string, unknown>): Promise<RoomReply> {
   return body as RoomReply;
 }
 function ingest(reply: RoomReply, elapsed: number) {
+  confirmedWorld = reply.snapshot ? structuredClone(reply.snapshot) : null;
   recordLatency(elapsed);
   acceptedAt = performance.now();
   snapshotSeq = Math.max(snapshotSeq, reply.snapshotSeq || 0);
@@ -169,8 +191,11 @@ function ingest(reply: RoomReply, elapsed: number) {
             !previous.command &&
             !frame.command &&
             previous.epoch === frame.epoch &&
-            JSON.stringify([previous.keys, previous.drive]) ===
-              JSON.stringify([frame.keys, frame.drive])
+            JSON.stringify([
+              previous.keys,
+              previous.drive,
+              previous.raceInputs,
+            ]) === JSON.stringify([frame.keys, frame.drive, frame.raceInputs])
           )
             queue[queue.length - 1] = frame;
           else queue.push(frame);
@@ -210,6 +235,12 @@ function ingest(reply: RoomReply, elapsed: number) {
       JSON.stringify(roomRoles(world))
   )
     pendingRoleEpoch = null;
+  if (
+    pendingRaceStartEpoch !== null &&
+    reply.snapshot?.scene === 'race' &&
+    reply.snapshot.epoch >= pendingRaceStartEpoch
+  )
+    pendingRaceStartEpoch = null;
   outbox = outbox.filter((frame) => frame.seq > reply.ack);
   sequence = outbox.length ? Math.max(sequence, reply.ack) : reply.ack;
   announce({
@@ -272,6 +303,7 @@ async function poll(run: number) {
       ![
         'STALE_EPOCH',
         'STALE_SNAPSHOT',
+        'RACE_LOBBY_CHANGED',
         'INPUT_SEQUENCE_GAP',
         'INPUT_QUEUE_FULL',
       ].includes(code ?? '')
@@ -282,10 +314,16 @@ async function poll(run: number) {
       needsResync = true;
       lastInput = '';
     }
-    if (roomHost() && (code === 'STALE_SNAPSHOT' || code === 'STALE_EPOCH')) {
+    if (
+      roomHost() &&
+      (code === 'STALE_SNAPSHOT' ||
+        code === 'STALE_EPOCH' ||
+        code === 'RACE_LOBBY_CHANGED')
+    ) {
       // Recover the authoritative saved scene before publishing again. A stale
       // local bootstrap must not trap a restored host in an endless write loop.
       world = null;
+      pendingRaceStartEpoch = null;
       incoming.clear();
       needsResync = true;
       lastInput = '';
@@ -444,6 +482,13 @@ export function updateRoomConnection(code: string, value: RoomConnection) {
   lastInput = '';
   outbox = [];
   incoming.clear();
+  if (pendingRaceStartEpoch !== null) {
+    // Its write may or may not have reached the old endpoint. Read the saved
+    // scene first; never carry a tentative start across transport recovery.
+    world = null;
+    confirmedWorld = null;
+    pendingRaceStartEpoch = null;
+  }
   if (world) pauseRoomWorld(world);
   setRoomConnection(next);
   saveCredential(true);
@@ -491,6 +536,8 @@ export async function leaveRoom() {
   pauseRevision = 0;
   rejoining = false;
   pendingRoleEpoch = null;
+  pendingRaceStartEpoch = null;
+  confirmedWorld = null;
   pendingSince = null;
   lastInput = '';
   lastDriveAt = 0;
@@ -522,6 +569,8 @@ export function publishRoomWorld(next: RoomWorld) {
   const changed = world?.epoch !== next.epoch || world?.scene !== next.scene;
   if (JSON.stringify(roomRoles(world)) !== JSON.stringify(roomRoles(next)))
     pendingRoleEpoch = next.epoch;
+  if (changed && next.scene === 'race' && next.state.phase === 'countdown')
+    pendingRaceStartEpoch = next.epoch;
   world = next;
   if (changed) {
     readyForInput = false;
@@ -538,23 +587,53 @@ export function captureRoomInput(
   keys: ReadonlySet<string>,
   drive: DriveAxes = neutralDrive(),
   command?: RoomCommand,
+  raceInputs?: RaceInput[],
 ) {
   if (!credential || !world || roomHost()) return;
   const selected = [...keys].filter((key) => LOCAL_KEYS.has(key)).sort();
   if (!roomFresh()) readyForInput = false;
   else if (
     !selected.length &&
-    Math.abs(drive.steer) + Math.abs(drive.throttle) < 0.05
+    Math.abs(drive.steer) + Math.abs(drive.throttle) < 0.05 &&
+    (!raceInputs ||
+      raceInputs.every(
+        (i) =>
+          !i.handbrake &&
+          !i.reset &&
+          Math.abs(i.throttle) + Math.abs(i.steer) < 0.05,
+      ))
   )
     readyForInput = true;
   const safe = readyForInput ? selected : [];
   const safeDrive = readyForInput ? drive : neutralDrive();
-  const signature = JSON.stringify([safe, safeDrive]);
+  const safeRace = raceInputs?.map((i) =>
+    readyForInput ? { ...i } : neutralRaceInput(),
+  );
+  const signature = JSON.stringify([safe, safeDrive, safeRace]);
   const now = performance.now();
   if (needsResync) return;
   if (!command && signature === lastInput && now - lastDriveAt < 180) return;
   if (
     !command &&
+    (!safeRace ||
+      JSON.stringify(
+        safeRace.map((i) => [
+          i.handbrake,
+          i.reset,
+          Math.sign(i.throttle),
+          Math.sign(i.steer),
+        ]),
+      ) ===
+        JSON.stringify(
+          (JSON.parse(lastInput || '[[],{},[]]')[2] ?? []).map(
+            (i: RaceInput) => [
+              i.handbrake,
+              i.reset,
+              Math.sign(i.throttle),
+              Math.sign(i.steer),
+            ],
+          ),
+        )) &&
     safe.join() === JSON.parse(lastInput || '[[],{}]')[0].join() &&
     now - lastDriveAt <
       Math.max(50, Math.min(250, (relayLatency() + roomPollDelay()) / 30))
@@ -573,6 +652,7 @@ export function captureRoomInput(
     epoch: world.epoch,
     keys: safe,
     drive: safeDrive,
+    ...(safeRace ? { raceInputs: safeRace } : {}),
     ...(command ? { command } : {}),
   });
   lastInput = signature;

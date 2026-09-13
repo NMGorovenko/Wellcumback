@@ -1,4 +1,6 @@
 'use client';
+import { localRaceInputs } from '@/lib/game/race/input';
+import { neutralRaceInput, type RaceInput } from '@/lib/game/race/types';
 import { neutralDrive, type DriveAxes } from '@/lib/game/input/drive';
 import type { InputProfile } from '@/lib/game/input/settings';
 import { useEffect, useRef, type RefObject } from 'react';
@@ -53,7 +55,13 @@ export function useGameLoop<
 }: {
   game: RefObject<T>;
   keys: RefObject<Set<string>>;
-  tick: (state: T, delta: number, keys: Set<string>, drive?: DriveAxes) => void;
+  tick: (
+    state: T,
+    delta: number,
+    keys: Set<string>,
+    drive?: DriveAxes,
+    raceInputs?: RaceInput[],
+  ) => void;
   action: () => void;
   pause: () => void;
   snapshot: (state: T) => void;
@@ -115,6 +123,7 @@ export function useGameLoop<
     let previousPaused = game.current.paused,
       previousMenu = !!callbacks.current.padMenu?.enabled,
       statusKey = '';
+    let previousRacePads: number[] = [];
     const keyDirections = Object.fromEntries(
       PLAYER_BINDINGS.flatMap((binding) => [
         [binding.up, 'up'],
@@ -239,6 +248,17 @@ export function useGameLoop<
         callbacks.current.inputPlayers ?? inputPlayerCount(game.current),
         callbacks.current.profile,
       );
+      if (callbacks.current.profile === 'race') {
+        const ids = pads.assignments.map((p) => p.index);
+        if (
+          previousRacePads.some((id) => !ids.includes(id)) &&
+          !game.current.paused
+        ) {
+          callbacks.current.pause();
+          resetInput();
+        }
+        previousRacePads = ids;
+      }
       const nextStatus =
         pads.assignments
           .map(
@@ -291,8 +311,16 @@ export function useGameLoop<
         )
           callbacks.current.action();
       }
-      if (!blocked || callbacks.current.tickWhileBlocked)
-        callbacks.current.tick(game.current, dt, merged, drive);
+      if (!blocked || callbacks.current.tickWhileBlocked) {
+        const count = callbacks.current.inputPlayers ?? 1;
+        const raceInputs =
+          callbacks.current.profile === 'race'
+            ? blocked || menuEnabled || pads.pausePressed || game.current.paused
+              ? Array.from({ length: count }, () => neutralRaceInput())
+              : localRaceInputs(merged, pads.raceDrives, count)
+            : undefined;
+        callbacks.current.tick(game.current, dt, merged, drive, raceInputs);
+      }
       previousPaused = game.current.paused;
       previousMenu = menuEnabled;
       elapsed += dt;

@@ -44,7 +44,7 @@ function setup() {
     bind: (...next) => prepare(sql, next),
     first: async () => sqlite.prepare(sql).get(...values) ?? null,
     all: async () => ({ results: sqlite.prepare(sql).all(...values) }),
-    run: async () => sqlite.prepare(sql).run(...values),
+    run: async () => ({ meta: { changes: Number(sqlite.prepare(sql).run(...values).changes) } }),
   });
   db = {
     prepare,
@@ -128,7 +128,7 @@ async function drain() {
   });
 }
 const api = (body) =>
-  handleRoomRequest(db, { version: 5, ...body }, 1000 + now);
+  handleRoomRequest(db, { version: 6, ...body }, 1000 + now);
 async function nextPoll() {
   const timer = timers.shift();
   assert.ok(timer, 'client must schedule the next poll');

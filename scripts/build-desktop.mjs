@@ -34,7 +34,7 @@ export async function prepareDesktopApp(projectRoot) {
   );
   const portable = path.join(projectRoot, 'outputs/portable');
   const [html, manifestJSON] = await Promise.all([
-    readFile(path.join(portable, 'Wellcum-back.html'), 'utf8'),
+    readFile(path.join(portable, 'FRIENDSLOP.html'), 'utf8'),
     readFile(path.join(portable, 'build.json'), 'utf8'),
   ]);
   const renderer = security.prepareRenderer(
@@ -97,7 +97,7 @@ export async function prepareDesktopApp(projectRoot) {
           version: pkg.version,
           private: true,
           description:
-            'Ну, с возвращением! — игра для 1–3 игроков, локально и по сети',
+            'FRIENDSLOP — игра для 1–3 игроков, локально и по сети',
           main: 'main.cjs',
         },
         null,
@@ -268,7 +268,7 @@ async function main() {
         const app = path.join(
           staging,
           arch === 'arm64' ? 'mac-arm64' : 'mac',
-          'Wellcum back.app',
+          'FRIENDSLOP.app',
         );
         signatures[arch] = await verifyMacBundle(app, signing.notarized);
       }
@@ -277,7 +277,7 @@ async function main() {
       const artifact = path.join(
         root,
         'outputs/desktop',
-        `Wellcum-back-${manifest.version}-${suffix}`,
+        `FRIENDSLOP-${manifest.version}-${suffix}`,
       );
       const stagedArtifact = path.join(staging, path.basename(artifact));
       const arch = suffix.includes('arm64') ? 'arm64' : 'x64';

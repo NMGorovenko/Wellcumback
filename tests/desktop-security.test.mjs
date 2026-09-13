@@ -142,7 +142,7 @@ async function fixture(t) {
       path.join(project, 'package.json'),
       JSON.stringify({ type: 'module', version: '0.4.0' }),
     ),
-    writeFile(path.join(project, 'outputs/portable/Wellcum-back.html'), html),
+    writeFile(path.join(project, 'outputs/portable/FRIENDSLOP.html'), html),
     writeFile(
       path.join(project, 'outputs/portable/build.json'),
       JSON.stringify(sourceManifest()),
@@ -221,12 +221,12 @@ await test('prepared app contains the bundled relay and sandboxed preload, with 
 await test('public desktop prepare command rebuilds portable first instead of packaging stale output', async (t) => {
   const project = await fixture(t);
   await writeFile(
-    path.join(project, 'outputs/portable/Wellcum-back.html'),
+    path.join(project, 'outputs/portable/FRIENDSLOP.html'),
     'stale HTML',
   );
   await writeFile(
     path.join(project, 'scripts/build-portable.mjs'),
-    `import { writeFile } from 'node:fs/promises';\nawait writeFile('outputs/portable/Wellcum-back.html', ${JSON.stringify(html)});\nawait writeFile('outputs/portable/build.json', ${JSON.stringify(JSON.stringify(sourceManifest()))});\n`,
+    `import { writeFile } from 'node:fs/promises';\nawait writeFile('outputs/portable/FRIENDSLOP.html', ${JSON.stringify(html)});\nawait writeFile('outputs/portable/build.json', ${JSON.stringify(JSON.stringify(sourceManifest()))});\n`,
   );
   execFileSync(
     process.execPath,

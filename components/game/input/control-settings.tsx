@@ -19,6 +19,7 @@ import {
 import { PLAYER_BINDINGS } from '@/lib/game/input/bindings';
 import {
   CITY_CONTROL_NAMES,
+  RACE_CONTROL_NAMES,
   CONTROL_NAMES,
   PLAYER_NAMES,
   getPhysicalBinding,
@@ -76,14 +77,23 @@ function PadHelp({
   const label = (button: number) =>
     assigned ? padButtonLabel(assigned.brand, button) : fallback[button];
   const rows =
-    profile === 'city'
+    profile !== 'game'
       ? [
           ['Руль', 'левый стик ← / →'],
           ['Газ', label(7)],
           ['Тормоз / назад', label(6)],
           ['Дрифт', label(2)],
-          ['Начать историю', label(0)],
-          ['Сигнал', label(5)],
+          ...(profile === 'race'
+            ? [
+                [
+                  'Вернуться на трассу',
+                  assigned ? padButtonLabel(assigned.brand, 3) : 'Y / △',
+                ],
+              ]
+            : [
+                ['Начать историю', label(0)],
+                ['Сигнал', label(5)],
+              ]),
         ]
       : [
           ['Движение', 'левый стик / крестовина'],
@@ -181,6 +191,8 @@ function OpenControlSettings({
   const [capturing, setCapturing] = useState<Capture | null>(null);
   const [notice, setNotice] = useState('');
   const [livePads, setLivePads] = useState<PadOverview>(pads);
+  const shownPads =
+    profile === 'race' && activeProfile === 'race' ? pads : livePads;
   const content = useRef<HTMLDivElement | null>(null);
   const latest = useRef({ capturing, activeProfile, onOpenChange, rebind });
   useEffect(() => {
@@ -311,7 +323,12 @@ function OpenControlSettings({
     );
   };
   const binding = PLAYER_BINDINGS[activeProfile === 'city' ? 0 : player];
-  const names = activeProfile === 'city' ? CITY_CONTROL_NAMES : CONTROL_NAMES;
+  const names =
+    activeProfile === 'race'
+      ? RACE_CONTROL_NAMES
+      : activeProfile === 'city'
+        ? CITY_CONTROL_NAMES
+        : CONTROL_NAMES;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent ref={content} className="control-settings-dialog">
@@ -330,6 +347,18 @@ function OpenControlSettings({
             <strong>Машина</strong>
             <small>один водитель</small>
           </button>
+          {[0, 1].map((index) => (
+            <button
+              key={`race-${index}`}
+              data-control-focus
+              type="button"
+              aria-pressed={activeProfile === 'race' && player === index}
+              onClick={() => selectProfile('race', index)}
+            >
+              <strong>Гонщик {index + 1}</strong>
+              <small>своя машина</small>
+            </button>
+          ))}
           {playerNames.slice(0, 3).map((name, index) => (
             <button
               data-control-focus
@@ -372,8 +401,8 @@ function OpenControlSettings({
             }}
           >
             Геймпады
-            {livePads.assignments.length
-              ? ` · ${livePads.assignments.length}`
+            {shownPads.assignments.length
+              ? ` · ${shownPads.assignments.length}`
               : ''}
           </button>
         </fieldset>
@@ -389,12 +418,13 @@ function OpenControlSettings({
               {controls.map((control) =>
                 bindingButton(binding[control], names[control]),
               )}
-              {bindingButton(
-                'KeyQ',
-                activeProfile === 'city'
-                  ? 'Сигнал'
-                  : 'Общее · бросок / смена инструмента',
-              )}
+              {activeProfile !== 'race' &&
+                bindingButton(
+                  'KeyQ',
+                  activeProfile === 'city'
+                    ? 'Сигнал'
+                    : 'Общее · бросок / смена инструмента',
+                )}
             </div>
             {activeProfile === 'game' && player === 0 && (
               <p className="control-settings-note">
@@ -404,7 +434,7 @@ function OpenControlSettings({
           </section>
         ) : (
           <PadHelp
-            pads={livePads}
+            pads={shownPads}
             profile={activeProfile}
             player={player}
             playerNames={playerNames}

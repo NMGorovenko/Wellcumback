@@ -50,7 +50,7 @@ function database() {
   };
 }
 const call = (db, body, now = 1000) =>
-  handleRoomRequest(db, { version: 5, ...body }, now);
+  handleRoomRequest(db, { version: 6, ...body }, now);
 const frame = (seq, keys = [], epoch = 0, command) => ({
   seq,
   epoch,

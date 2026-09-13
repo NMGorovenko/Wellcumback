@@ -1,3 +1,11 @@
+import { newRaceWorld, applyRaceCommand, syncRaceLobby } from './room-race.ts';
+import { tickRace } from '../race/engine.ts';
+import { raceCourse } from '../race/course.ts';
+import {
+  neutralRaceInput,
+  type RaceInput,
+  type RaceState,
+} from '../race/types.ts';
 import { pauseRoomWorld } from './room-pause.ts';
 import {
   roomActor,
@@ -52,6 +60,8 @@ import {
 } from '../input/drive.ts';
 import {
   captureRoomInput,
+  raceStartConfirmed,
+  raceLobbyConfirmed,
   publishRoomWorld,
   roomActive,
   roomFresh,
@@ -190,6 +200,30 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
   if (!world || (!roomFresh() && command.kind !== 'pause')) return;
   const isOwner = isRoomLeader(world, slot);
   const actor = roomActor(world, slot);
+  if (command.kind === 'start-race' && isOwner && world.scene === 'city') {
+    const roster = roomSnapshot().roster;
+    if (roster.every((m) => m.connected))
+      publishRoomWorld(newRaceWorld(world, roster));
+    return;
+  }
+  if (
+    world.scene === 'race' &&
+    command.kind !== 'exit' &&
+    command.kind !== 'leader'
+  ) {
+    if (command.kind === 'race-start' && !raceLobbyConfirmed()) return;
+    const next = applyRaceCommand(world, command, slot, roomSnapshot().roster);
+    if (next) {
+      if (
+        ['pause', 'resume', 'race-start', 'race-lobby'].includes(command.kind)
+      ) {
+        suspendRemoteInput();
+        inputArmed = false;
+      }
+      publishRoomWorld(next);
+    }
+    return;
+  }
   if (command.kind === 'leader') {
     if (
       !isOwner ||
@@ -395,7 +429,15 @@ function collect(world: RoomWorld) {
     const frame = takeRoomFrame(p.slot, world.epoch);
     if (frame && p.connected) {
       inputAt.set(p.slot, performance.now());
-      if (!frame.keys.length && driveIsNeutral(frame.drive) && !frame.command)
+      if (
+        !frame.keys.length &&
+        driveIsNeutral(frame.drive) &&
+        (!frame.raceInputs ||
+          frame.raceInputs.every(
+            (i) => !i.throttle && !i.steer && !i.handbrake && !i.reset,
+          )) &&
+        !frame.command
+      )
         disarmedSlots.delete(p.slot);
       if (!disarmedSlots.has(p.slot)) held.set(p.slot, frame);
       // Menus remain usable while gameplay waits for released buttons.
@@ -629,6 +671,7 @@ export const tickRoomMoving = (
 ) => tickRoomStory('moving', state, dt, keys, movingTick);
 
 export function roomRoleName(world: RoomWorld | null, slot: number) {
+  if (world?.scene === 'race') return 'Гонщик';
   if (
     world?.scene === 'clean' &&
     !['clean', 'result'].includes(String(world.state.phase)) &&
@@ -651,4 +694,82 @@ export function roomRoleName(world: RoomWorld | null, slot: number) {
           )
         : ['Никита', 'Ярик', 'Рома'];
   return roles[roomActor(world, slot)] ?? 'Друг';
+}
+
+/** Device slots own one or two car inputs. Each host step advances the world once. */
+export function tickRoomRace(
+  state: RaceState,
+  dt: number,
+  localInputs: RaceInput[],
+) {
+  const world = roomWorld();
+  if (world?.scene !== 'race') return;
+  if (!roomHost()) {
+    captureRoomInput(new Set(), neutralDrive(), undefined, localInputs);
+    const previous = state.racers;
+    const samePhase = state.phase === world.state.phase;
+    Object.assign(state, structuredClone(world.state));
+    // Smooth presentation only. Authoritative lap counts, collisions and scores
+    // always come from the host; teleports and pause restore immediately.
+    if (samePhase && state.phase === 'racing' && !state.paused && roomFresh()) {
+      const amount = 1 - Math.exp(-Math.max(0, dt) * 18);
+      for (const r of state.racers) {
+        const old = previous.find((p) => p.id === r.id);
+        if (
+          !old ||
+          old.respawns !== r.respawns ||
+          Math.hypot(old.car.x - r.car.x, old.car.z - r.car.z) > 15
+        )
+          continue;
+        r.car.x = old.car.x + (r.car.x - old.car.x) * amount;
+        r.car.z = old.car.z + (r.car.z - old.car.z) * amount;
+        r.car.heading =
+          old.car.heading +
+          Math.atan2(
+            Math.sin(r.car.heading - old.car.heading),
+            Math.cos(r.car.heading - old.car.heading),
+          ) *
+            amount;
+        r.elevation = old.elevation + (r.elevation - old.elevation) * amount;
+      }
+    }
+    return;
+  }
+  // A start is tentative until the relay freezes the roster. Preserve queued
+  // lobby commands and their ACKs if that compare-and-swap is rejected.
+  if (!raceStartConfirmed()) {
+    Object.assign(state, structuredClone(world.state));
+    return;
+  }
+  hostSteps(world, dt, (current) => {
+    const s = current.state as unknown as RaceState;
+    syncRaceLobby(s, roomSnapshot().roster);
+    if (!roomFresh()) {
+      s.paused = true;
+      suspendRemoteInput();
+      inputArmed = false;
+    }
+    if (
+      roomFresh() &&
+      localInputs.every(
+        (i) => !i.throttle && !i.steer && !i.handbrake && !i.reset,
+      )
+    )
+      inputArmed = true;
+    const inputs = new Map<string, RaceInput>();
+    for (const r of s.racers) {
+      const frames =
+        r.memberSlot === 0 ? localInputs : held.get(r.memberSlot)?.raceInputs;
+      inputs.set(
+        r.id,
+        inputArmed && roomFresh()
+          ? (frames?.[r.localIndex] ?? neutralRaceInput())
+          : neutralRaceInput(),
+      );
+    }
+    if (raceStartConfirmed())
+      tickRace(s, HOST_STEP, inputs, raceCourse(s.trackId));
+    Object.assign(state, s);
+    publishRoomWorld({ ...current, brief: s.phase === 'lobby' });
+  });
 }

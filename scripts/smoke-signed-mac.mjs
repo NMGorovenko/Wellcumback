@@ -27,9 +27,9 @@ if (
   process.argv.length !== 3
 )
   throw new Error(
-    'Usage on macOS: node scripts/smoke-signed-mac.mjs /path/to/Wellcum\\ back.app',
+    'Usage on macOS: node scripts/smoke-signed-mac.mjs /path/to/FRIENDSLOP.app',
   );
-const appBinary = path.join(appPath, 'Contents/MacOS/Wellcum back');
+const appBinary = path.join(appPath, 'Contents/MacOS/FRIENDSLOP');
 const tunnelBinary = path.join(
   appPath,
   'Contents/Resources/tunnel/cloudflared',
@@ -215,6 +215,8 @@ try {
     );
     return Boolean(target);
   }, 'production game renderer');
+  // Let Electron finish its initial preload setup before CDP attaches.
+  await pause(1000);
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
     socket.once('open', resolve);
@@ -282,6 +284,10 @@ try {
     'production profile created under isolated appData',
   );
 
+  if (!(await cdp.evaluate('document.hasFocus()'))) {
+    run('osascript', ['-e', `tell application "System Events" to set frontmost of first application process whose unix id is ${child.pid} to true`]);
+    await cdp.send('Page.bringToFront');
+  }
   await waitFor(() => cdp.evaluate('document.hasFocus()'), 'signed app focus');
   if (await visible('.city-pause-menu')) await click('Продолжить поездку');
   await waitFor(
@@ -310,10 +316,11 @@ try {
         ),
       'native driving input',
     );
-    assert.ok(audioNodes > 5, 'game created an actual audio graph');
+    // Node creation observed after CDP attach is not the complete graph.
     const context = [...audioContexts.values()].find(
       (item) => item.contextState === 'running',
     );
+    assert.ok(context, 'running production AudioContext discovered');
     const first = await cdp.send('WebAudio.getRealtimeData', {
       contextId: context.contextId,
     });

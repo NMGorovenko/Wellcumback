@@ -48,6 +48,7 @@ export default function CityHub({
   sound,
   onPlay,
   onStories,
+  onRaces,
   players,
   onPlayers,
   onGamepads,
@@ -58,6 +59,7 @@ export default function CityHub({
   sound: boolean;
   onPlay: (story: CityMission) => void;
   onStories: () => void;
+  onRaces: () => void;
   onControls: () => void;
   onFullscreen: () => void;
   players: number;
@@ -152,6 +154,7 @@ export default function CityHub({
       disabled: !canResume,
     },
     { id: 'stories', label: 'Все истории', disabled: shared },
+    { id: 'races', label: 'Гонки', disabled: !canManage },
     { id: 'players', label: `Игроков в истории: ${players}`, disabled: shared },
     { id: 'target', label: `Куда едем: ${cityStops[target].title}` },
     {
@@ -183,6 +186,9 @@ export default function CityHub({
     switch (id) {
       case 'resume':
         pause();
+        break;
+      case 'races':
+        onRaces();
         break;
       case 'stories':
         onStories();
@@ -319,6 +325,9 @@ export default function CityHub({
           >
             <Camera size={16} />
             {cameraNames[cameraMode]}
+          </button>
+          <button disabled={!canManage} onClick={onRaces}>
+            Гонки
           </button>
           <button disabled={shared} onClick={onStories}>
             Все истории <ArrowUpRight size={14} />

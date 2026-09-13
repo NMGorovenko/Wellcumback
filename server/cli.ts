@@ -21,7 +21,7 @@ const relay = await startRelay({
   database: process.env.WELLCUM_DATABASE,
 });
 console.log(
-  `Wellcum back relay listening on port ${relay.port}. TLS must be provided by the reverse proxy.`,
+  `FRIENDSLOP relay listening on port ${relay.port}. TLS must be provided by the reverse proxy.`,
 );
 let closing = false;
 for (const signal of ['SIGINT', 'SIGTERM'] as const)

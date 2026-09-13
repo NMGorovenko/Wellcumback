@@ -25,7 +25,7 @@ if subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True
     raise SystemExit('Commit the source before packaging a release')
 
 portable = ROOT / 'outputs' / 'portable'
-html_bytes = (portable / 'Wellcum-back.html').read_bytes()
+html_bytes = (portable / 'FRIENDSLOP.html').read_bytes()
 html = html_bytes.decode('utf-8')
 build = json.loads((portable / 'build.json').read_text())
 if build['version'] != version or hashlib.sha256(html_bytes).hexdigest() != build['html_sha256']:
@@ -89,19 +89,19 @@ for original in references:
 
 output = ROOT / 'outputs' / 'release' / args.tag
 output.mkdir(parents=True, exist_ok=True)
-prefix = 'Wellcum-back-' + version
+prefix = 'FRIENDSLOP-' + version
 info = {'version': version, 'tag': args.tag, 'commit': commit, **build}
 game_zip = output / (prefix + '-play.zip')
 with zipfile.ZipFile(game_zip, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-    archive.writestr('Wellcum-back.html', html_bytes)
+    archive.writestr('FRIENDSLOP.html', html_bytes)
     archive.write(portable / 'README.txt', 'README.txt')
     archive.writestr('BUILD-INFO.json', json.dumps(info, ensure_ascii=False, indent=2) + '\n')
 standalone = output / (prefix + '.html')
-shutil.copyfile(portable / 'Wellcum-back.html', standalone)
+shutil.copyfile(portable / 'FRIENDSLOP.html', standalone)
 source_zip = output / (prefix + '-source.zip')
 subprocess.run([sys.executable, str(ROOT / 'scripts' / 'archive-source.py'), str(source_zip)], cwd=ROOT, check=True)
 with zipfile.ZipFile(game_zip) as archive:
-    if archive.testzip() or archive.read('Wellcum-back.html') != html_bytes:
+    if archive.testzip() or archive.read('FRIENDSLOP.html') != html_bytes:
         raise SystemExit('Playable ZIP failed integrity verification')
 artifacts = [game_zip, standalone, source_zip]
 if args.desktop:

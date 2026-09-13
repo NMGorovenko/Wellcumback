@@ -27,6 +27,7 @@ import Scene from '@/components/game/screen/scene';
 import { FpsMeter } from '@/components/game/fps-meter';
 import { EveningResults } from '@/components/game/evening-results';
 import CleanScene from '@/components/game/clean/scene';
+import RaceGame from '@/components/game/race/race-game';
 import CityHub from '@/components/game/city/city-hub';
 import { freshCity } from '@/lib/game/city/engine';
 import MovingGame from '@/components/game/moving/moving-game';
@@ -102,9 +103,10 @@ export default function Home() {
     initializeRoomCity();
   }, [room.status, room.world]);
   const hubMode = online ? 'city' : localHubMode;
+  const [racePlayers, setRacePlayers] = useState(1);
   const [players, setPlayers] = useState(2),
     [sound, setSound] = useState(true),
-    [localActive, setActive] = useState<Story | null>(null);
+    [localActive, setActive] = useState<Story | 'race' | null>(null);
   const active = online
     ? room.world?.scene && room.world.scene !== 'city'
       ? room.world.scene
@@ -116,7 +118,7 @@ export default function Home() {
   const [selected, setSelected] = useState(0),
     [panel, setPanel] = useState<'people' | 'scores' | 'controls' | null>(null);
   const [transition, setTransition] = useState<{
-    target: Story | null;
+    target: Story | 'race' | null;
     label: string;
   } | null>(null);
   const [pads, setPads] = useState<
@@ -224,7 +226,7 @@ export default function Home() {
           aria-label="К выбору историй"
         >
           <span>↗</span>
-          <span className="brand-title">НУ, С ВОЗВРАЩЕНИЕМ!</span>
+          <span className="brand-title">FRIENDSLOP</span>
         </button>
         <div className="top-actions">
           {!active && (
@@ -327,6 +329,19 @@ export default function Home() {
             Открыть комнату
           </button>
         </div>
+      ) : active === 'race' ? (
+        <RaceGame
+          onLocalPlayers={setRacePlayers}
+          online={online}
+          externalMenuOpen={networkOpen}
+          sound={sound}
+          onExit={exit}
+          onControls={() => setPanel('controls')}
+          onFullscreen={() => {
+            fullscreen.toggle();
+          }}
+          onGamepads={setPads}
+        />
       ) : active === 'screen' ? (
         <ScreenGame
           key={
@@ -381,6 +396,10 @@ export default function Home() {
           game={city}
           onPlay={play}
           onStories={() => setHubMode('stories')}
+          onRaces={() => {
+            if (online) roomCommand({ kind: 'start-race' });
+            else setTransition({ target: 'race', label: 'НА СТАРТ' });
+          }}
           players={players}
           onPlayers={setPlayers}
         />
@@ -519,10 +538,16 @@ export default function Home() {
         </DialogContent>
       </Dialog>
       <ControlSettings
-        profile={hubMode === 'city' ? 'city' : 'game'}
+        profile={
+          active === 'race'
+            ? 'race'
+            : !active && hubMode === 'city'
+              ? 'city'
+              : 'game'
+        }
         open={panel === 'controls'}
         onOpenChange={(open) => setPanel(open ? 'controls' : null)}
-        players={players}
+        players={active === 'race' ? racePlayers : players}
         pads={pads}
       />
       <NetworkDialog
@@ -536,7 +561,7 @@ export default function Home() {
       />
       {transition && (
         <output className="story-transition">
-          <span>НУ, С ВОЗВРАЩЕНИЕМ!</span>
+          <span>FRIENDSLOP</span>
           <strong>{transition.label}</strong>
           <i />
         </output>

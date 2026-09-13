@@ -45,7 +45,7 @@ async function start() {
       reject(new Error(`Relay exited before readiness: ${code}`)),
     );
     child.stdout.on('data', (data) => {
-      if (data.toString().includes('Wellcum back relay listening')) {
+      if (data.toString().includes('FRIENDSLOP relay listening')) {
         clearTimeout(timeout);
         resolve();
       }

@@ -6,7 +6,11 @@ import {
 } from './v8-model.ts';
 
 /** Persistent native Web Audio graph. No oscillators/buffers are created per frame. */
-export function createCityFoley(context: BaseAudioContext) {
+export function createCityFoley(
+  context: BaseAudioContext,
+  voice: 'v8' | 'v6' = 'v8',
+  mix = 1,
+) {
   const nodes: AudioNode[] = [];
   const sources: AudioScheduledSourceNode[] = [];
   const own = <T extends AudioNode>(node: T): T => {
@@ -70,7 +74,7 @@ export function createCityFoley(context: BaseAudioContext) {
     pop = noiseLayer(360, 0.6);
   const banks = ([0, 1] as const).map((bank) => {
     const oscillator = own(context.createOscillator());
-    const wave = exhaustWave(bank);
+    const wave = exhaustWave(bank, 64, voice);
     oscillator.setPeriodicWave(
       context.createPeriodicWave(wave.real, wave.imag),
     );
@@ -88,7 +92,7 @@ export function createCityFoley(context: BaseAudioContext) {
   // Retain the original, liked idle exactly. Loaded combustion adds individual
   // rough puffs; their long loop avoids a turbine-like repeating oscillator.
   const loadedBanks = ([0, 1] as const).map((bank) => {
-    const samples = exhaustPuffs(bank, context.sampleRate);
+    const samples = exhaustPuffs(bank, context.sampleRate, voice);
     const buffer = context.createBuffer(1, samples.length, context.sampleRate);
     buffer.getChannelData(0).set(samples);
     const source = own(context.createBufferSource());
@@ -131,17 +135,23 @@ export function createCityFoley(context: BaseAudioContext) {
     update(state: V8State, audible: boolean, atTime = context.currentTime) {
       if (disposed) return;
       const now = atTime;
-      target(master.gain, audible ? 0.16 : 0, now, 0.025);
+      target(
+        master.gain,
+        audible ? (voice === 'v6' ? 0.12 : 0.16) * mix : 0,
+        now,
+        0.025,
+      );
       const wobble =
         (Math.sin(state.time * 43) * 0.013 +
           Math.sin(state.time * 71) * 0.006) *
         (1 - state.load * 0.8);
       const power = Math.min(1, Math.max(0, (state.rpm - 1100) / 1700));
       const combustion = power * state.load;
+      const rpm = voice === 'v6' ? Math.min(11000, state.rpm) : state.rpm;
       for (let i = 0; i < banks.length; i++) {
         target(
           banks[i].oscillator.frequency,
-          (state.rpm / 120) * (1 + wobble),
+          (rpm / 120) * (1 + wobble),
           now,
           0.025,
         );
@@ -158,7 +168,7 @@ export function createCityFoley(context: BaseAudioContext) {
         );
         target(
           loadedBanks[i].source.playbackRate,
-          state.rpm / EXHAUST_REFERENCE_RPM,
+          rpm / EXHAUST_REFERENCE_RPM,
           now,
           0.018,
         );
@@ -168,7 +178,11 @@ export function createCityFoley(context: BaseAudioContext) {
           now,
           0.018,
         );
-        target(loadedBanks[i].filter.frequency, 640 + state.load * 230, now);
+        target(
+          loadedBanks[i].filter.frequency,
+          (voice === 'v6' ? 980 : 640) + state.load * 230,
+          now,
+        );
       }
       target(intake.gain.gain, 0.005 + state.load * 0.009, now);
       target(tyres.gain.gain, state.skid * 0.1, now);

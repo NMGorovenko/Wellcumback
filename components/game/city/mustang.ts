@@ -69,14 +69,17 @@ function panel(
   return kit.mesh(geometry, material, parent);
 }
 
-export function createMustang(kit: RenderKit) {
+export function createMustang(
+  kit: RenderKit,
+  options: { color?: string; driverId?: string } = {},
+) {
   const root = new THREE.Group();
   root.name = 'red-mustang';
   kit.scene.add(root);
   const body = new THREE.Group();
   root.add(body);
   const paint = new THREE.MeshPhysicalMaterial({
-    color: '#c52236',
+    color: options.color ?? '#c52236',
     metalness: 0.46,
     roughness: 0.28,
     clearcoat: 1,
@@ -314,7 +317,7 @@ export function createMustang(kit: RenderKit) {
       );
   }
   const roofMaterial = new THREE.MeshPhysicalMaterial({
-    color: '#ba293b',
+    color: options.color ?? '#ba293b',
     roughness: 0.25,
     metalness: 0.3,
     transparent: true,
@@ -406,7 +409,9 @@ export function createMustang(kit: RenderKit) {
       hub.rotation.z = Math.PI / 2;
       wheels.push({ steering, roll, front: z < 0 });
     }
-  const passengers = ['nikita', 'yaroslav', 'roma'].map((id, index) => {
+  const passengers = (
+    options.driverId ? [options.driverId] : ['nikita', 'yaroslav', 'roma']
+  ).map((id, index) => {
     const person = people.find((p) => p.id === id)!;
     const rig = createRig(kit, person, body);
     // Keep only the genuine curved photograph head; seated torso geometry is

@@ -1,6 +1,8 @@
+import type { RaceInput } from '../race/types.ts';
+import type { VehicleId, ColorId } from '../race/vehicles.ts';
 import type { DriveAxes } from '../input/drive.ts';
-export const ROOM_VERSION = 5;
-export type RoomScene = 'city' | 'screen' | 'clean' | 'moving';
+export const ROOM_VERSION = 6;
+export type RoomScene = 'city' | 'screen' | 'clean' | 'moving' | 'race';
 export type RoomCommand = {
   kind:
     | 'action'
@@ -16,14 +18,28 @@ export type RoomCommand = {
     | 'leader'
     | 'start-screen'
     | 'start-story'
-    | 'ready';
+    | 'ready'
+    | 'start-race'
+    | 'race-local'
+    | 'race-car'
+    | 'race-track'
+    | 'race-mode'
+    | 'race-laps'
+    | 'race-ready'
+    | 'race-start'
+    | 'race-lobby';
   value?: string | number;
+  localIndex?: number;
+  vehicleId?: VehicleId;
+  colorId?: ColorId;
+  revision?: number;
 };
 export type RoomFrame = {
   seq: number;
   epoch: number;
   keys: string[];
   drive?: DriveAxes;
+  raceInputs?: RaceInput[];
   command?: RoomCommand;
 };
 export type RoomWorld = {

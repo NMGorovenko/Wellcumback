@@ -4,7 +4,7 @@ export type PlayerControl = keyof (typeof PLAYER_BINDINGS)[number];
 export type CanonicalKey =
   | (typeof PLAYER_BINDINGS)[number][PlayerControl]
   | 'KeyQ';
-export type InputProfile = 'game' | 'city';
+export type InputProfile = 'game' | 'city' | 'race';
 export const CITY_KEYS = [
   'KeyW',
   'KeyA',
@@ -14,6 +14,17 @@ export const CITY_KEYS = [
   'ShiftLeft',
   'KeyQ',
 ] as const;
+export const RACE_KEYS = PLAYER_BINDINGS.slice(0, 2).flatMap((b) =>
+  Object.values(b),
+) as CanonicalKey[];
+export const RACE_CONTROL_NAMES: Record<PlayerControl, string> = {
+  up: 'Газ',
+  down: 'Тормоз / назад',
+  left: 'Руль влево',
+  right: 'Руль вправо',
+  action: 'Вернуться на трассу',
+  secondary: 'Дрифт',
+};
 export type CityKey = (typeof CITY_KEYS)[number];
 export const CITY_CONTROL_NAMES: Record<PlayerControl, string> = {
   up: 'Газ',
@@ -27,6 +38,7 @@ export type ControlSettings = {
   version: 1;
   keys: Record<CanonicalKey, string>;
   cityKeys: Record<CityKey, string>;
+  raceKeys: Partial<Record<CanonicalKey, string>>;
   showWorldPrompts: boolean;
   showFps: boolean;
 };
@@ -53,6 +65,9 @@ export function defaultControlSettings(): ControlSettings {
     cityKeys: Object.fromEntries(
       CITY_KEYS.map((key) => [key, key === 'ShiftLeft' ? 'Space' : key]),
     ) as ControlSettings['cityKeys'],
+    raceKeys: Object.fromEntries(
+      RACE_KEYS.map((key) => [key, key === 'ShiftLeft' ? 'Space' : key]),
+    ),
     showWorldPrompts: true,
     showFps: false,
   };
@@ -94,6 +109,7 @@ export function getPhysicalBinding(
   key: CanonicalKey,
   profile: InputProfile = 'game',
 ): string {
+  if (profile === 'race') return settings.raceKeys[key] ?? '';
   return profile === 'city'
     ? (settings.cityKeys[key as CityKey] ?? '')
     : settings.keys[key];
@@ -102,6 +118,12 @@ export function bindingName(
   key: CanonicalKey,
   profile: InputProfile = 'game',
 ): string {
+  if (profile === 'race') {
+    for (let p = 0; p < 2; p++)
+      for (const [control, code] of Object.entries(PLAYER_BINDINGS[p]))
+        if (code === key)
+          return `${PLAYER_NAMES[p]} · ${RACE_CONTROL_NAMES[control as PlayerControl]}`;
+  }
   if (profile === 'city') {
     if (key === 'KeyQ') return 'Машина · сигнал';
     const control = Object.entries(PLAYER_BINDINGS[0]).find(
@@ -136,7 +158,11 @@ export function rebindControl(
   profile: InputProfile = 'game',
 ): RebindResult {
   const supported: readonly CanonicalKey[] =
-    profile === 'city' ? CITY_KEYS : CANONICAL_KEYS;
+    profile === 'race'
+      ? RACE_KEYS
+      : profile === 'city'
+        ? CITY_KEYS
+        : CANONICAL_KEYS;
   if (!supported.includes(canonical))
     return { ok: false, reason: 'Неизвестное действие.' };
   const problem = keyProblem(physical);
@@ -162,9 +188,11 @@ export function rebindControl(
     ok: true,
     settings: {
       ...settings,
-      ...(profile === 'city'
-        ? { cityKeys: { ...settings.cityKeys, [canonical]: physical } }
-        : { keys: { ...settings.keys, [canonical]: physical } }),
+      ...(profile === 'race'
+        ? { raceKeys: { ...settings.raceKeys, [canonical]: physical } }
+        : profile === 'city'
+          ? { cityKeys: { ...settings.cityKeys, [canonical]: physical } }
+          : { keys: { ...settings.keys, [canonical]: physical } }),
     },
   };
 }
@@ -175,6 +203,8 @@ export function canonicalKeyForPhysical(
   physical: string,
   profile: InputProfile = 'game',
 ): CanonicalKey | null {
+  if (profile === 'race')
+    return RACE_KEYS.find((key) => settings.raceKeys[key] === physical) ?? null;
   if (profile === 'city')
     return CITY_KEYS.find((key) => settings.cityKeys[key] === physical) ?? null;
   return (
@@ -231,9 +261,23 @@ export function parseControlSettings(raw: string | null): ControlSettings {
           CITY_KEYS.map((key, i) => [key, values[i]]),
         ) as ControlSettings['cityKeys'];
     }
+    let raceKeys = defaults.raceKeys;
+    if (obj.raceKeys && typeof obj.raceKeys === 'object') {
+      const values = RACE_KEYS.map((key) => obj.raceKeys![key]);
+      if (
+        values.every(
+          (value) => typeof value === 'string' && !keyProblem(value),
+        ) &&
+        new Set(values).size === RACE_KEYS.length
+      )
+        raceKeys = Object.fromEntries(
+          RACE_KEYS.map((key, i) => [key, values[i]]),
+        );
+    }
     return {
       version: 1,
       keys,
+      raceKeys,
       cityKeys,
       showFps: obj.showFps === true,
       showWorldPrompts:
