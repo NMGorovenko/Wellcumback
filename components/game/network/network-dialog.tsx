@@ -56,6 +56,13 @@ export function NetworkDialog({
   });
   const [serverURL, setServerURL] = useState(''),
     [serverKey, setServerKey] = useState('');
+  const [address, setAddress] = useState('');
+  const interfaces = server.localInterfaces ?? [];
+  const selectedAddress =
+    address || (interfaces.length === 1 ? interfaces[0].address : '');
+  const addressAvailable = interfaces.some(
+    (item) => item.address === selectedAddress,
+  );
   const form = useRef<HTMLDivElement>(null),
     inviteField = useRef<HTMLTextAreaElement>(null);
   useFormGamepad(open, form, () => onOpenChange(false));
@@ -97,7 +104,10 @@ export function NetworkDialog({
   };
   const create = async () => {
     if (desktop) {
-      const status = await desktop.host(mode);
+      const status = await desktop.host(
+        mode,
+        mode === 'lan' ? selectedAddress : undefined,
+      );
       setServer(status);
       if (status.state !== 'ready' || !status.connection)
         throw new Error(status.message);
@@ -179,10 +189,55 @@ export function NetworkDialog({
                 ))}
               </div>
             )}
+            {desktop && mode === 'lan' && (
+              <div
+                className="network-addresses"
+                aria-label="Сеть для подключения друга"
+              >
+                <span className="network-label">
+                  По какой сети подключится друг?
+                </span>
+                {interfaces.map((item) => (
+                  <button
+                    data-form-control
+                    key={item.address}
+                    className="secondary-button"
+                    aria-pressed={item.address === selectedAddress}
+                    disabled={busy}
+                    onClick={() => setAddress(item.address)}
+                  >
+                    <strong>{item.address}</strong>
+                    <span>{item.name}</span>
+                  </button>
+                ))}
+                {!interfaces.length && (
+                  <p className="quiet">
+                    Подключи Wi-Fi, Ethernet или общую VPN-сеть. Список
+                    обновится автоматически.
+                  </p>
+                )}
+                {address && !addressAvailable && (
+                  <p className="quiet">
+                    Выбранная сеть отключилась. Подключи её заново или выбери
+                    другой адрес.
+                  </p>
+                )}
+                {interfaces.length > 1 && !selectedAddress && (
+                  <p className="quiet">
+                    Выбери адрес общей сети. Для VPN нужен адрес из её
+                    приложения.
+                  </p>
+                )}
+              </div>
+            )}
             <button
               data-form-control
               className="play-button"
-              disabled={busy || !canNetwork}
+              disabled={
+                busy ||
+                !canNetwork ||
+                (!!desktop && mode === 'lan' && !addressAvailable)
+              }
               onClick={() => void attempt(create)}
             >
               <Radio size={16} />
@@ -192,7 +247,7 @@ export function NetworkDialog({
               <p className="quiet">
                 {mode === 'internet'
                   ? 'VPS не нужен. Игра откроет временный туннель Cloudflare и подготовит приглашение. Его адрес действует, пока сервер открыт.'
-                  : 'Подключитесь к одной локальной сети или VPN. Ведущему нужно разрешить входящие соединения игры в системном брандмауэре.'}
+                  : 'Нужна одна домашняя сеть или общая виртуальная сеть, например Tailscale или ZeroTier, где компьютеры доступны друг другу. Одинаковый VPN для выхода в интернет этого не гарантирует. Ведущему нужно разрешить входящие соединения игры в брандмауэре.'}
               </p>
             )}
             <label className="network-label" htmlFor="room-code">

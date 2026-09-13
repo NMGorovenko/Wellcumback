@@ -15,11 +15,14 @@ node server.mjs
 
 ## Постоянный адрес на Linux
 
-1. Распаковать пакет в `/opt/wellcum`. Установить Node.js и Caddy. Создать отдельного системного пользователя `wellcum`; приложение запускается без root.
-2. Скопировать `deploy/wellcum.env.example` в `/etc/wellcum/relay.env`. Вписать случайный ключ из 64 hex-символов и закрыть файл правами `600`. Ключ не нужно передавать отдельным сообщением: игра включит доступ в строку приглашения. Сам файл с ключом не публиковать.
+1. Распаковать пакет в `/opt/wellcum`. Установить Node.js и Caddy. Создать отдельного системного пользователя и группу `wellcum`; unit использует оба имени. Например, на Debian/Ubuntu: `sudo useradd --system --user-group --home-dir /var/lib/wellcum --shell /usr/sbin/nologin wellcum`. Приложение запускается без root.
+2. Создать `/etc/wellcum`: `sudo install -d -m 700 /etc/wellcum`. Скопировать `deploy/wellcum.env.example` в `/etc/wellcum/relay.env`. Вписать случайный ключ из 64 hex-символов и закрыть файл правами `600`. Ключ не нужно передавать отдельным сообщением: игра включит доступ в строку приглашения. Сам файл с ключом не публиковать.
 3. Скопировать `deploy/wellcum.service` в `/etc/systemd/system/`. Если `node` установлен не в `/usr/bin/node`, исправить `ExecStart`. `systemctl daemon-reload` и `systemctl enable --now wellcum`. Каталог базы `/var/lib/wellcum` создаёт systemd.
-4. Направить домен на сервер и использовать `deploy/Caddyfile.example`, заменив `game.example.com`. Открыть порты HTTP/HTTPS; порт 8787 оставить доступным только локально. Caddy поддерживает WebSocket в `reverse_proxy` и автоматическое получение сертификата при корректном DNS и доступных портах. [Документация reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy), [HTTPS](https://caddyserver.com/docs/automatic-https).
-5. В игре: «Онлайн-комната» → «Свой сервер» → `wss://ваш-домен/rooms` и заданный ключ → создать комнату. Отправить другу полученную строку `WCB1:…`. Друг вставляет её в поле подключения. У обоих должна быть одинаковая версия игры.
+4. Направить домен на сервер. Добавить блок из `deploy/Caddyfile.example` в `/etc/caddy/Caddyfile`, заменив `game.example.com` своим доменом и сохранив уже настроенные сайты. Проверить `sudo caddy validate --config /etc/caddy/Caddyfile`, затем применить `sudo systemctl reload caddy` (при первом запуске — `sudo systemctl enable --now caddy`). Открыть порты HTTP/HTTPS; порт 8787 оставить доступным только локально. Caddy поддерживает WebSocket в `reverse_proxy` и автоматическое получение сертификата при корректном DNS и доступных портах. [Документация reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy), [HTTPS](https://caddyserver.com/docs/automatic-https).
+5. Проверить `curl --fail https://ваш-домен/health`: ответ должен содержать текущую версию протокола. Затем проверить настоящий WebSocket через два игровых клиента: health не проверяет подключение и авторизацию игрока.
+6. В игре: «Онлайн-комната» → «Свой сервер» → `wss://ваш-домен/rooms` и заданный ключ → создать комнату. Отправить другу полученную строку `WCB1:…`. Друг вставляет её в поле подключения. У обоих должна быть одинаковая версия игры.
+
+Проверка и применение конфигурации описаны в [CLI Caddy](https://caddyserver.com/docs/command-line#caddy-validate) и [инструкции службы Linux](https://caddyserver.com/docs/running#linux-service).
 
 Без TLS допускаются только локальные адреса. Для обычного публичного сервера требуется `wss://`. Ключ доступа проверяется до игровых запросов; личный токен ведущего в приглашение не входит. Сервер ограничивает размер сообщения, частоту запросов и число комнат. Смена ключа лишает старые приглашения доступа.
 

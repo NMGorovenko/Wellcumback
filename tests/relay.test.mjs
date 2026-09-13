@@ -191,3 +191,29 @@ void test('malformed replies before and after handshake reject instead of escapi
       }
     }
 });
+
+void test('VPN invitation roundtrips exact overlay subnet boundaries without permitting neighbouring public ranges', () => {
+  for (const address of ['100.64.0.0', '100.127.255.255', '100.110.50.12']) {
+    const connection = {
+      url: `ws://${address}:31337/rooms`,
+      accessKey: 'a'.repeat(64),
+    };
+    assert.equal(
+      parseInvitation(makeInvitation(connection, 'ABCD2345')).url,
+      connection.url,
+    );
+  }
+  for (const address of [
+    '100.63.255.255',
+    '100.128.0.0',
+    '100.64.0.1.evil.example',
+    '100.999.0.1',
+  ]) {
+    assert.throws(() =>
+      validateConnection({
+        url: `ws://${address}:31337/rooms`,
+        accessKey: 'a'.repeat(64),
+      }),
+    );
+  }
+});

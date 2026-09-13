@@ -1,4 +1,5 @@
 import { ROOM_VERSION } from './room-types.ts';
+import { isLocalIPv4 } from './local-address.ts';
 
 export type RoomConnection = { url: string; accessKey: string };
 export type RoomInvitation = RoomConnection & { code: string; version: number };
@@ -20,8 +21,7 @@ export function validateConnection(value: unknown): RoomConnection {
   const local =
     hostname === 'localhost' ||
     hostname === '::1' ||
-    (ipv4 &&
-      /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)) ||
+    (ipv4 && (hostname.startsWith('127.') || isLocalIPv4(hostname))) ||
     /^(fc|fd)[a-f0-9]{2}:/i.test(hostname);
   if (
     (url.protocol !== 'wss:' && !(url.protocol === 'ws:' && local)) ||

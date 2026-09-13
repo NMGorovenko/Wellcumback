@@ -7,6 +7,23 @@
   line-height: 1.4;
   color: #d0dbbc;
 }
+.network-addresses {
+  display: grid;
+  gap: 7px;
+}
+.network-addresses button {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.network-addresses button[aria-pressed='true'] {
+  border-color: #c6d899;
+  background: #405235;
+}
+.network-addresses button span {
+  color: #bac8b0;
+  overflow-wrap: anywhere;
+}
 .network-dialog textarea {
   width: 100%;
   min-height: 66px;

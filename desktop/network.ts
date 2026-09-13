@@ -2,6 +2,7 @@ import os from 'node:os';
 import { WebSocket } from 'ws';
 import { startRelay } from '../server/relay.ts';
 import { RoomSocket } from '../lib/game/network/room-socket.ts';
+import { isLocalIPv4 } from '../lib/game/network/local-address.ts';
 import {
   validateConnection,
   type RoomConnection,
@@ -9,25 +10,29 @@ import {
 import type {
   DesktopHostStatus,
   HostMode,
+  LocalInterface,
 } from '../lib/game/network/desktop-bridge.ts';
 import { openTunnel } from './tunnel.ts';
 export { parseInvitation } from '../lib/game/network/connection.ts';
 
-export function localAddresses() {
-  return [
-    ...new Set(
-      Object.values(os.networkInterfaces())
-        .flatMap((items) => items ?? [])
-        .filter(
-          (item) =>
-            item.family === 'IPv4' &&
-            !item.internal &&
-            /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(item.address),
-        )
-        .map((item) => item.address),
-    ),
-  ];
+export function localInterfaces(): LocalInterface[] {
+  const seen = new Set<string>();
+  return Object.entries(os.networkInterfaces()).flatMap(([name, items]) =>
+    (items ?? []).flatMap((item) => {
+      if (
+        item.family !== 'IPv4' ||
+        item.internal ||
+        !isLocalIPv4(item.address) ||
+        seen.has(item.address)
+      )
+        return [];
+      seen.add(item.address);
+      return [{ name, address: item.address }];
+    }),
+  );
 }
+export const localAddresses = () =>
+  localInterfaces().map((item) => item.address);
 
 export function createDesktopNetwork(options: {
   schema: string;
@@ -68,18 +73,55 @@ export function createDesktopNetwork(options: {
     });
     return stopping;
   };
-  const host = async (mode: HostMode): Promise<DesktopHostStatus> => {
+  const status = async (): Promise<DesktopHostStatus> => {
+    const interfaces = localInterfaces();
+    return {
+      ...structuredClone(state),
+      localInterfaces: interfaces,
+      localAddresses: interfaces.map((item) => item.address),
+    };
+  };
+  const host = async (
+    mode: HostMode,
+    address?: string,
+  ): Promise<DesktopHostStatus> => {
     if (mode !== 'internet' && mode !== 'lan')
       throw new Error('Неизвестный режим сервера.');
     if (stopping) await stopping;
-    if (starting) return starting;
-    if (state.state === 'ready' && state.mode === mode)
-      return structuredClone(state);
+    if (
+      address !== undefined &&
+      (typeof address !== 'string' || mode !== 'lan')
+    )
+      throw new Error('Адрес сети выбирается только для локальной сети / VPN.');
+    const addresses = localAddresses();
+    const selectedAddress =
+      mode === 'lan'
+        ? (address ?? (addresses.length === 1 ? addresses[0] : undefined))
+        : undefined;
+    if (
+      mode === 'lan' &&
+      (!selectedAddress || !addresses.includes(selectedAddress))
+    )
+      throw new Error(
+        address
+          ? 'Выбранная сеть больше недоступна. Подключи её заново или выбери другую.'
+          : addresses.length
+            ? 'Выбери адрес сети, к которой подключён друг.'
+            : 'Не найдена локальная сеть или VPN. Подключись и попробуй снова.',
+      );
+    if (starting || state.state === 'ready') {
+      if (state.mode !== mode || state.selectedAddress !== selectedAddress)
+        throw new Error(
+          'Сначала закрой текущий сервер, затем выбери другую сеть.',
+        );
+      return starting ?? status();
+    }
     controller = new AbortController();
     const signal = controller.signal;
     state = {
       state: 'starting',
       mode,
+      selectedAddress,
       message:
         mode === 'internet'
           ? 'Открываем сервер и проверяем интернет-подключение…'
@@ -89,14 +131,9 @@ export function createDesktopNetwork(options: {
       try {
         await release();
         signal.throwIfAborted();
-        const addresses = localAddresses();
-        if (mode === 'lan' && !addresses.length)
-          throw new Error(
-            'Не найден адрес локальной сети. Подключись к Wi-Fi или Ethernet.',
-          );
         relay = await startRelay({
           schema: options.schema,
-          host: mode === 'lan' ? '0.0.0.0' : '127.0.0.1',
+          host: mode === 'lan' ? selectedAddress : '127.0.0.1',
         });
         signal.throwIfAborted();
         let connection: RoomConnection;
@@ -119,13 +156,14 @@ export function createDesktopNetwork(options: {
           connection = tunnel.connection;
         } else
           connection = {
-            url: `ws://${addresses[0]}:${relay.port}/rooms`,
+            url: `ws://${selectedAddress}:${relay.port}/rooms`,
             accessKey: relay.accessKey,
           };
         signal.throwIfAborted();
         state = {
           state: 'ready',
           mode,
+          selectedAddress,
           connection,
           localAddresses: addresses,
           message:
@@ -145,7 +183,7 @@ export function createDesktopNetwork(options: {
               : 'Не удалось запустить сервер.',
         };
       }
-      return structuredClone(state);
+      return status();
     })().finally(() => {
       starting = null;
     });
@@ -155,7 +193,7 @@ export function createDesktopNetwork(options: {
     host,
     stop,
     disconnect,
-    status: async () => structuredClone(state),
+    status,
     async request(value: RoomConnection, payload: unknown) {
       const connection = validateConnection(value);
       if (JSON.stringify(payload)?.length > 256 * 1024)
@@ -163,6 +201,7 @@ export function createDesktopNetwork(options: {
       // The host talks to its own relay directly; friends use the verified public address.
       const target =
         relay &&
+        state.mode === 'internet' &&
         state.connection?.url === connection.url &&
         state.connection.accessKey === connection.accessKey
           ? { ...connection, url: `ws://127.0.0.1:${relay.port}/rooms` }

@@ -33,12 +33,50 @@ module.exports = async function inspectNetwork(contents) {
     contents.executeJavaScript(
       `window.wellcumNetwork.${method}(...${JSON.stringify(args)})`,
     );
+  const click = (label) =>
+    contents.executeJavaScript(`(() => {
+    const button = [...document.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') || b.textContent.trim()) === ${JSON.stringify(label)});
+    if (!button || button.disabled) throw new Error('Unavailable network button');
+    button.click();
+  })()`);
+  const waitFor = async (expression) => {
+    for (let n = 0; n < 100; n++) {
+      if (await contents.executeJavaScript(expression)) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error('Network UI did not reach expected state');
+  };
   try {
     assert.equal(
       await contents.executeJavaScript(`typeof window.wellcumNetwork?.host`),
       'function',
     );
-    const status = await invoke('host', 'lan');
+    const choices = await invoke('status');
+    assert.ok(
+      choices.localInterfaces.length > 0,
+      'addresses are available before hosting',
+    );
+    const selected = choices.localInterfaces[0].address;
+    await click('Онлайн-комната');
+    await waitFor(`Boolean(document.querySelector('.network-dialog'))`);
+    await click('Одна сеть / VPN');
+    await waitFor(
+      `Boolean(document.querySelector('.network-addresses button'))`,
+    );
+    await contents.executeJavaScript(`(() => {
+      const button = [...document.querySelectorAll('.network-addresses button')].find((b) => b.querySelector('strong')?.textContent === ${JSON.stringify(selected)});
+      if (!button) throw new Error('Selected adapter is missing in UI');
+      button.click();
+    })()`);
+    await click('Создать игру');
+    await waitFor(`Boolean(document.querySelector('.room-invite'))`);
+    assert.equal((await invoke('status')).selectedAddress, selected);
+    await click('Закрыть комнату и сервер');
+    await waitFor(`!document.querySelector('.room-invite')`);
+    await click('Close');
+    const status = await invoke('host', 'lan', selected);
+    assert.equal(status.selectedAddress, selected);
+    assert.equal(new URL(status.connection.url).hostname, selected);
     assert.equal(status.state, 'ready', status.message);
     const connection = status.connection;
     const request = (payload) =>
@@ -98,7 +136,7 @@ module.exports = async function inspectNetwork(contents) {
       'stopping native server disconnects the independent client',
     );
     console.log(
-      'DESKTOP_LAN_OK: sandboxed preload, SQLite relay, separate Node guest, four scenes, input ACK and shutdown',
+      'DESKTOP_LAN_OK: native address selection UI, sandboxed preload, selected LAN listener, SQLite relay, separate Node guest, four scenes, input ACK and shutdown',
     );
   } finally {
     await invoke('stop');

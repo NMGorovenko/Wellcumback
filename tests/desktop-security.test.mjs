@@ -430,3 +430,31 @@ await test('main process sandboxes the trusted renderer and denies navigation, p
   assert.equal(handlers.check(null, 'fullscreen', security.GAME_ORIGIN), false);
   handlers.network({}, (answer) => assert.equal(answer.cancel, true));
 });
+
+await test('sandboxed preload forwards the chosen address to the narrow host IPC', async () => {
+  const calls = [];
+  let bridge;
+  vm.runInNewContext(
+    await readFile(path.join(root, 'desktop/preload.cjs'), 'utf8'),
+    {
+      require: (name) => {
+        assert.equal(name, 'electron');
+        return {
+          contextBridge: {
+            exposeInMainWorld: (_name, value) => {
+              bridge = value;
+            },
+          },
+          ipcRenderer: {
+            invoke: (...args) => {
+              calls.push(args);
+              return Promise.resolve();
+            },
+          },
+        };
+      },
+    },
+  );
+  await bridge.host('lan', '100.110.50.12');
+  assert.deepEqual(calls, [['wellcum:network:host', 'lan', '100.110.50.12']]);
+});

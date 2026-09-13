@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import { WebSocket } from 'ws';
 import { fetchTunnel } from './fetch-tunnel.mjs';
-import { createDesktopNetwork } from '../desktop/network.ts';
+import { createDesktopNetwork, localAddresses } from '../desktop/network.ts';
 import { RoomSocket } from '../lib/game/network/room-socket.ts';
 import { ROOM_VERSION } from '../lib/game/network/room-types.ts';
 import {
@@ -21,7 +21,10 @@ const manager = createDesktopNetwork({ schema, binary, tempRoot: os.tmpdir() });
 let guest;
 try {
   const start = performance.now();
-  const status = await manager.host(mode);
+  const status = await manager.host(
+    mode,
+    mode === 'lan' ? localAddresses()[0] : undefined,
+  );
   assert.equal(status.state, 'ready', status.message);
   const connection = status.connection;
   const host = (

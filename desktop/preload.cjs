@@ -3,7 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld(
   'wellcumNetwork',
   Object.freeze({
-    host: (mode) => ipcRenderer.invoke('wellcum:network:host', mode),
+    host: (mode, address) =>
+      ipcRenderer.invoke('wellcum:network:host', mode, address),
     stop: () => ipcRenderer.invoke('wellcum:network:stop'),
     status: () => ipcRenderer.invoke('wellcum:network:status'),
     request: (connection, payload) =>
