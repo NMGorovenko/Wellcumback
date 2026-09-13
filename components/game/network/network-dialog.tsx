@@ -92,6 +92,11 @@ export function NetworkDialog({
   const invitation =
     room.code && connection ? makeInvitation(connection, room.code) : room.code;
   const recoveringServer = !!desktop && room.slot === 0 && !!server.recoverable;
+  const statusMessage =
+    error ||
+    (server.state === 'starting' || server.state === 'failed'
+      ? server.message
+      : room.message);
   const attempt = async (operation: () => Promise<unknown>) => {
     if (busy) return;
     setWorking(true);
@@ -132,12 +137,12 @@ export function NetworkDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="help-dialog network-dialog" ref={form}>
-        <span className="tiny-label">ОНЛАЙН · WINDOWS + MAC + БРАУЗЕР</span>
+        <span className="tiny-label">ОНЛАЙН</span>
         <DialogTitle>
           {room.code ? 'Компания собирается' : 'Позови друга'}
         </DialogTitle>
-        <DialogDescription>
-          Город и все три истории вместе. У каждого свои WASD + E или геймпад.
+        <DialogDescription className="sr-only">
+          Создай игру или вставь приглашение друга.
         </DialogDescription>
         {!room.code ? (
           <>
@@ -246,13 +251,6 @@ export function NetworkDialog({
               <Radio size={16} />
               {working ? 'Подключаем…' : 'Создать игру'}
             </button>
-            {desktop && (
-              <p className="quiet">
-                {mode === 'internet'
-                  ? 'VPS не нужен. Игра откроет временный туннель Cloudflare и подготовит приглашение. Его адрес действует, пока сервер открыт.'
-                  : 'Нужна одна домашняя сеть или общая виртуальная сеть, например Tailscale или ZeroTier, где компьютеры доступны друг другу. Одинаковый VPN для выхода в интернет этого не гарантирует. Ведущему нужно разрешить входящие соединения игры в брандмауэре.'}
-              </p>
-            )}
             <label className="network-label" htmlFor="room-code">
               Строка подключения от друга
             </label>
@@ -371,10 +369,10 @@ export function NetworkDialog({
             />
             <p className="quiet">
               {recoveringServer
-                ? 'Комната сохранена. Восстанови интернет-связь, затем отправь другу обновлённое приглашение.'
+                ? 'Восстанови связь и отправь другу новое приглашение.'
                 : connection
-                  ? 'Отправь другу эту строку. Он вставит её в «Онлайн → Подключиться». Нужна одинаковая версия игры.'
-                  : 'Этот код работает на том же сайте. Всем участникам нужен доступ к веб-версии.'}
+                  ? 'Отправь приглашение другу. У вас должна быть одинаковая версия игры.'
+                  : 'Друг вводит код на этом же сайте. Ему нужен доступ к игре.'}
             </p>
             {recoveringServer && (
               <button
@@ -394,9 +392,7 @@ export function NetworkDialog({
               <details className="network-advanced">
                 <summary data-form-control>Обновить приглашение</summary>
                 <p className="quiet">
-                  Если создатель восстановил сервер и прислал новую строку,
-                  вставь её здесь. Ты вернёшься на прежнее место с сохранённым
-                  прохождением.
+                  Вставь новое приглашение, чтобы вернуться в эту комнату.
                 </p>
                 <label className="network-label" htmlFor="replacement-invite">
                   Новое приглашение той же комнаты
@@ -462,10 +458,7 @@ export function NetworkDialog({
               ))}
             </div>
             <p className="quiet">
-              При разрыве связи история ждёт. Вернувшийся игрок занимает прежнее
-              место; ведущий нажимает «Продолжить». Передача ведущего меняет
-              основного героя и водителя, сохраняя этап. Приложение создателя
-              комнаты должно оставаться открытым, даже после передачи роли.
+              Создателю комнаты нужно оставлять игру открытой.
             </p>
             {isRoomLeader(room.world, room.slot) &&
               room.world?.scene === 'city' && (
@@ -518,19 +511,11 @@ export function NetworkDialog({
             </button>
           </>
         )}
-        {(error || server.message || room.message) && (
-          <output className="network-message">
-            {error ||
-              (server.state === 'starting' || server.state === 'failed'
-                ? server.message
-                : room.message || server.message)}
-          </output>
+        {statusMessage && (
+          <output className="network-message">{statusMessage}</output>
         )}
         {!canNetwork && (
-          <p className="quiet">
-            Один HTML-файл работает офлайн. Для сети запусти приложение Windows
-            / Mac или веб-версию.
-          </p>
+          <p className="quiet">Для онлайна открой приложение или сайт игры.</p>
         )}
         {desktop &&
           !room.code &&

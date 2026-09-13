@@ -85,19 +85,19 @@ export const stories = [
   {
     id: 'screen',
     title: 'Экран на полстены',
-    subtitle: 'Квартирный вопрос · 3D',
+    subtitle: 'Квартирный вопрос',
     available: true,
   },
   {
     id: 'clean',
     title: 'Операция «Чистый проход»',
-    subtitle: 'Байки из другой роты · 2.5D',
+    subtitle: 'Байки из другой роты',
     available: true,
   },
   {
     id: 'mustang',
     title: 'Красный Mustang',
-    subtitle: 'Фото есть. История — впереди',
+    subtitle: 'Поездка по Красноярску',
     available: false,
   },
 ];

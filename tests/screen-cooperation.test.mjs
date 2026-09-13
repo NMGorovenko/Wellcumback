@@ -79,14 +79,14 @@ void test('a ready receiver gets the shared tool and a physically present helper
   assert.equal(s.tool.status, 'charging');
 });
 
-void test('uneven tension warns before the pull and still pops the opposite hook with local recovery', () => {
+void test('uneven tension marks physical strain without narrating the surprise and pops the opposite hook with local recovery', () => {
   const s = freshGame(2);
   s.phase = 'tension';
   s.clips = [1, 0, 1, 0];
   advance(s, 4);
   assert.equal(screenPrompts(s)[0].prompts[0].emphasis, 'danger');
   advance(s, 1.2, ['KeyE']);
-  assert.match(s.message, /отскочит/);
+  assert.doesNotMatch(s.message, /отскочит|чередуйте|противоположный/i);
   advance(s, 0.1);
   assert.deepEqual(s.clips, [0, 0, 1, 0]);
   assert.equal(s.events.findLast((e) => e.kind === 'pop').side, 0);

@@ -7,6 +7,7 @@ import { carrierStaging } from '@/lib/game/screen/carrier-staging';
 import { toolGripTarget } from '@/lib/game/screen/tool-staging';
 import { drillStaging } from '@/lib/game/screen/staging';
 import { createDrillProps } from './drill-props';
+import { createSpringFeedback } from './spring-feedback';
 import { people } from '@/lib/game/presets';
 import {
   freshGame,
@@ -192,7 +193,8 @@ export default function Scene({
     tip.scale.x = 0.6;
     const toolHalo = kit.torus(0.16, 0.008, '#dfbd78', 0, 0.028, 0);
     toolHalo.rotation.x = -Math.PI / 2;
-    const popParts = Array.from({ length: 12 }, () =>
+    const springFeedback = createSpringFeedback(kit);
+    const sparkParts = Array.from({ length: 12 }, () =>
       kit.sphere(0.018, 0.018, 0.018, '#d0c4a2'),
     );
     const targetPosition = new THREE.Vector3(),
@@ -228,6 +230,7 @@ export default function Scene({
       if (isPreview) previewState.elapsed = time;
       screen.update(s, sceneInitialized ? (s.paused ? 0 : dt) : 1, isPreview);
       sceneInitialized = true;
+      springFeedback.update(s);
       const floor =
         ['frame', 'rods', 'tension'].includes(s.phase) && !isPreview;
       const drillPhase = s.phase === 'drill' && !isPreview;
@@ -340,12 +343,13 @@ export default function Scene({
         if (drillPhase || (!floor && !isPreview))
           rig.root.rotation.y = rotation;
         else rig.root.rotation.y += difference * (1 - Math.exp(-dt * 10));
-        if (!s.paused)
-          rig.update(
-            time + i * 0.83,
-            pose,
-            s.spring.worker === i ? s.spring.power : s.tool.charge,
-          );
+        // `time` stays frozen on pause. Reapply the base pose before hit overlays
+        // so snapshot updates cannot compound a head rotation or hand offset.
+        rig.update(
+          time + i * 0.83,
+          pose,
+          s.spring.worker === i ? s.spring.power : s.tool.charge,
+        );
         if (floorWork && opt.cameraMode !== 'faces') {
           rig.setCrouch(0.72);
           rig.reach('right', workTarget);
@@ -470,6 +474,7 @@ export default function Scene({
             );
           }
         }
+        springFeedback.react(rig, i);
         rig.speak(
           s.messageSpeaker === i && s.messageUntil > s.elapsed
             ? (Math.sin(time * 22) * 0.5 + 0.5) * 0.65
@@ -557,9 +562,9 @@ export default function Scene({
         toolHalo.scale.setScalar(1 + Math.sin(time * 4) * 0.15);
       }
       const event = s.events.findLast((e) =>
-        ['snap', 'pop', 'spring', 'latch', 'miss'].includes(e.kind),
+        ['snap', 'spring', 'latch', 'miss'].includes(e.kind),
       );
-      popParts.forEach((part, i) => {
+      sparkParts.forEach((part, i) => {
         const age = event ? s.elapsed - event.at : 10;
         part.visible = age >= 0 && age < 0.65;
         if (!part.visible || !event) return;
@@ -698,7 +703,7 @@ export default function Scene({
       className="three-host"
       ref={host}
       role="img"
-      aria-label="Трёхмерная кухня-гостиная по вашим фотографиям. Бригада собирает огромный экран."
+      aria-label="Кухня-гостиная. Бригада собирает экран."
     >
       {failed && (
         <div className="webgl-error">

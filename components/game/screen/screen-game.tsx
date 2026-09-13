@@ -37,6 +37,7 @@ import {
 import { useGameInspection } from '@/hooks/use-game-inspection';
 import { useGameLoop } from '@/hooks/use-game-loop';
 import { useScreenMotors } from '@/hooks/use-screen-motors';
+import { playSpringFoley } from '@/lib/game/audio/spring-foley';
 import type { Result } from '@/lib/game/types';
 import {
   act,
@@ -253,6 +254,19 @@ export default function ScreenGame({
     if (!soundRef.current || !context || context.state !== 'running') return;
     for (const event of events) {
       if (event.kind === 'throw') continue;
+      if (event.kind === 'pop' || event.kind === 'spring-hit') {
+        // A reconnect can deliver old events; their sound must not replay.
+        if (view.elapsed - event.at < 0.4) {
+          const worker = view.workers[event.worker];
+          const flight = view.springFlights?.find((f) => f.id === event.id);
+          playSpringFoley(
+            context,
+            event.kind === 'pop' ? 'release' : 'impact',
+            flight ? flight.from.x / 3.5 : (worker?.x ?? 0) / 7,
+          );
+        }
+        continue;
+      }
       const good = !['pop', 'miss', 'fall', 'jam'].includes(event.kind);
       const oscillator = context.createOscillator(),
         gain = context.createGain();
@@ -274,7 +288,7 @@ export default function ScreenGame({
         gain.disconnect();
       };
     }
-  }, [view.events, view.elapsed]);
+  }, [view.events, view.elapsed, view.workers, view.springFlights]);
   useEffect(() => {
     if (view.phase !== 'result' || saved.current || view.practice) return;
     saved.current = true;
@@ -667,9 +681,7 @@ export default function ScreenGame({
           <span className="tiny-label">ИСТОРИЯ 01 · КВАРТИРНЫЙ ВОПРОС</span>
           <DialogTitle>Да тут на полчаса.</DialogTitle>
           <DialogDescription>
-            Огромный экран, кривой потолок и одна отвёртка на всех. Соберите
-            рамку, вставьте спицы в полотно, натяните пружины — и доберитесь до
-            стены.
+            Соберите экран и повесьте его на стену. Отвёртка одна на всех.
           </DialogDescription>
           <div className="brief-steps">
             <span>
@@ -699,17 +711,15 @@ export default function ScreenGame({
           <div className="brief-rule">
             <kbd>{keyboardPrompt(0, 'throw')}</kbd>
             <p>
-              <b>Отвёртка одна.</b> Владелец держит кнопку броска и отпускает в
-              зелёной зоне. Получатель ловит своей клавишей действия. Промазал —
-              подбери с пола.
+              Отпусти бросок в зелёной зоне. Напарник ловит кнопкой действия.
             </p>
           </div>
           <p className="brief-note">
             {online
-              ? `Ты — ${NAMES[localActor]}. На своём компьютере используй обычные WASD + E или геймпад. Команды относятся только к твоему персонажу. ${canManage ? 'Начни, когда все готовы.' : 'Историю запускает ведущий.'}`
+              ? `Ты — ${NAMES[localActor]}. ${canManage ? 'Начни, когда все готовы.' : 'Историю запускает ведущий.'}`
               : players === 1
-                ? `Один набор ${keyboardPrompt(0, 'move')} + ${keyboardPrompt(0, 'action')}. На полу управляешь Никитой, Ярик помогает напротив. У стены управляешь Яриком, Никита страхует и подаёт. Переключать героев не нужно. При сверлении держи ещё ${keyboardPrompt(0, 'secondary')} — пылесос.`
-                : `Никита слева, Ярик справа. На стульях Ярик сверлит ${keyboardPrompt(1, 'action')} и пылесосит ${keyboardPrompt(1, 'secondary')}; Никита держит ${keyboardPrompt(0, 'action')} и балансирует ${keyboardPrompt(0, 'horizontal')}. Кнопки рядом с персонажами показывают следующий шаг.`}
+                ? 'Ты собираешь за Никиту, сверлишь за Ярика. Напарник помогает сам.'
+                : 'Никита слева, Ярик справа. Ярик сверлит, Никита страхует.'}
           </p>
           <button
             type="button"
@@ -719,11 +729,6 @@ export default function ScreenGame({
           >
             <SkipForward size={15} /> Сразу к эпизоду · тренировка
           </button>
-          <p className="brief-note">
-            Цельтесь в зелёные зоны. Действие иногда нужно удерживать, иногда —
-            вовремя отпускать. Ошибки смешные и исправимые. Поднимать и
-            переделывать разрешается.
-          </p>
           <div className="brief-actions">
             <button
               type="button"
@@ -773,7 +778,7 @@ export default function ScreenGame({
           <DialogTitle>Перекур</DialogTitle>
           <DialogDescription>
             {online && !canManage
-              ? 'Все на паузе. Продолжить, выбрать эпизод или начать заново может ведущий.'
+              ? 'Продолжить может ведущий.'
               : 'Стулья замерли. Никто никого не отпускает.'}
           </DialogDescription>
           <button

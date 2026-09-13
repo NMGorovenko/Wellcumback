@@ -1,3 +1,8 @@
+import {
+  CITY_TOP_SPEED,
+  AUTOMATIC_RATIOS,
+  freshPowertrain,
+} from '../city/powertrain.ts';
 import { CITY_BOUNDS, cityStops } from '../city/layout.ts';
 import type { DriveAxes } from '../input/drive.ts';
 import type { CityState } from '../city/engine.ts';
@@ -122,10 +127,10 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
       Number(s.x) > CITY_BOUNDS.maxX ||
       Number(s.z) < CITY_BOUNDS.minZ ||
       Number(s.z) > CITY_BOUNDS.maxZ ||
-      Math.abs(Number(s.vx)) > 20 ||
-      Math.abs(Number(s.vz)) > 20 ||
+      Math.abs(Number(s.vx)) > CITY_TOP_SPEED + 0.1 ||
+      Math.abs(Number(s.vz)) > CITY_TOP_SPEED + 0.1 ||
       Number(s.speed) < 0 ||
-      Number(s.speed) > 20
+      Number(s.speed) > CITY_TOP_SPEED + 0.1
     )
       return null;
     if (
@@ -171,6 +176,43 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
       radio: s.radio,
       interaction: null,
     });
+    if (s.powertrain !== undefined) {
+      if (
+        !s.powertrain ||
+        typeof s.powertrain !== 'object' ||
+        Array.isArray(s.powertrain)
+      )
+        return null;
+      const motor = s.powertrain as Record<string, unknown>;
+      const fields = Object.keys(freshPowertrain());
+      if (
+        fields.some(
+          (key) =>
+            typeof motor[key] !== 'number' ||
+            !Number.isFinite(motor[key]) ||
+            Number(motor[key]) < 0 ||
+            Number(motor[key]) > 1e9,
+        ) ||
+        !Number.isInteger(motor.gear) ||
+        Number(motor.gear) < 1 ||
+        Number(motor.gear) > AUTOMATIC_RATIOS.length ||
+        Number(motor.rpm) > 5700 ||
+        Number(motor.load) > 1
+      )
+        return null;
+      state.powertrain = Object.fromEntries(
+        fields.map((key) => [key, motor[key]]),
+      ) as typeof state.powertrain;
+    }
+    if (s.throttle !== undefined) {
+      if (
+        typeof s.throttle !== 'number' ||
+        !Number.isFinite(s.throttle) ||
+        Math.abs(s.throttle) > 1
+      )
+        return null;
+      state.throttle = s.throttle;
+    }
     return {
       type: 'city',
       version: NETWORK_VERSION,

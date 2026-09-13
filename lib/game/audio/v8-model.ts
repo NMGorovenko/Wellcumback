@@ -1,21 +1,17 @@
-/** Sound-only gearbox: never changes vehicle physics or network authority. */
+import {
+  advancePowertrain,
+  freshPowertrain,
+  type PowertrainState,
+} from '../city/powertrain.ts';
 export type V8Input = {
   speed: number;
   throttle: number;
   forward: number;
   lateral: number;
   horn: boolean;
+  powertrain?: PowertrainState;
 };
-export type V8State = {
-  rpm: number;
-  gear: number;
-  load: number;
-  time: number;
-  shiftStartedAt: number;
-  shiftUntil: number;
-  shiftFromRpm: number;
-  shiftToRpm: number;
-  shiftReadyAt: number;
+export type V8State = PowertrainState & {
   crackleReadyAt: number;
   previousThrottle: number;
   skid: number;
@@ -23,15 +19,7 @@ export type V8State = {
   horn: boolean;
 };
 export const freshV8 = (): V8State => ({
-  rpm: 780,
-  gear: 1,
-  load: 0,
-  time: 0,
-  shiftStartedAt: 0,
-  shiftUntil: 0,
-  shiftFromRpm: 780,
-  shiftToRpm: 780,
-  shiftReadyAt: 0,
+  ...freshPowertrain(),
   crackleReadyAt: 0,
   previousThrottle: 0,
   skid: 0,
@@ -40,48 +28,22 @@ export const freshV8 = (): V8State => ({
 });
 const clamp = (v: number, low: number, high: number) =>
   Math.max(low, Math.min(high, Number.isFinite(v) ? v : low));
-// Geared for the city's actual 18 m/s speed limit. Top gear must cruise below
-// the shift point, even while the player keeps the accelerator fully pressed.
-const ratios = [720, 430, 260, 135];
-const SHIFT_DURATION = 0.3;
-function shift(s: V8State, nextGear: number) {
-  s.shiftFromRpm = s.rpm;
-  s.shiftToRpm = clamp(
-    (s.rpm * ratios[nextGear - 1]) / ratios[s.gear - 1],
-    1100,
-    3900,
-  );
-  s.shiftStartedAt = s.time;
-  s.shiftUntil = s.time + SHIFT_DURATION;
-  s.shiftReadyAt = s.shiftUntil + 0.45;
-  s.gear = nextGear;
-}
 export function advanceV8(s: V8State, input: V8Input, delta: number) {
-  const dt = clamp(delta, 0, 0.1);
-  const speed = clamp(input.speed, 0, 30);
-  const throttle = clamp(input.throttle, -1, 1);
-  const reversing = input.forward < -0.2;
-  const pedal = reversing ? Math.max(0, -throttle) : Math.max(0, throttle);
-  s.time += dt;
-  let target = 780 + speed * ratios[s.gear - 1] + pedal * 180;
-  if (reversing) {
-    s.gear = 1;
-    s.shiftUntil = 0;
-    target = 780 + speed * 320 + pedal * 180;
-  } else if (s.time >= s.shiftReadyAt) {
-    const shiftPoint = 2700 + pedal * 1100;
-    if (
-      target > shiftPoint &&
-      s.rpm > shiftPoint - 100 &&
-      s.gear < ratios.length &&
-      speed > 3
-    ) {
-      shift(s, s.gear + 1);
-    } else if (target < 1550 && s.gear > 1) {
-      shift(s, s.gear - 1);
+  // Remote clients hear the creator's actual gear, including after reconnect.
+  if (input.powertrain) {
+    // A restart or restored world has its own clock. Audio-only cooldowns and
+    // pedal edges from the previous run must not leak into that new timeline.
+    if (input.powertrain.time < s.time) {
+      s.crackleReadyAt = 0;
+      s.previousThrottle = 0;
     }
-  }
-  target = clamp(target, 720, 4400);
+    Object.assign(s, input.powertrain);
+  } else advancePowertrain(s, input.forward, input.throttle, delta);
+  const pedal = clamp(
+    input.forward < -0.2 ? -input.throttle : input.throttle,
+    0,
+    1,
+  );
   s.crackle =
     s.previousThrottle > 0.55 &&
     pedal < 0.15 &&
@@ -89,20 +51,9 @@ export function advanceV8(s: V8State, input: V8Input, delta: number) {
     s.time >= s.crackleReadyAt;
   if (s.crackle) s.crackleReadyAt = s.time + 1;
   s.previousThrottle = pedal;
-  if (s.time < s.shiftUntil) {
-    // A complete, audible change of pitch: fast vehicle acceleration cannot
-    // overwrite the RPM drop on the frame after an upshift.
-    const progress = clamp((s.time - s.shiftStartedAt) / SHIFT_DURATION, 0, 1);
-    const eased = progress * progress * (3 - 2 * progress);
-    s.rpm = s.shiftFromRpm + (s.shiftToRpm - s.shiftFromRpm) * eased;
-  } else {
-    const change = (target - s.rpm) * (1 - Math.exp(-dt * 7));
-    s.rpm += clamp(change, -3200 * dt, 4200 * dt);
-  }
-  const load = s.time < s.shiftUntil ? 0.03 : pedal;
-  s.load += (load - s.load) * (1 - Math.exp(-dt * (load < s.load ? 24 : 8)));
   s.skid =
-    clamp((Math.abs(input.lateral) - 0.8) / 5, 0, 1) * clamp(speed / 4, 0, 1);
+    clamp((Math.abs(input.lateral) - 0.8) / 5, 0, 1) *
+    clamp(input.speed / 4, 0, 1);
   s.horn = input.horn;
   return s;
 }
@@ -123,4 +74,49 @@ export function exhaustWave(bank: 0 | 1, harmonics = 64) {
     }
   }
   return { real, imag };
+}
+
+/** A bank of combustion puffs with cycle variation, rather than a perfectly
+ * periodic sawtooth. Fixed seeded variation is shared by realtime/offline audio. */
+export const EXHAUST_REFERENCE_RPM = 1500;
+export function exhaustPuffs(bank: 0 | 1, sampleRate: number) {
+  const cycleLength = 120 / EXHAUST_REFERENCE_RPM;
+  const cycles = 24;
+  const samples = new Float32Array(
+    Math.round(cycleLength * cycles * sampleRate),
+  );
+  const pulses = bank === 0 ? [0, 2, 5, 7] : [1, 3, 4, 6];
+  const weights = bank === 0 ? [1, 0.72, 1.22, 0.86] : [0.88, 1.18, 0.74, 1.05];
+  let seed = 8191 + bank * 3571;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+    return (seed >>> 0) / 2147483648 - 1;
+  };
+  for (let cycle = 0; cycle < cycles; cycle++) {
+    const breath = 1 + random() * 0.22;
+    for (let fire = 0; fire < pulses.length; fire++) {
+      const start = Math.round(
+        (cycle + pulses[fire] / 8 + random() * 0.008) *
+          cycleLength *
+          sampleRate,
+      );
+      const strength = weights[fire] * breath * (1 + random() * 0.15);
+      let air = 0;
+      for (let n = 0; n < sampleRate * 0.05; n++) {
+        const t = n / sampleRate;
+        air += (random() - air) * Math.min(1, 1800 / sampleRate);
+        const body =
+          Math.sin(2 * Math.PI * (94 + bank * 17) * t) * Math.exp(-t * 85);
+        const rasp =
+          Math.sin(2 * Math.PI * (213 + bank * 29) * t) * Math.exp(-t * 170);
+        const puff = (body * 0.6 + rasp * 0.2 + air * 0.8) * strength;
+        const index =
+          (((start + n) % samples.length) + samples.length) % samples.length;
+        samples[index] += puff;
+      }
+    }
+  }
+  const mean = samples.reduce((sum, v) => sum + v, 0) / samples.length;
+  for (let i = 0; i < samples.length; i++) samples[i] -= mean;
+  return samples;
 }

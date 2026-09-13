@@ -225,14 +225,9 @@ export function screenPrompts(s: GameState): WorkerPrompt[] {
       else if (t.owner === worker) {
         const uneven = s.clips[w.side] > Math.min(...s.clips);
         if (s.spring.active)
-          cue(
-            'action',
-            uneven ? 'край перетянут · будет ДЗЫНЬ!' : 'отпустить в зелёном',
-            'release',
-            {
-              emphasis: uneven ? 'danger' : undefined,
-            },
-          );
+          cue('action', 'отпустить в зелёном', 'release', {
+            emphasis: uneven ? 'danger' : undefined,
+          });
         else if (moving || s.clips[w.side] === 4 || uneven)
           cue(
             'move',

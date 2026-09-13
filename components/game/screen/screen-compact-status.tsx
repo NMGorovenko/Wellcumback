@@ -180,12 +180,7 @@ export function ScreenCompactStatus({
             />
           ) : (
             <Meter
-              label={
-                view.clips[view.workers[tool.owner].side] >
-                Math.min(...view.clips)
-                  ? 'Этот край туже · напротив отскочит!'
-                  : 'Пружина → отпусти действие'
-              }
+              label="Пружина → отпусти действие"
               value={view.spring.active ? view.spring.power : 0}
               target={force}
               danger={view.spring.power > force[1]}

@@ -1,3 +1,4 @@
+import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
 import { CITY_SPAWN, BRIDGES } from '../lib/game/city/layout.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -98,14 +99,20 @@ void test('a moderate-speed handbrake turn builds real lateral slip and releases
 void test('the higher forward limit cannot tunnel through buildings, banks, or bridge rails', () => {
   const straight = freshCity();
   advance(straight, 1.7, ['KeyW']);
-  assert.ok(straight.speed > 17 && straight.speed <= 18);
+  assert.ok(straight.speed > 19 && straight.speed <= CITY_TOP_SPEED);
   assert.equal(straight.bumps, 0);
   for (const state of [
-    { x: -92, z: -16, heading: -Math.PI / 2, vx: -18, vz: 0 },
-    { x: 0, z: 25, heading: 0, vx: 0, vz: -18 },
-    { x: BRIDGES[0].x, z: BRIDGES[0].z, heading: Math.PI / 2, vx: 18, vz: 0 },
+    { x: -92, z: -16, heading: -Math.PI / 2, vx: -CITY_TOP_SPEED, vz: 0 },
+    { x: 0, z: 25, heading: 0, vx: 0, vz: -CITY_TOP_SPEED },
+    {
+      x: BRIDGES[0].x,
+      z: BRIDGES[0].z,
+      heading: Math.PI / 2,
+      vx: CITY_TOP_SPEED,
+      vz: 0,
+    },
   ]) {
-    const s = { ...freshCity(), ...state, speed: 18 };
+    const s = { ...freshCity(), ...state, speed: CITY_TOP_SPEED };
     for (let i = 0; i < 120; i++) {
       tickCity(s, 1 / 60, new Set(['KeyW']));
       assert.equal(
@@ -113,7 +120,7 @@ void test('the higher forward limit cannot tunnel through buildings, banks, or b
         false,
         'the complete car stays outside blockers on every step',
       );
-      assert.ok(s.speed <= 18 + 1e-8);
+      assert.ok(s.speed <= CITY_TOP_SPEED + 1e-8);
     }
     assert.ok(s.bumps > 0);
   }
@@ -175,26 +182,36 @@ void test('automatic drift trajectories match on 30, 60 and 144Hz displays', () 
   }
 });
 
-void test('full throttle reaches the stronger launch while partial triggers stay gentle', () => {
-  const full = freshCity(),
+void test('six-speed full throttle keeps pulling beyond the old ceiling while partial triggers stay gentle', () => {
+  const full = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 },
     partial = freshCity();
-  for (let i = 0; i < 30; i++) {
+  const marks = new Map();
+  for (let i = 0; i < 300; i++) {
     tickCity(full, 1 / 60, new Set(['KeyW']));
-    tickCity(partial, 1 / 60, new Set(), { throttle: 0.25, steer: 0 });
+    if (i < 30)
+      tickCity(partial, 1 / 60, new Set(), { throttle: 0.25, steer: 0 });
+    for (const speed of [18, 100 / 3.6, CITY_TOP_SPEED - 0.01])
+      if (full.speed >= speed && !marks.has(speed))
+        marks.set(speed, (i + 1) / 60);
   }
-  assert.ok(
-    full.speed > 10.5 && full.speed < 11.3,
-    'strong launch after half a second',
-  );
   assert.ok(
     partial.speed < 2,
     'a quarter trigger remains suitable for parking',
   );
-  for (let i = 0; i < 24; i++) tickCity(full, 1 / 60, new Set(['KeyW']));
   assert.ok(
-    full.speed >= 17.9 && full.speed <= 18,
-    'full speed in under a second',
+    marks.get(18) < 1.6,
+    'launch still reaches the former 65 km/h ceiling quickly',
   );
+  assert.ok(
+    marks.get(100 / 3.6) > 2 && marks.get(100 / 3.6) < 3.6,
+    'sustained torque reaches 100 km/h with readable shift pauses',
+  );
+  assert.ok(
+    marks.get(CITY_TOP_SPEED - 0.01) > marks.get(18) + 1.5,
+    'several seconds of acceleration replace the abrupt old limiter',
+  );
+  assert.equal(full.powertrain.gear, 6);
+  assert.equal(full.bumps, 0);
 });
 void test('fractional refresh periods cannot silently lose a city simulation tick', () => {
   const states = [30, 60, 144].map((hz) => {

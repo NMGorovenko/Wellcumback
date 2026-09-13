@@ -184,8 +184,7 @@ export function freshClean(players = 1): CleanState {
     elapsed: 0,
     timer: 0,
     score: 0,
-    message:
-      'Другая рота. Безымянный солдат. До конца дежурства всё было совершенно обычно.',
+    message: 'Обычная смена.',
     paused: false,
     station: 7,
     urge: 0.14,
@@ -344,12 +343,7 @@ function accident(s: CleanState, atDesk: boolean) {
 }
 export function cleanAction(s: CleanState) {
   if (s.paused || s.cooldown > 0 || s.phase === 'result') return;
-  if (s.phase === 'brief')
-    phase(
-      s,
-      'duty',
-      'Обычное дежурство. Походи немного. Организм уже готовит внеплановый доклад.',
-    );
+  if (s.phase === 'brief') phase(s, 'duty', 'Обойди пост.');
   else if (s.phase === 'find' && near(s, 0, stations[0])) {
     award(s, 120 + Math.min(s.rhythm.hits, 12) * 15);
     accident(s, true);
@@ -846,7 +840,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
       phase(
         s,
         'find',
-        'Срочно к дневальному справа. По пути чередуй Q и E в подсвеченном окне. RB/R1 и A/× на геймпаде. Надолго это не спасёт.',
+        'К дневальному справа. По пути нажимай подсвеченные кнопки в такт.',
       );
       s.station = 0;
       s.rhythm.active = true;
@@ -873,11 +867,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
       s.message = `Дневальный: «${dutyReprimand}»`;
     }
     if (arrived && s.phaseTime >= 3.2)
-      phase(
-        s,
-        'toilet',
-        `Дневальный: «${dutyReprimand}» Кабинка внизу слева. По дороге останутся следы.`,
-      );
+      phase(s, 'toilet', `Дневальный: «${dutyReprimand}» Кабинка внизу слева.`);
   } else if (s.phase === 'toilet') {
     if (holding[0] && near(s, 0, stations[1], 62)) {
       s.activity[0] = 'relief';
@@ -957,11 +947,7 @@ function step(s: CleanState, dt: number, keys: Set<string>) {
     }
     updateWitnesses(s, dt);
     if (s.phase === 'spin' && s.phaseTime >= 4)
-      phase(
-        s,
-        'response',
-        'Сослуживцы идут на шум из прачечной. Скоро выяснят, что за режим стирки ты включил.',
-      );
+      phase(s, 'response', 'Сослуживцы идут на шум. Придержи стиралку.');
   }
   if (s.phase === 'clean') {
     s.timer = Math.max(0, s.timer - dt);

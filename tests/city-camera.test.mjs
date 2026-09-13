@@ -39,9 +39,9 @@ void test('driving view leads real forward, reversing and sideways motion while 
   for (const aspect of [16 / 9, 4 / 3, 9 / 16])
     for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2])
       for (const motion of [
-        [0, -18],
+        [0, -32],
         [0, 6],
-        [18, 0],
+        [32, 0],
         [-12, -8],
       ]) {
         const [vx, vz] = motion;
@@ -206,7 +206,7 @@ void test('camera heading crosses north smoothly and ignores frame-rate spikes',
 });
 
 void test('speed progressively opens the chase view and reserves more forward road under a shallow angle', () => {
-  const frames = [0, 6, 12, 18].map((speed) =>
+  const frames = [0, 6, 12, 18, 24, 32].map((speed) =>
     cityDriveCamera(
       { ...freshCity(), x: 0, z: 0, heading: 0, vx: 0, vz: -speed, speed },
       16 / 9,

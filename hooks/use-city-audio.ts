@@ -94,6 +94,7 @@ export function useCityAudio(enabled: boolean, state: CityState) {
       motor.current,
       {
         speed: state.speed,
+        powertrain: state.powertrain,
         forward:
           state.vx * Math.sin(state.heading) -
           state.vz * Math.cos(state.heading),

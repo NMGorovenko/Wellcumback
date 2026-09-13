@@ -125,6 +125,20 @@ if args.desktop:
             source = (ROOT / filename).resolve()
             if not source.is_relative_to(ROOT) or hashlib.sha256(source.read_bytes()).hexdigest() != digest:
                 raise SystemExit(f'Rebuild desktop after relay source changes: {filename}')
+        if record.get('signing'):
+            signing = record['signing']
+            if (not signing['authority'].startswith('Developer ID Application:')
+                    or signing['team'] != signing['tunnel']['team']
+                    or not re.fullmatch(r'[0-9a-f]{64}', signing['tunnel']['binary_sha256'])
+                    or not record.get('signing_sources')):
+                raise SystemExit(f'Invalid Developer ID build record: {binary.name}')
+            for filename, digest in record['signing_sources'].items():
+                source = (ROOT / filename).resolve()
+                if not source.is_relative_to(ROOT) or hashlib.sha256(source.read_bytes()).hexdigest() != digest:
+                    raise SystemExit(f'Rebuild desktop after signing configuration changed: {filename}')
+            if signing['mode'] == 'notarized' and (not signing['appStapled']
+                    or (binary.suffix == '.dmg' and not signing.get('container', {}).get('stapled'))):
+                raise SystemExit(f'Notarization ticket missing: {binary.name}')
         tunnel = record['tunnel']
         pins = json.loads((ROOT / 'desktop/tunnel-binaries.json').read_text())
         pinned = pins['assets'].get(tunnel['target'])

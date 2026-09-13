@@ -1,3 +1,9 @@
+import {
+  advancePowertrain,
+  freshPowertrain,
+  CITY_TOP_SPEED,
+  type PowertrainState,
+} from './powertrain.ts';
 import { resolveDrive, type DriveAxes } from '../input/drive.ts';
 import {
   BRIDGES,
@@ -23,6 +29,8 @@ export type CityState = {
   drifting: boolean;
   /** Authoritative pedal load also drives remote engine audio. */
   throttle?: number;
+  /** Optional so saved/older snapshots acquire a gearbox on their next tick. */
+  powertrain?: PowertrainState;
   /** Automatic cornering slip; the handbrake adds stronger oversteer. */
   driftBlend?: number;
   elapsed: number;
@@ -50,6 +58,7 @@ export const freshCity = (): CityState => ({
   speed: 0,
   drifting: false,
   driftBlend: 0,
+  powertrain: freshPowertrain(),
   elapsed: 0,
   bumps: 0,
   bumpCooldown: 0,
@@ -111,6 +120,7 @@ export function resetCityCar(s: CityState) {
     drifting: false,
     throttle: 0,
     driftBlend: 0,
+    powertrain: freshPowertrain(),
     nearStop: -1,
     interaction: null,
   });
@@ -163,7 +173,17 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
   const grip = 7.5 + (0.55 - 7.5) * s.driftBlend;
   const opposing = gas * forward < 0 && Math.abs(forward) > 0.35;
   // Keep small analog inputs gentle; full throttle gets the stronger engine.
-  const acceleration = opposing ? 24 : gas < 0 ? 10 : 14.5 + 8.5 * gas * gas;
+  const motor = (s.powertrain ??= freshPowertrain());
+  advancePowertrain(motor, forward, gas, STEP);
+  const changing = motor.time < motor.shiftUntil;
+  // Strong initial torque carries on beyond the old 65 km/h ceiling. The
+  // automatic briefly unloads the driven wheels as well as the exhaust.
+  const fullTorque = 26 - Math.max(0, forward) * 0.3;
+  const acceleration = opposing
+    ? 30
+    : gas < 0
+      ? 10
+      : (14.5 + (fullTorque - 14.5) * gas * gas) * (changing ? 0.28 : 1);
   // Rolling resistance is mild: lifting the accelerator preserves momentum,
   // while an opposite pedal gives controllable braking before reversing.
   const speed = Math.hypot(s.vx, s.vz);
@@ -176,7 +196,7 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
   const magnitude = Math.hypot(s.vx, s.vz),
     // A brake request does not turn forward motion into reverse motion.
     // Apply the reverse cap only after the car actually starts moving back.
-    maxSpeed = s.vx * fx + s.vz * fz < 0 ? 6 : 18;
+    maxSpeed = s.vx * fx + s.vz * fz < 0 ? 6 : CITY_TOP_SPEED;
   if (magnitude > maxSpeed) {
     s.vx *= maxSpeed / magnitude;
     s.vz *= maxSpeed / magnitude;

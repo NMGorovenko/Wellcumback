@@ -323,7 +323,12 @@ export function createScreenModel(kit: RenderKit) {
       coils[side].forEach((coil, n) => {
         const pulling =
           s.spring.active && s.spring.side === side && n === s.clips[side];
-        const recoil = n === s.clips[side] ? impulse('pop', side, 0.48) : 0;
+        // Replicated flights render the detached coil. Only old snapshots need
+        // the on-frame recoil fallback; a replacement being pulled stays visible.
+        const recoil =
+          !s.springFlights && n === s.clips[side]
+            ? impulse('pop', side, 0.48)
+            : 0;
         coil.visible =
           ['tension', 'drill', 'lift', 'level', 'result'].includes(s.phase) &&
           (n < s.clips[side] || pulling || recoil > 0);

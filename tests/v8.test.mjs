@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { advanceV8, freshV8, exhaustWave } from '../lib/game/audio/v8-model.ts';
-import { freshCity, tickCity } from '../lib/game/city/engine.ts';
+import { freshCity, tickCity, resetCityCar } from '../lib/game/city/engine.ts';
 const input = (speed, throttle = 1) => ({
   speed,
   throttle,
@@ -16,38 +16,39 @@ void test('V8 idles, revs and shifts without affecting vehicle speed', () => {
   let shifts = 0,
     gear = s.gear;
   for (let i = 0; i < 360; i++) {
-    advanceV8(s, input(Math.min(18, i / 10)), 1 / 60);
-    assert.ok(s.rpm <= 4400 && Number.isFinite(s.rpm));
+    advanceV8(s, input(Math.min(32, i / 10)), 1 / 60);
+    assert.ok(s.rpm <= 5700 && Number.isFinite(s.rpm));
     if (s.gear !== gear) {
       shifts++;
       gear = s.gear;
     }
   }
-  assert.equal(s.gear, 4);
-  assert.equal(shifts, 3);
+  assert.equal(s.gear, 6);
+  assert.equal(shifts, 5);
   assert.ok(
-    s.rpm > 2800 && s.rpm < 3600,
+    s.rpm > 4600 && s.rpm < 5100,
     'top gear cruises without sitting on the limiter',
   );
-  advanceV8(s, input(18, 0), 1 / 60);
+  advanceV8(s, input(32, 0), 1 / 60);
   assert.equal(s.crackle, true);
-  advanceV8(s, input(18, 1), 1 / 60);
-  advanceV8(s, input(18, 0), 1 / 60);
+  advanceV8(s, input(32, 1), 1 / 60);
+  advanceV8(s, input(32, 0), 1 / 60);
   assert.equal(s.crackle, false);
 });
 for (const rate of [30, 60, 144])
-  void test(`actual city acceleration has three audible automatic upshifts at ${rate} Hz`, () => {
+  void test(`actual city acceleration has five audible automatic upshifts at ${rate} Hz`, () => {
     // A real uninterrupted road across the north of the existing city.
     const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 },
       motor = freshV8();
     const shifts = [];
-    for (let i = 0; i < 7 * rate; i++) {
+    for (let i = 0; i < 6 * rate; i++) {
       tickCity(city, 1 / rate, new Set(['KeyW']));
       const previousGear = motor.gear;
       advanceV8(
         motor,
         {
           speed: city.speed,
+          powertrain: city.powertrain,
           forward: city.vx,
           throttle: city.throttle,
           lateral: city.vz,
@@ -63,42 +64,42 @@ for (const rate of [30, 60, 144])
           minLoad: 1,
         });
       const shift = shifts.at(-1);
-      if (shift && motor.time - shift.time < 0.31) {
+      if (shift && motor.time - shift.time < 0.25) {
         shift.min = Math.min(shift.min, motor.rpm);
         shift.minLoad = Math.min(shift.minLoad, motor.load);
       }
     }
     assert.equal(city.bumps, 0);
-    assert.equal(shifts.length, 3);
+    assert.equal(shifts.length, 5);
     assert.ok(
       shifts[0].time < 1.05,
       'first shift accompanies the rapid real acceleration',
     );
     for (const shift of shifts) {
       assert.ok(
-        shift.min < shift.from * 0.76,
-        'each shift audibly lowers pitch by at least 24%',
+        shift.min < shift.from * 0.78,
+        'each shift audibly lowers pitch by at least 22%',
       );
       assert.ok(shift.minLoad < 0.12, 'exhaust unloads during a shift');
     }
     assert.ok(
-      shifts.slice(1).every((s, i) => s.time - shifts[i].time > 0.65),
+      shifts.slice(1).every((s, i) => s.time - shifts[i].time > 0.4),
       'no gear chatter',
     );
     assert.ok(
-      motor.rpm > 3000 && motor.rpm < 3500,
+      motor.rpm > 4600 && motor.rpm < 5100,
       'full-speed top gear stays below the shift point',
     );
     const top = motor.gear;
     for (let i = 0; i < 2 * rate; i++)
-      advanceV8(motor, input(18, i % 2 ? 0 : 1), 1 / rate);
+      advanceV8(motor, input(32, i % 2 ? 0 : 1), 1 / rate);
     assert.equal(
       motor.gear,
       top,
       'pedal changes at steady speed do not hunt gears',
     );
     for (let i = 0; i < 6 * rate; i++)
-      advanceV8(motor, input(Math.max(0, 18 - (i / rate) * 8), 0), 1 / rate);
+      advanceV8(motor, input(Math.max(0, 32 - (i / rate) * 10), 0), 1 / rate);
     assert.equal(motor.gear, 1);
     assert.ok(motor.rpm < 900, 'braking to a stop returns to idle');
   });
@@ -196,7 +197,8 @@ void test('V8 graph reuses sources, clears transients and disposes exactly once'
     createBiquadFilter: () =>
       Object.assign(node('filter'), { frequency: parameter(), Q: parameter() }),
     createBuffer: (_c, n) => ({ getChannelData: () => new Float32Array(n) }),
-    createBufferSource: () => source('buffer'),
+    createBufferSource: () =>
+      Object.assign(source('buffer'), { playbackRate: parameter() }),
     createOscillator: () =>
       Object.assign(source('oscillator'), {
         frequency: parameter(),
@@ -212,7 +214,7 @@ void test('V8 graph reuses sources, clears transients and disposes exactly once'
     graph.update(s, true, i / 60);
   }
   assert.equal(nodes.length, count);
-  assert.equal(sources.length, 5);
+  assert.equal(sources.length, 7);
   graph.silence(20);
   const fades = params.filter(
     (p) =>
@@ -226,4 +228,113 @@ void test('V8 graph reuses sources, clears transients and disposes exactly once'
   graph.update(s, true);
   assert.ok(sources.every((s) => s.started === 1 && s.stopped === 1));
   assert.ok(nodes.slice(1).every((n) => n.disconnected === 1));
+});
+
+void test('authoritative gearbox freezes on pause and survives JSON reconnect without an audio-only restart', () => {
+  const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
+  for (let i = 0; i < 150; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
+  city.paused = true;
+  const before = structuredClone(city);
+  tickCity(city, 5, new Set(['KeyW']));
+  assert.deepEqual(city, before);
+  const resumed = JSON.parse(JSON.stringify(city));
+  const listener = freshV8();
+  advanceV8(
+    listener,
+    { ...input(city.speed), powertrain: resumed.powertrain },
+    1 / 60,
+  );
+  assert.equal(listener.gear, city.powertrain.gear);
+  assert.equal(listener.rpm, city.powertrain.rpm);
+  assert.equal(listener.load, city.powertrain.load);
+  resumed.paused = false;
+  tickCity(resumed, 1 / 60, new Set(['KeyW']));
+  assert.ok(resumed.powertrain.time > city.powertrain.time);
+  const old = freshCity();
+  delete old.powertrain;
+  tickCity(old, 1 / 60, new Set(['KeyW']));
+  assert.ok(
+    old.powertrain.rpm >= 780 && old.speed > 0,
+    'older save acquires a gearbox lazily',
+  );
+});
+void test('each automatic shift unloads real wheel acceleration as well as exhaust volume', () => {
+  const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
+  let priorAcceleration = 0,
+    cuts = 0;
+  for (let i = 0; i < 220; i++) {
+    const speed = city.speed,
+      gear = city.powertrain.gear;
+    tickCity(city, 1 / 60, new Set(['KeyW']));
+    const acceleration = (city.speed - speed) * 60;
+    if (city.powertrain.gear > gear) {
+      assert.ok(
+        acceleration < priorAcceleration * 0.5,
+        'torque actually dips at the audible shift',
+      );
+      cuts++;
+    }
+    priorAcceleration = acceleration;
+  }
+  assert.equal(cuts, 5);
+});
+void test('sideways sliding cannot over-rev the motor like faster driven wheels', () => {
+  const straight = freshV8(),
+    sideways = freshV8();
+  for (let i = 0; i < 100; i++) {
+    advanceV8(straight, input(8), 1 / 60);
+    advanceV8(sideways, { ...input(24), forward: 8, lateral: 22 }, 1 / 60);
+  }
+  assert.equal(straight.rpm, sideways.rpm);
+  assert.equal(straight.gear, sideways.gear);
+  assert.ok(sideways.skid > straight.skid);
+});
+
+void test('restarting the car clears the old exhaust cooldown and a restored timeline cannot fake a pedal release', () => {
+  const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
+  const motor = freshV8();
+  city.powertrain.time = 100;
+  const hear = (throttle) =>
+    advanceV8(
+      motor,
+      { ...input(city.speed, throttle), powertrain: city.powertrain },
+      1 / 60,
+    );
+  for (let i = 0; i < 240; i++) {
+    tickCity(city, 1 / 60, new Set(['KeyW']));
+    hear(1);
+  }
+  hear(0);
+  assert.equal(motor.crackle, true);
+  assert.ok(motor.crackleReadyAt > 100, 'old run owns a far-future cooldown');
+  resetCityCar(city);
+  hear(0);
+  assert.equal(motor.crackle, false, 'the reset itself is silent');
+  assert.equal(
+    motor.crackleReadyAt,
+    0,
+    'old deadline cannot suppress the new run',
+  );
+  Object.assign(city, { x: -104, z: -63, heading: Math.PI / 2 });
+  for (let i = 0; i < 240; i++) {
+    tickCity(city, 1 / 60, new Set(['KeyW']));
+    hear(1);
+  }
+  hear(0);
+  assert.equal(
+    motor.crackle,
+    true,
+    'first real throttle lift after reset still pops',
+  );
+  assert.ok(motor.crackleReadyAt < 6);
+  hear(1);
+  motor.crackleReadyAt = 0;
+  city.powertrain.time = 0.5;
+  assert.ok(city.powertrain.rpm > 2800);
+  hear(0);
+  assert.equal(
+    motor.crackle,
+    false,
+    'restoring an earlier moving snapshot is not a new pedal-release event',
+  );
 });

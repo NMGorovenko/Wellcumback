@@ -150,8 +150,7 @@ function PadHelp({
       <p className="control-settings-note">
         {profile === 'city'
           ? 'Клавиатура и первый геймпад управляют одной машиной.'
-          : 'Вдвоём с одним геймпадом: игрок 1 — клавиатура, игрок 2 — геймпад. Два и три геймпада назначаются по порядку.'}{' '}
-        Подключение определяется здесь, без перезапуска.
+          : 'Вдвоём с одним геймпадом: игрок 1 — клавиатура, игрок 2 — геймпад. Несколько геймпадов назначаются по порядку.'}
       </p>
     </section>
   );
@@ -317,9 +316,8 @@ function OpenControlSettings({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent ref={content} className="control-settings-dialog">
         <DialogTitle>Управление</DialogTitle>
-        <DialogDescription>
-          Отдельные раскладки для машины и историй. Настройки сохраняются на
-          этом устройстве.
+        <DialogDescription className="sr-only">
+          Клавиши и геймпады для машины и персонажей.
         </DialogDescription>
         <fieldset className="control-player-tabs">
           <legend className="sr-only">Что настроить</legend>
@@ -398,13 +396,11 @@ function OpenControlSettings({
                   : 'Общее · бросок / смена инструмента',
               )}
             </div>
-            <p className="control-settings-note">
-              {activeProfile === 'city'
-                ? 'Клавиши машины не меняют управление персонажами в историях.'
-                : player === 0
-                  ? 'Пробел тоже выполняет действие первого игрока. В одиночку управляешь активным героем.'
-                  : 'Эти клавиши работают, когда участвует этот игрок.'}
-            </p>
+            {activeProfile === 'game' && player === 0 && (
+              <p className="control-settings-note">
+                Пробел тоже выполняет действие первого игрока.
+              </p>
+            )}
           </section>
         ) : (
           <PadHelp
@@ -444,8 +440,7 @@ function OpenControlSettings({
           </span>
         </p>
         <p className="control-settings-notice" aria-live="polite">
-          {notice ||
-            'Русская раскладка тоже работает. F, Esc и Tab не переназначаются.'}
+          {notice}
         </p>
         {storageWarning && (
           <p className="control-settings-warning">{storageWarning}</p>

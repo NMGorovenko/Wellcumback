@@ -1,3 +1,4 @@
+import { CITY_TOP_SPEED } from '../../../lib/game/city/powertrain.ts';
 import {
   CITY_BOUNDS,
   CITY_SCENERY_BOUNDS,
@@ -13,7 +14,7 @@ export function cityDriveCamera(
   state: Pick<CityState, 'x' | 'z' | 'vx' | 'vz' | 'heading' | 'speed'>,
   aspect: number,
 ) {
-  const speed = Math.max(0, Math.min(18, state.speed));
+  const speed = Math.max(0, Math.min(CITY_TOP_SPEED, state.speed));
   const lead = 2.8 + speed * 0.43;
   const fx = Math.sin(state.heading),
     fz = -Math.cos(state.heading);
@@ -49,7 +50,7 @@ export function cityFaceCamera(
   state: Pick<CityState, 'x' | 'z' | 'vx' | 'vz' | 'heading' | 'speed'>,
   aspect: number,
 ) {
-  const speed = Math.max(0, Math.min(18, state.speed));
+  const speed = Math.max(0, Math.min(CITY_TOP_SPEED, state.speed));
   const lead = 0.65 + speed * 0.16;
   const travelX =
     speed > 0.4

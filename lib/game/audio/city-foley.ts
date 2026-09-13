@@ -1,4 +1,9 @@
-import { exhaustWave, type V8State } from './v8-model.ts';
+import {
+  exhaustWave,
+  exhaustPuffs,
+  EXHAUST_REFERENCE_RPM,
+  type V8State,
+} from './v8-model.ts';
 
 /** Persistent native Web Audio graph. No oscillators/buffers are created per frame. */
 export function createCityFoley(context: BaseAudioContext) {
@@ -80,6 +85,26 @@ export function createCityFoley(context: BaseAudioContext) {
     sources.push(oscillator);
     return { oscillator, gain, filter };
   });
+  // Retain the original, liked idle exactly. Loaded combustion adds individual
+  // rough puffs; their long loop avoids a turbine-like repeating oscillator.
+  const loadedBanks = ([0, 1] as const).map((bank) => {
+    const samples = exhaustPuffs(bank, context.sampleRate);
+    const buffer = context.createBuffer(1, samples.length, context.sampleRate);
+    buffer.getChannelData(0).set(samples);
+    const source = own(context.createBufferSource());
+    source.buffer = buffer;
+    source.loop = true;
+    source.playbackRate.value = 780 / EXHAUST_REFERENCE_RPM;
+    const gain = own(context.createGain());
+    gain.gain.value = 0;
+    const filter = own(context.createBiquadFilter());
+    filter.type = 'lowpass';
+    filter.frequency.value = 850;
+    filter.Q.value = 0.45;
+    source.connect(filter).connect(gain).connect(saturate);
+    sources.push(source);
+    return { source, gain, filter };
+  });
   const horn = own(context.createGain());
   horn.gain.value = 0;
   horn.connect(compressor);
@@ -111,6 +136,8 @@ export function createCityFoley(context: BaseAudioContext) {
         (Math.sin(state.time * 43) * 0.013 +
           Math.sin(state.time * 71) * 0.006) *
         (1 - state.load * 0.8);
+      const power = Math.min(1, Math.max(0, (state.rpm - 1100) / 1700));
+      const combustion = power * state.load;
       for (let i = 0; i < banks.length; i++) {
         target(
           banks[i].oscillator.frequency,
@@ -123,9 +150,27 @@ export function createCityFoley(context: BaseAudioContext) {
           490 + i * 90 + state.load * 400 + state.rpm * 0.028,
           now,
         );
-        target(banks[i].gain.gain, 0.2 + state.load * 0.12, now);
+        // Keep a low bank fundamental below the added exhaust attack.
+        target(
+          banks[i].gain.gain,
+          0.2 + state.load * 0.12 - combustion * 0.22,
+          now,
+        );
+        target(
+          loadedBanks[i].source.playbackRate,
+          state.rpm / EXHAUST_REFERENCE_RPM,
+          now,
+          0.018,
+        );
+        target(
+          loadedBanks[i].gain.gain,
+          combustion * (i ? 0.26 : 0.48),
+          now,
+          0.018,
+        );
+        target(loadedBanks[i].filter.frequency, 640 + state.load * 230, now);
       }
-      target(intake.gain.gain, 0.005 + state.load * 0.025, now);
+      target(intake.gain.gain, 0.005 + state.load * 0.009, now);
       target(tyres.gain.gain, state.skid * 0.1, now);
       target(horn.gain, audible && state.horn ? 0.12 : 0, now, 0.015);
       if (audible && state.crackle) {

@@ -18,6 +18,12 @@ import { fileURLToPath } from 'node:url';
 import security from '../desktop/security.cjs';
 import { build } from 'esbuild';
 import { fetchTunnel } from './fetch-tunnel.mjs';
+import macSigning from '../desktop/mac-signing.cjs';
+import {
+  verifyMacBundle,
+  notarizeDmg,
+  checked,
+} from './verify-mac-signature.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(import.meta.url);
@@ -133,7 +139,17 @@ function run(command, args, env = process.env) {
 }
 
 async function main() {
-  const mode = process.argv[2] ?? 'prepare';
+  const requested = process.argv[2] ?? 'prepare';
+  const signingMode =
+    requested === 'mac-notarized'
+      ? 'notarized'
+      : requested === 'mac-signed'
+        ? 'developer-id'
+        : 'adhoc';
+  const mode = ['mac-signed', 'mac-notarized'].includes(requested)
+    ? 'mac'
+    : requested;
+  const signing = macSigning.signingOptions(signingMode);
   const targets = {
     mac: ['--mac', '--arm64', '--x64'],
     'mac-arm64': ['--mac', '--arm64'],
@@ -146,8 +162,22 @@ async function main() {
     !(mode in targets || mode === 'prepare' || mode === 'run')
   ) {
     throw new Error(
-      'Usage: node scripts/build-desktop.mjs prepare|run|dir|mac|mac-arm64|win|win-zip',
+      'Usage: node scripts/build-desktop.mjs prepare|run|dir|mac|mac-arm64|mac-signed|mac-notarized|win|win-zip',
     );
+  }
+  if (signing.signed && process.platform !== 'darwin')
+    throw new Error('Developer ID builds require macOS.');
+  if (signing.notarized) {
+    const auth = ['--keychain-profile', process.env.APPLE_KEYCHAIN_PROFILE];
+    if (process.env.APPLE_KEYCHAIN)
+      auth.push('--keychain', process.env.APPLE_KEYCHAIN);
+    checked('xcrun', [
+      'notarytool',
+      'history',
+      ...auth,
+      '--output-format',
+      'json',
+    ]);
   }
   // Every public command rebuilds first; an old HTML never silently becomes a new desktop release.
   run(process.execPath, [path.join(root, 'scripts/build-portable.mjs')]);
@@ -187,7 +217,11 @@ async function main() {
         'never',
         ...targets[mode],
       ],
-      { ...process.env, WELLCUM_DESKTOP_OUTPUT: staging },
+      {
+        ...process.env,
+        WELLCUM_DESKTOP_OUTPUT: staging,
+        WELLCUM_MAC_SIGNING: signingMode,
+      },
     );
     if (mode === 'dir') {
       console.log(`Unpacked application (temporary directory): ${staging}`);
@@ -219,19 +253,54 @@ async function main() {
         ]),
       ),
     );
+    const signatures = {};
+    const signingSources = {};
+    if (signing.signed) {
+      for (const file of [
+        'desktop/builder.config.cjs',
+        'desktop/mac-signing.cjs',
+        'desktop/entitlements.mac.plist',
+        'scripts/build-desktop.mjs',
+        'scripts/verify-mac-signature.mjs',
+      ])
+        signingSources[file] = hash(await readFile(path.join(root, file)));
+      for (const [, arch] of tunnelTargets) {
+        const app = path.join(
+          staging,
+          arch === 'arm64' ? 'mac-arm64' : 'mac',
+          'Wellcum back.app',
+        );
+        signatures[arch] = await verifyMacBundle(app, signing.notarized);
+      }
+    }
     for (const suffix of packaged[mode]) {
       const artifact = path.join(
         root,
         'outputs/desktop',
         `Wellcum-back-${manifest.version}-${suffix}`,
       );
-      const bytes = await readFile(path.join(staging, path.basename(artifact)));
+      const stagedArtifact = path.join(staging, path.basename(artifact));
+      const arch = suffix.includes('arm64') ? 'arm64' : 'x64';
+      const container =
+        signing.notarized && suffix.endsWith('.dmg')
+          ? notarizeDmg(stagedArtifact)
+          : undefined;
+      const bytes = await readFile(stagedArtifact);
       await writeFile(artifact, bytes);
       await writeFile(
         artifact + '.build.json',
         JSON.stringify(
           {
             ...manifest,
+            ...(signing.signed
+              ? {
+                  signing_sources: signingSources,
+                  signing: {
+                    ...signatures[arch],
+                    ...(container ? { container } : {}),
+                  },
+                }
+              : {}),
             runtime,
             runtime_sources: JSON.parse(
               await readFile(path.join(appDir, 'network-source.json'), 'utf8'),

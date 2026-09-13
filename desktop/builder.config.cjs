@@ -1,6 +1,8 @@
 /* oxlint-disable typescript/no-require-imports -- Explicit CommonJS files for the Electron main process/build configuration. */
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
+const { signingOptions } = require('./mac-signing.cjs');
+const signing = signingOptions(process.env.WELLCUM_MAC_SIGNING);
 
 module.exports = {
   appId: 'io.github.nmgorovenko.wellcumback',
@@ -23,7 +25,7 @@ module.exports = {
   ],
   asar: true,
   npmRebuild: false,
-  forceCodeSigning: false,
+  forceCodeSigning: signing.signed,
   artifactName: 'Wellcum-back-${version}-${os}-${arch}.${ext}',
   mac: {
     extraResources: [
@@ -37,12 +39,9 @@ module.exports = {
     ],
     target: ['zip', 'dmg'],
     category: 'public.app-category.games',
-    // Ad-hoc signature requires no credentials; this is not Developer ID/notarization.
-    identity: '-',
-    hardenedRuntime: false,
-    notarize: false,
+    ...signing.mac,
   },
-  dmg: { sign: false },
+  dmg: { sign: signing.signed },
   win: {
     extraResources: [
       {

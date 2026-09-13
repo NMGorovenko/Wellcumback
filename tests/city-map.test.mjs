@@ -1,3 +1,4 @@
+import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -124,10 +125,14 @@ void test('both bridges are traversable in either direction at full speed, while
         x: bridge.x,
         z: bridge.z - direction * 24,
         heading: direction > 0 ? Math.PI : 0,
-        vz: direction * 18,
-        speed: 18,
+        vz: direction * CITY_TOP_SPEED,
+        speed: CITY_TOP_SPEED,
       };
-      for (let frame = 0; frame < 160; frame++) {
+      for (
+        let frame = 0;
+        frame < 160 && (state.z - bridge.z) * direction < 21;
+        frame++
+      ) {
         tickCity(state, 1 / 60, new Set(['KeyW']));
         assert.equal(cityCarBlocked(state.x, state.z, state.heading), false);
       }
@@ -284,4 +289,30 @@ void test('larger city statics are batched and repeated driving updates allocate
     kit.dispose();
     globalThis.document = previous;
   }
+});
+
+void test('network preserves high-speed gearbox state and rejects forged gear or velocity values', () => {
+  const state = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
+  for (let i = 0; i < 240; i++) tickCity(state, 1 / 60, new Set(['KeyW']));
+  const packet = (next) =>
+    JSON.stringify({
+      type: 'city',
+      version: 2,
+      seq: 1,
+      epoch: 0,
+      driver: 'host',
+      state: next,
+    });
+  const parsed = readPeerPacket(packet(state));
+  assert.equal(parsed.state.speed, CITY_TOP_SPEED);
+  assert.deepEqual(parsed.state.powertrain, state.powertrain);
+  assert.equal(parsed.state.throttle, 1);
+  for (const invalid of [
+    { speed: CITY_TOP_SPEED + 1 },
+    { vx: CITY_TOP_SPEED + 1 },
+    { powertrain: { ...state.powertrain, gear: 7 } },
+    { powertrain: { ...state.powertrain, rpm: 9000 } },
+    { powertrain: { ...state.powertrain, load: 2 } },
+  ])
+    assert.equal(readPeerPacket(packet({ ...state, ...invalid })), null);
 });

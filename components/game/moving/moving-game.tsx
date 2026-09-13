@@ -310,18 +310,12 @@ export default function MovingGame({
                 Кухня ещё на месте. Балкон тоже. Между ними — всё остальное.
               </p>
               <p>
-                Сначала соберите все вещи в жёлтые сумки. Поднимите вещь,
-                донесите до сумки и удерживайте действие, чтобы аккуратно
-                уложить. Потом застегните молнии и отнесите сумки к двери.
+                Упакуйте вещи в жёлтые сумки и отнесите их к двери. Поднять —
+                нажатие, уложить и застегнуть — удержание.
               </p>
-              <p className="quiet">
-                {view.players === 1
-                  ? 'Ты — Ярик. Настя собирает вещи сама и помогает с переездом.'
-                  : view.players === 3
-                    ? 'Ярик, Настя и Никита. У каждого свои руки и запас сил.'
-                    : 'Первый игрок — Ярик, второй — Настя. У каждого свои руки и запас сил.'}{' '}
-                Силы берегите: диван пока никуда не уехал.
-              </p>
+              {view.players === 1 && (
+                <p className="quiet">Ты — Ярик. Настя помогает сама.</p>
+              )}
               <div className="moving-brief-bindings">
                 {(online
                   ? [movingCrew[Math.max(0, localActor)]]
@@ -339,8 +333,7 @@ export default function MovingGame({
                 ))}
               </div>
               <p className="quiet">
-                Кнопки рядом с героями меняются по ситуации. Стик — ходьба, A/×
-                — действие, L2/LT — опустить.
+                Стик — ходьба · A/× — действие · L2/LT — опустить
               </p>
               <button
                 className="play-button"
@@ -381,9 +374,6 @@ export default function MovingGame({
                   <dd>{Math.round(view.elapsed)} сек.</dd>
                 </div>
               </dl>
-              <p className="quiet">
-                Лифт, машина и новая квартира — следующие главы переезда.
-              </p>
               <button
                 className={`play-button${choice === 0 ? ' pad-selected' : ''}`}
                 onClick={onNext ?? onExit}
@@ -478,10 +468,7 @@ export default function MovingGame({
       >
         <DialogContent className="help-dialog">
           <DialogTitle>Короткий привал</DialogTitle>
-          <DialogDescription>
-            На паузе время и усталость не меняются. Для отдыха в самой комнате
-            сядьте на диван; короткая остановка возвращает силы очень медленно.
-          </DialogDescription>
+          <DialogDescription>Игра на паузе.</DialogDescription>
           <button
             className={`play-button${choice === 0 ? ' pad-selected' : ''}`}
             onClick={() => setPause(false)}

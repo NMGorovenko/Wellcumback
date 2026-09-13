@@ -34,6 +34,8 @@ npm run desktop:mac
 | `npm run desktop:dir`       | Распакованное приложение текущей архитектуры во временном каталоге; точный путь выводит команда |
 | `npm run desktop:mac:arm64` | macOS Apple Silicon: ZIP и DMG                                                                  |
 | `npm run desktop:mac`       | macOS Apple Silicon и Intel: отдельные ZIP и DMG                                                |
+| `npm run desktop:mac:signed` | Обе архитектуры с Developer ID; нотариализация ещё не выполняется |
+| `npm run desktop:mac:notarized` | Developer ID + проверка Apple и прикреплённые билеты для app и DMG |
 | `npm run desktop:win`       | Windows x64: portable EXE и NSIS setup EXE                                                      |
 | `npm run desktop:win:zip`   | Windows x64: ZIP с EXE и его библиотеками                                                       |
 
@@ -62,18 +64,50 @@ node scripts/smoke-desktop.mjs --prepared
 
 Builder запускается с `--projectDir outputs/desktop-app`, где нет production
 Node-зависимостей. Это не позволяет сборщику случайно упаковать web-server или
-зависимости разработки из корня. ASAR содержит только `main.cjs`, `security.cjs`,
-`package.json`, `renderer/index.html` и `renderer/build.json`.
+зависимости разработки из корня. ASAR содержит main/preload, защиту renderer,
+собранный сетевой модуль, схему комнат, лицензии и автономный renderer с manifest.
+Внешний исполняемый helper лежит отдельно в `Contents/Resources/tunnel`.
 
 ## Платформы и подпись
 
-macOS-пакеты собирать на macOS. `arm64` — Apple Silicon, `x64` — Intel. Не нужно
-собирать universal, чтобы предложить обе архитектуры. Сборка использует локальную
-ad-hoc подпись (`identity: "-"`, `hardenedRuntime: false`) без сертификатов и не
-проходит notarization. Это сборка для тестирования: запуск скачанного приложения
-на другом Mac нельзя обещать без проверки. Для обычной публичной дистрибуции с
-Developer ID нужны собственные signing credentials и отдельная настройка
-notarization; конфигурация этого не имитирует. [Подпись macOS](https://www.electron.build/v26/docs/mac/).
+macOS-пакеты собирать на macOS. `arm64` — Apple Silicon, `x64` — Intel. Обычная
+`desktop:mac` сохраняет ad-hoc режим для разработки без сертификатов.
+`desktop:mac:signed` использует действующий Developer ID Application из Keychain,
+включает hardened runtime, безопасную временную метку и JIT entitlement. При
+отсутствии сертификата сборка завершается ошибкой. Если сертификатов несколько,
+`CSC_NAME` позволяет выбрать владельца. Windows при этом не требует Mac-сертификат.
+
+Подписываются Electron, его вложенные компоненты и упакованный `cloudflared`.
+Кэш исходного бинарника Cloudflare не изменяется. В `.build.json` отдельно
+записываются исходный хеш скачанного helper, хеш helper после подписи, Team ID,
+результат нотариализации и хеши конфигурации сборки. Перед копированием архивов
+проверяются подписи приложения и helper, hardened runtime и timestamp.
+
+Developer ID и нотариализация — два отдельных этапа. Для проверки Apple один раз
+сохранить доступ через интерактивную команду на своём Mac:
+
+```sh
+xcrun notarytool store-credentials "wellcum-notary"
+```
+
+Команда запросит данные Apple или API-ключ. Пароль приложения Apple вводится
+локально в терминале; сертификаты, пароли и `.p8`/`.p12` никогда не кладутся в
+репозиторий. Затем:
+
+```sh
+APPLE_KEYCHAIN_PROFILE=wellcum-notary npm run desktop:mac:notarized
+```
+
+Доступ к профилю проверяется до долгой сборки. Отсутствующий профиль не приводит
+к незаметному пропуску нотариализации. Builder отправляет app на проверку и
+прикрепляет билет до создания ZIP; отдельный шаг отправляет готовые DMG, ждёт
+`Accepted`, прикрепляет билет и проверяет Gatekeeper. Контрольные суммы вычисляются
+после всех изменений. ZIP сам по себе не поддерживает stapling — билет находится
+внутри приложения. Без успешной проверки Apple сборка с одной Developer ID
+подписью не объявляется прошедшей Gatekeeper.
+
+[Подпись Electron](https://www.electron.build/mac/),
+[нотариализация Apple](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
 
 Windows EXE тоже не подписаны. Установщик работает для текущего пользователя и
 сохраняет игровые данные при удалении приложения. SmartScreen может показывать

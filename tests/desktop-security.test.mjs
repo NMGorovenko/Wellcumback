@@ -159,6 +159,10 @@ async function fixture(t) {
       path.join(root, 'scripts/build-desktop.mjs'),
       path.join(project, 'scripts/build-desktop.mjs'),
     ),
+    copyFile(
+      path.join(root, 'scripts/verify-mac-signature.mjs'),
+      path.join(project, 'scripts/verify-mac-signature.mjs'),
+    ),
   ]);
   await cp(path.join(root, 'desktop'), path.join(project, 'desktop'), {
     recursive: true,

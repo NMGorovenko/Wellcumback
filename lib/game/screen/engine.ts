@@ -1,3 +1,9 @@
+import {
+  createSpringFlight,
+  advanceSpringFlights,
+  MAX_SPRING_FLIGHTS,
+  type SpringFlight,
+} from './spring-feedback.ts';
 import { announceScreenPhase, screenSay, SCREEN_DIALOGUE } from './dialogue.ts';
 import { freshDrillTools, freshDrillAssistant } from './drill-tools.ts';
 import { CARRY_SHIFT_LIMIT } from './carrier-staging.ts';
@@ -50,6 +56,7 @@ export type GameEvent = {
     | 'jam'
     | 'spring'
     | 'pop'
+    | 'spring-hit'
     | 'throw'
     | 'catch'
     | 'miss'
@@ -115,6 +122,8 @@ export type GameState = DrillingState & {
   awards: { label: string; value: number }[];
   workers: Worker[];
   events: GameEvent[];
+  /** Optional for older saves; transient flights use the authoritative game clock. */
+  springFlights?: SpringFlight[];
   frameStage: 'align' | 'lock';
   frameFit: number;
   frameTwist: number;
@@ -263,6 +272,7 @@ export function freshGame(players = 1): GameState {
     awards: [],
     workers: [worker(2), worker(0), worker(1)],
     events: [],
+    springFlights: [],
     frameStage: 'align',
     frameFit: 0.48,
     frameTwist: -0.3,
@@ -858,7 +868,7 @@ function frameStep(s: GameState, dt: number, input: Input[]) {
           'Щёлк. Пока всё даже по инструкции.',
           'Есть! У нас совпали уже два мнения.',
           'Рамка большая. Место для неё — теоретическое.',
-          'Рамка готова. Полотно пока отдельно, на полу.',
+          'Рамка готова. Давай полотно.',
         ][s.corners - 1];
         screenSay(s, s.message, s.corners % 2 ? 0 : 1, 3.6);
         s.frameStage = 'align';
@@ -916,7 +926,7 @@ function rodsStep(s: GameState, dt: number, input: Input[]) {
       if (s.rods[side] === 1) {
         award(s, 'Спица в кулиске', 100);
         emit(s, 'snap', p, side);
-        s.message = 'Спица внутри полотна. Рамку она пока не касается.';
+        s.message = 'Спица вставлена.';
       }
     } else {
       s.rodPressure[side] = Math.min(
@@ -1092,6 +1102,28 @@ function toolStep(
     }
   }
 }
+function popSpring(
+  s: GameState,
+  worker: number,
+  side: number,
+  clip: number,
+  power: number,
+) {
+  emit(s, 'pop', worker, side, power);
+  const flights = (s.springFlights ??= []);
+  flights.push(
+    createSpringFlight(
+      s.simulation.eventId,
+      side,
+      clip,
+      worker,
+      s.elapsed,
+      power,
+      PHYSICAL_LAYOUT,
+    ),
+  );
+  if (flights.length > MAX_SPRING_FLIGHTS) flights.shift();
+}
 function completeSpring(s: GameState) {
   const { worker: p, side, power } = s.spring,
     w = s.workers[p];
@@ -1106,20 +1138,19 @@ function completeSpring(s: GameState) {
         ? 'Не дотянул. Пружина вернулась домой.'
         : 'Перетянул! Пружина решила уйти первой.',
     );
-    emit(s, 'pop', p, side, power);
+    popSpring(s, p, side, s.clips[side], power);
     return;
   }
   s.clips[side]++;
   if (Math.max(...s.clips) - Math.min(...s.clips) > 1) {
     s.clips[side]--;
     const loose = opposite(side);
-    if (s.clips[loose] > 0) s.clips[loose]--;
-    penalty(
-      s,
-      'ДЗЫНЬ! Противоположный край оторвался. Чередуйте все четыре стороны.',
-      40,
-    );
-    emit(s, 'pop', p, loose, power);
+    const hadSpring = s.clips[loose] > 0;
+    if (hadSpring) s.clips[loose]--;
+    penalty(s, 'ДЗЫНЬ!', 40);
+    // If the opposite edge was empty, the attempted attachment is what flies.
+    const poppedSide = hadSpring ? loose : side;
+    popSpring(s, p, poppedSide, s.clips[poppedSide], power);
   } else {
     if (s.clips[side] > s.simulation.clipBest[side]) {
       s.score += 65;
@@ -1226,8 +1257,8 @@ function tensionStep(
     s.springTarget = (springWindow(s)[0] + springWindow(s)[1]) / 2;
     s.message =
       s.clips[w.side] > Math.min(...s.clips)
-        ? 'Этот край уже туже остальных. Ещё крючок — противоположный отскочит!'
-        : 'Тяни и отпусти в зелёном. Напарник на краю полотна расширяет зелёную зону.';
+        ? 'Тяни и отпусти в зелёной зоне.'
+        : 'Тяни и отпусти в зелёной зоне. Напарник придерживает полотно.';
   }
   for (let i = 0; i < 4; i++)
     s.tension[i] =
@@ -1376,6 +1407,18 @@ function fixedStep(s: GameState, dt: number, keys: Set<string>) {
   else if (s.phase === 'drill') drillStep(s, dt, input);
   else if (s.phase === 'lift') liftStep(s, dt, input);
   else if (s.phase === 'level') levelStep(s, dt, input);
+  const hits = advanceSpringFlights(
+    (s.springFlights ??= []),
+    s.elapsed,
+    dt,
+    s.workers.slice(0, activeWorkers(s)),
+    PHYSICAL_LAYOUT,
+  );
+  for (const flight of hits) {
+    const hit = flight.hit!;
+    emit(s, 'spring-hit', hit.worker, flight.side, flight.clip);
+    screenSay(s, 'Ай, блять, в глаз!', hit.worker as 0 | 1 | 2, 2.6);
+  }
   s.workers.forEach((w, p) => {
     w.actionTime =
       w.animation === previousAnimations[p] ? w.actionTime + dt : 0;

@@ -51,7 +51,7 @@ export const cleanEpisodes = [
   {
     id: 'clean',
     title: 'Рома выходит на уборку',
-    description: 'Рома и безымянные сослуживцы — по числу игроков. Отмой всё.',
+    description: 'Отмой стиралку и следы на полу.',
   },
 ] as const;
 
