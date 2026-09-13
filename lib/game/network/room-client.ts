@@ -421,6 +421,54 @@ export function returnToSavedRoom() {
     /* Unavailable storage leaves the connection untouched. */
   }
 }
+/** A replacement endpoint keeps the member token; it is never a new join. */
+export function updateRoomConnection(code: string, value: RoomConnection) {
+  const next = validateConnection(value);
+  const previous = getRoomConnection();
+  if (
+    !credential ||
+    credential.code !== code ||
+    !previous ||
+    previous.accessKey !== next.accessKey
+  )
+    throw new Error(
+      'Это приглашение другой комнаты. Для возврата нужно обновлённое приглашение прежнего сервера.',
+    );
+  const run = ++generation;
+  clearTimeout(timer);
+  pendingSince = null;
+  latencyMs = 0;
+  readyForInput = false;
+  rejoining = true;
+  needsResync = true;
+  lastInput = '';
+  outbox = [];
+  incoming.clear();
+  if (world) pauseRoomWorld(world);
+  setRoomConnection(next);
+  saveCredential(true);
+  announce({
+    status: 'reconnecting',
+    frozen: true,
+    world,
+    message: 'Возвращаемся на прежнее место…',
+  });
+  void poll(run);
+}
+
+export async function recoverHostedRoom() {
+  const original = credential;
+  const desktop = desktopNetwork();
+  if (!original || original.slot !== 0 || !desktop)
+    throw new Error('Связь восстанавливает приложение создателя комнаты.');
+  const status = await desktop.host('internet');
+  if (status.state !== 'ready' || !status.connection)
+    throw new Error(status.message);
+  if (credential !== original)
+    throw new Error('Комната уже закрыта или изменилась.');
+  updateRoomConnection(original.code, status.connection);
+  return status;
+}
 export async function leaveRoom() {
   const previous = credential;
   try {

@@ -38,6 +38,7 @@ export function createDesktopNetwork(options: {
   schema: string;
   binary: string;
   tempRoot: string;
+  openTunnel?: typeof openTunnel;
 }) {
   let state: DesktopHostStatus = { state: 'offline', message: '' };
   let relay: Awaited<ReturnType<typeof startRelay>> | null = null;
@@ -47,12 +48,17 @@ export function createDesktopNetwork(options: {
   let client: RoomSocket | null = null,
     clientKey = '';
   let stopping: Promise<void> | null = null;
+  let tunnelGeneration = 0;
+  let stopGeneration = 0;
+  const ownedEndpoints = new Set<string>();
   const disconnect = async () => {
     client?.close();
     client = null;
     clientKey = '';
   };
   const release = async () => {
+    tunnelGeneration++;
+    ownedEndpoints.clear();
     await disconnect();
     const oldTunnel = tunnel,
       oldRelay = relay;
@@ -62,6 +68,7 @@ export function createDesktopNetwork(options: {
     await oldRelay?.close();
   };
   const stop = async () => {
+    stopGeneration++;
     if (stopping) return stopping;
     controller?.abort();
     stopping = (async () => {
@@ -87,7 +94,9 @@ export function createDesktopNetwork(options: {
   ): Promise<DesktopHostStatus> => {
     if (mode !== 'internet' && mode !== 'lan')
       throw new Error('Неизвестный режим сервера.');
+    const requestedAt = stopGeneration;
     if (stopping) await stopping;
+    if (requestedAt !== stopGeneration) return status();
     if (
       address !== undefined &&
       (typeof address !== 'string' || mode !== 'lan')
@@ -109,16 +118,18 @@ export function createDesktopNetwork(options: {
             ? 'Выбери адрес сети, к которой подключён друг.'
             : 'Не найдена локальная сеть или VPN. Подключись и попробуй снова.',
       );
-    if (starting || state.state === 'ready') {
+    if (starting || state.state === 'ready' || (relay && state.recoverable)) {
       if (state.mode !== mode || state.selectedAddress !== selectedAddress)
         throw new Error(
           'Сначала закрой текущий сервер, затем выбери другую сеть.',
         );
-      return starting ?? status();
+      if (starting || state.state === 'ready') return starting ?? status();
     }
+    const recovering = !!relay && !!state.recoverable;
     controller = new AbortController();
     const signal = controller.signal;
     state = {
+      ...(recovering ? state : {}),
       state: 'starting',
       mode,
       selectedAddress,
@@ -129,28 +140,42 @@ export function createDesktopNetwork(options: {
     };
     starting = (async () => {
       try {
-        await release();
+        if (!recovering) await release();
         signal.throwIfAborted();
-        relay = await startRelay({
-          schema: options.schema,
-          host: mode === 'lan' ? selectedAddress : '127.0.0.1',
-        });
+        if (!relay)
+          relay = await startRelay({
+            schema: options.schema,
+            host: mode === 'lan' ? selectedAddress : '127.0.0.1',
+          });
         signal.throwIfAborted();
         let connection: RoomConnection;
         if (mode === 'internet') {
-          tunnel = await openTunnel({
+          const currentTunnel = ++tunnelGeneration;
+          const previousTunnel = tunnel;
+          tunnel = null;
+          await previousTunnel?.stop();
+          signal.throwIfAborted();
+          tunnel = await (options.openTunnel ?? openTunnel)({
             ...options,
             port: relay.port,
             accessKey: relay.accessKey,
             signal,
             onExit: () => {
+              if (
+                signal.aborted ||
+                currentTunnel !== tunnelGeneration ||
+                !relay
+              )
+                return;
+              void relay.pauseRooms();
               state = {
+                ...state,
                 state: 'failed',
                 mode,
+                recoverable: true,
                 message:
-                  'Интернет-туннель закрылся. Закрой комнату и создай новое приглашение.',
+                  'Интернет-связь закрылась. Прохождение сохранено на паузе. Восстанови связь и отправь другу обновлённое приглашение.',
               };
-              void release();
             },
           });
           connection = tunnel.connection;
@@ -160,6 +185,7 @@ export function createDesktopNetwork(options: {
             accessKey: relay.accessKey,
           };
         signal.throwIfAborted();
+        ownedEndpoints.add(connection.url);
         state = {
           state: 'ready',
           mode,
@@ -168,14 +194,18 @@ export function createDesktopNetwork(options: {
           localAddresses: addresses,
           message:
             mode === 'internet'
-              ? 'Интернет-сервер готов. Оставь приложение открытым, пока играете.'
+              ? recovering
+                ? 'Связь восстановлена. Скопируй обновлённое приглашение и отправь другу — его место и прохождение сохранены.'
+                : 'Интернет-сервер готов. Оставь приложение открытым, пока играете.'
               : 'Сервер готов. Друг должен быть в той же сети или VPN.',
         };
       } catch (error) {
-        await release();
+        if (!recovering || signal.aborted) await release();
         state = {
+          ...(recovering && !signal.aborted ? state : {}),
           state: 'failed',
           mode,
+          recoverable: recovering && !signal.aborted,
           message: signal.aborted
             ? 'Запуск отменён.'
             : error instanceof Error
@@ -202,8 +232,8 @@ export function createDesktopNetwork(options: {
       const target =
         relay &&
         state.mode === 'internet' &&
-        state.connection?.url === connection.url &&
-        state.connection.accessKey === connection.accessKey
+        ownedEndpoints.has(connection.url) &&
+        relay.accessKey === connection.accessKey
           ? { ...connection, url: `ws://127.0.0.1:${relay.port}/rooms` }
           : connection;
       const key = target.url + target.accessKey;

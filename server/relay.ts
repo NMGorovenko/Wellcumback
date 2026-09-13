@@ -220,6 +220,20 @@ export async function startRelay(options: {
   return {
     port: address.port,
     accessKey,
+    pauseRooms() {
+      enqueue(async () => {
+        if (closing) return;
+        store.sqlite.exec(`UPDATE rooms SET pause_revision = pause_revision + 1,
+          snapshot = CASE WHEN snapshot IS NULL THEN NULL ELSE json_set(snapshot, '$.state.paused', json('true')) END
+          WHERE closed_at IS NULL; DELETE FROM room_frames;`);
+        store.sqlite
+          .prepare(
+            'UPDATE room_members SET last_seen = MIN(last_seen, ?) WHERE slot <> 0',
+          )
+          .run(Date.now() - MEMBER_STALE_MS - 1);
+      });
+      return chain;
+    },
     async close() {
       if (closing) return;
       closing = true;

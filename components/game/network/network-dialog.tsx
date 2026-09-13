@@ -15,6 +15,8 @@ import {
   openRoom,
   savedRoomCode,
   returnToSavedRoom,
+  recoverHostedRoom,
+  updateRoomConnection,
 } from '@/lib/game/network/room-client';
 import { getRoomConnection } from '@/lib/game/network/room-transport';
 import {
@@ -89,6 +91,7 @@ export function NetworkDialog({
   const connection = getRoomConnection();
   const invitation =
     room.code && connection ? makeInvitation(connection, room.code) : room.code;
+  const recoveringServer = !!desktop && room.slot === 0 && !!server.recoverable;
   const attempt = async (operation: () => Promise<unknown>) => {
     if (busy) return;
     setWorking(true);
@@ -332,6 +335,7 @@ export function NetworkDialog({
               <button
                 data-form-control
                 aria-label="Скопировать приглашение"
+                disabled={busy || recoveringServer}
                 onClick={() =>
                   void attempt(async () => {
                     try {
@@ -357,14 +361,73 @@ export function NetworkDialog({
               ref={inviteField}
               aria-label="Приглашение для друга"
               readOnly
-              value={invitation}
+              value={recoveringServer ? '' : invitation}
+              placeholder={
+                recoveringServer
+                  ? 'Приглашение появится после восстановления связи'
+                  : undefined
+              }
               onFocus={(e) => e.currentTarget.select()}
             />
             <p className="quiet">
-              {connection
-                ? 'Отправь другу эту строку. Он вставит её в «Онлайн → Подключиться». Нужна одинаковая версия игры.'
-                : 'Этот код работает на том же сайте. Всем участникам нужен доступ к веб-версии.'}
+              {recoveringServer
+                ? 'Комната сохранена. Восстанови интернет-связь, затем отправь другу обновлённое приглашение.'
+                : connection
+                  ? 'Отправь другу эту строку. Он вставит её в «Онлайн → Подключиться». Нужна одинаковая версия игры.'
+                  : 'Этот код работает на том же сайте. Всем участникам нужен доступ к веб-версии.'}
             </p>
+            {recoveringServer && (
+              <button
+                data-form-control
+                className="play-button"
+                disabled={busy}
+                onClick={() =>
+                  void attempt(async () => setServer(await recoverHostedRoom()))
+                }
+              >
+                {working
+                  ? 'Восстанавливаем связь…'
+                  : 'Восстановить интернет-связь'}
+              </button>
+            )}
+            {connection && room.slot > 0 && (
+              <details className="network-advanced">
+                <summary data-form-control>Обновить приглашение</summary>
+                <p className="quiet">
+                  Если создатель восстановил сервер и прислал новую строку,
+                  вставь её здесь. Ты вернёшься на прежнее место с сохранённым
+                  прохождением.
+                </p>
+                <label className="network-label" htmlFor="replacement-invite">
+                  Новое приглашение той же комнаты
+                </label>
+                <textarea
+                  data-form-control
+                  id="replacement-invite"
+                  value={code}
+                  maxLength={1500}
+                  autoCapitalize="off"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="WCB1:…"
+                  onChange={(e) => setCode(e.target.value)}
+                />
+                <button
+                  data-form-control
+                  className="secondary-button"
+                  disabled={busy || !code.trim()}
+                  onClick={() =>
+                    void attempt(async () => {
+                      const invite = parseInvitation(code);
+                      updateRoomConnection(invite.code, invite);
+                      setCode('');
+                    })
+                  }
+                >
+                  Вернуться по новому приглашению
+                </button>
+              </details>
+            )}
             <div className="room-members">
               {room.roster.map((member) => (
                 <div key={member.id}>
@@ -471,7 +534,9 @@ export function NetworkDialog({
         )}
         {desktop &&
           !room.code &&
-          (server.state === 'starting' || server.state === 'ready') && (
+          (server.state === 'starting' ||
+            server.state === 'ready' ||
+            server.recoverable) && (
             <button
               data-form-control
               className="secondary-button"

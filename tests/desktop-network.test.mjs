@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
+import { WebSocket } from 'ws';
+import { RoomSocket } from '../lib/game/network/room-socket.ts';
+import { freshCity } from '../lib/game/city/engine.ts';
 import {
   createDesktopNetwork,
   localAddresses,
@@ -19,6 +22,265 @@ const manager = () =>
     binary: '/missing/cloudflared',
     tempRoot: os.tmpdir(),
   });
+
+void test('tunnel crash and failed retry retain the relay, pause, credentials and progress until explicit stop', async () => {
+  const launches = [];
+  let failNext = false;
+  const network = createDesktopNetwork({
+    schema,
+    binary: '/unused/provider',
+    tempRoot: os.tmpdir(),
+    async openTunnel(options) {
+      launches.push(options);
+      if (failNext) {
+        failNext = false;
+        throw new Error('Provider unavailable');
+      }
+      return {
+        connection: {
+          url: `wss://tunnel-${launches.length}.example/rooms`,
+          accessKey: options.accessKey,
+        },
+        stop: async () => {},
+      };
+    },
+  });
+  let guest;
+  const hostRequest = (connection, body) =>
+    network.request(connection, { version: ROOM_VERSION, ...body });
+  try {
+    const first = await network.host('internet');
+    const host = (
+      await hostRequest(first.connection, {
+        op: 'create',
+        name: 'Host',
+        capacity: 2,
+      })
+    ).body;
+    guest = new RoomSocket(
+      {
+        url: `ws://127.0.0.1:${launches[0].port}/rooms`,
+        accessKey: first.connection.accessKey,
+      },
+      (url) => new WebSocket(url),
+    );
+    const guestRequest = (body) =>
+      guest.request({ version: ROOM_VERSION, ...body });
+    const joined = (
+      await guestRequest({ op: 'join', code: host.code, name: 'Guest' })
+    ).body;
+    const snapshot = {
+      scene: 'city',
+      epoch: 90,
+      attempt: 72,
+      roles: [1, 0, 2],
+      driver: 1,
+      brief: false,
+      state: { ...freshCity(), x: 42, paused: true },
+    };
+    const saved = await hostRequest(first.connection, {
+      op: 'poll',
+      code: host.code,
+      token: host.token,
+      snapshot,
+      snapshotSeq: 1,
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    snapshot.state.paused = false;
+    assert.equal(
+      (
+        await hostRequest(first.connection, {
+          op: 'poll',
+          code: host.code,
+          token: host.token,
+          snapshot,
+          snapshotSeq: 2,
+        })
+      ).status,
+      200,
+    );
+    await guestRequest({
+      op: 'poll',
+      code: host.code,
+      token: joined.token,
+      frames: [{ seq: 1, epoch: 90, keys: ['KeyW'] }],
+    });
+    launches[0].onExit();
+    assert.equal((await network.status()).recoverable, true);
+    const paused = await hostRequest(first.connection, {
+      op: 'poll',
+      code: host.code,
+      token: host.token,
+    });
+    assert.equal(paused.status, 200);
+    assert.equal(paused.body.snapshot.state.paused, true);
+    assert.equal(paused.body.snapshot.state.x, 42);
+    assert.equal(paused.body.snapshot.attempt, 72);
+    assert.deepEqual(paused.body.snapshot.roles, [1, 0, 2]);
+    assert.equal(paused.body.frozen, true);
+    assert.equal(paused.body.roster.find((p) => p.slot === 1).connected, false);
+    assert.equal(
+      Object.values(paused.body.frames).flat().length,
+      0,
+      'pre-crash held input is discarded',
+    );
+    if (localAddresses().length)
+      await assert.rejects(
+        network.host('lan', localAddresses()[0]),
+        /Сначала закрой/,
+      );
+    failNext = true;
+    assert.equal((await network.host('internet')).recoverable, true);
+    const [restored, concurrent] = await Promise.all([
+      network.host('internet'),
+      network.host('internet'),
+    ]);
+    assert.deepEqual(restored, concurrent);
+    assert.equal(launches.length, 3, 'concurrent retry shares one tunnel');
+    assert.equal(restored.state, 'ready');
+    assert.ok(!restored.recoverable);
+    assert.notEqual(restored.connection.url, first.connection.url);
+    assert.equal(restored.connection.accessKey, first.connection.accessKey);
+    assert.ok(launches.every((item) => item.port === launches[0].port));
+    launches[0].onExit();
+    launches[1].onExit();
+    assert.equal(
+      (await network.status()).state,
+      'ready',
+      'old callbacks cannot break the recovered tunnel',
+    );
+    const returned = await guestRequest({
+      op: 'poll',
+      code: host.code,
+      token: joined.token,
+      rejoin: true,
+    });
+    assert.equal(returned.status, 200);
+    assert.equal(returned.body.slot, 1);
+    assert.equal(returned.body.snapshot.state.paused, true);
+    const next = await hostRequest(restored.connection, {
+      op: 'poll',
+      code: host.code,
+      token: host.token,
+    });
+    assert.equal(next.status, 200);
+    assert.equal(next.body.snapshot.state.x, 42);
+    assert.equal(next.body.snapshot.attempt, 72);
+    assert.deepEqual(next.body.snapshot.roles, [1, 0, 2]);
+    assert.equal(
+      next.body.snapshot.state.paused,
+      true,
+      'recovery never resumes automatically',
+    );
+    assert.equal(
+      (
+        await hostRequest(first.connection, {
+          op: 'poll',
+          code: host.code,
+          token: host.token,
+        })
+      ).status,
+      200,
+      'creator can still poll through the previous alias',
+    );
+    guest.close();
+    await network.stop();
+    launches[2].onExit();
+    assert.equal((await network.status()).state, 'offline');
+    const fresh = await network.host('internet');
+    assert.notEqual(
+      fresh.connection.accessKey,
+      first.connection.accessKey,
+      'only an explicit stop starts a new relay',
+    );
+    const missing = await hostRequest(fresh.connection, {
+      op: 'poll',
+      code: host.code,
+      token: host.token,
+    });
+    assert.equal(missing.body.error.code, 'ROOM_NOT_FOUND');
+  } finally {
+    guest?.close();
+    await network.stop();
+  }
+});
+
+void test('stopping during a tunnel retry cancels the retry and closes the preserved relay', async () => {
+  const launches = [];
+  let resolveRetry, enteredRetry;
+  const entered = new Promise((resolve) => (enteredRetry = resolve));
+  let stopped = 0;
+  const network = createDesktopNetwork({
+    schema,
+    binary: '/unused/provider',
+    tempRoot: os.tmpdir(),
+    async openTunnel(options) {
+      launches.push(options);
+      if (launches.length === 2) {
+        enteredRetry();
+        await new Promise((resolve) => (resolveRetry = resolve));
+      }
+      return {
+        connection: {
+          url: 'wss://retry.example/rooms',
+          accessKey: options.accessKey,
+        },
+        stop: async () => {
+          stopped++;
+        },
+      };
+    },
+  });
+  try {
+    await network.host('internet');
+    launches[0].onExit();
+    const retry = network.host('internet');
+    await entered;
+    const stopping = network.stop();
+    resolveRetry();
+    assert.equal((await retry).state, 'failed');
+    await stopping;
+    assert.equal((await network.status()).state, 'offline');
+    assert.equal(stopped, 2, 'even a late provider result is closed');
+    launches[1].onExit();
+    assert.equal((await network.status()).state, 'offline');
+  } finally {
+    await network.stop();
+  }
+});
+
+void test('a final stop cancels a host call waiting for an earlier stop', async () => {
+  let finishStop, enteredStop;
+  const entered = new Promise((resolve) => (enteredStop = resolve));
+  let launches = 0;
+  const network = createDesktopNetwork({
+    schema,
+    binary: '/unused/provider',
+    tempRoot: os.tmpdir(),
+    async openTunnel(options) {
+      launches++;
+      return {
+        connection: {
+          url: 'wss://cancel.example/rooms',
+          accessKey: options.accessKey,
+        },
+        async stop() {
+          enteredStop();
+          await new Promise((resolve) => (finishStop = resolve));
+        },
+      };
+    },
+  });
+  await network.host('internet');
+  const stopping = network.stop();
+  await entered;
+  const restarting = network.host('internet');
+  const finalStop = network.stop();
+  finishStop();
+  await Promise.all([stopping, restarting, finalStop]);
+  assert.equal((await network.status()).state, 'offline');
+  assert.equal(launches, 1, 'a cancelled pending start must not open a tunnel');
+});
 
 void test(
   'parallel desktop host and immediate stop share one lifecycle',

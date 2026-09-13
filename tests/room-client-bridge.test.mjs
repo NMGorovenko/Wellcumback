@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 import { handleRoomRequest, MEMBER_STALE_MS } from '../lib/server/rooms.ts';
 import { freshCity } from '../lib/game/city/engine.ts';
 import { freshGame } from '../lib/game/screen/engine.ts';
+import { freshClean } from '../lib/game/clean/engine.ts';
+import { freshMoving } from '../lib/game/moving/engine.ts';
+import { getRoomConnection } from '../lib/game/network/room-transport.ts';
 import * as client from '../lib/game/network/room-client.ts';
 import * as bridge from '../lib/game/network/room-game.ts';
 
@@ -151,6 +154,199 @@ async function cleanup() {
   await client.leaveRoom();
   Object.assign(globalThis, original);
 }
+
+const oldEndpoint = {
+  url: 'wss://old.example/rooms',
+  accessKey: 'a'.repeat(64),
+};
+const newEndpoint = { ...oldEndpoint, url: 'wss://new.example/rooms' };
+function desktopTransport() {
+  const calls = [];
+  globalThis.window = {
+    wellcumNetwork: {
+      disconnect: async () => {},
+      request: async (connection, payload) => {
+        calls.push({ connection, payload: structuredClone(payload) });
+        return api(payload);
+      },
+    },
+  };
+  return calls;
+}
+
+for (const [scene, fresh] of Object.entries({
+  city: freshCity,
+  screen: freshGame,
+  clean: freshClean,
+  moving: freshMoving,
+}))
+  void test(`${scene}: updated invitation restores the same guest and progress, without joining or replaying old input`, async () => {
+    setup();
+    const calls = desktopTransport();
+    try {
+      const host = (await api({ op: 'create', name: 'Host', capacity: 2 }))
+        .body;
+      await client.openRoom('Guest', 2, host.code, oldEndpoint);
+      await drain();
+      const snapshot = {
+        scene,
+        epoch: 10,
+        attempt: 7,
+        roles: [1, 0, 2],
+        driver: 1,
+        brief: false,
+        state: { ...fresh(2), elapsed: 143, paused: true },
+      };
+      assert.equal(
+        (
+          await api({
+            op: 'poll',
+            code: host.code,
+            token: host.token,
+            snapshot,
+            snapshotSeq: 1,
+          })
+        ).status,
+        200,
+      );
+      snapshot.state.paused = false;
+      await api({
+        op: 'poll',
+        code: host.code,
+        token: host.token,
+        snapshot,
+        snapshotSeq: 2,
+      });
+      await nextPoll();
+      const before = JSON.parse(sessionStorage.getItem('wellcum-room-v5'));
+      client.captureRoomInput(new Set());
+      await nextPoll();
+      client.captureRoomInput(new Set(['KeyW']), undefined, {
+        kind: 'restart',
+      });
+      const index = calls.length;
+      client.updateRoomConnection(host.code, newEndpoint);
+      assert.equal(client.roomWorld().state.paused, true);
+      await drain();
+      const request = calls[index];
+      assert.deepEqual(request.connection, newEndpoint);
+      assert.equal(request.payload.op, 'poll');
+      assert.equal(request.payload.token, before.token);
+      assert.equal(request.payload.rejoin, true);
+      assert.deepEqual(request.payload.frames, []);
+      assert.equal(client.roomSnapshot().slot, before.slot);
+      assert.equal(client.roomWorld().scene, scene);
+      assert.equal(client.roomWorld().attempt, 7);
+      assert.equal(client.roomWorld().state.elapsed, 143);
+      assert.equal(client.roomWorld().state.paused, true);
+      assert.deepEqual(client.roomWorld().roles, [1, 0, 2]);
+      const saved = JSON.parse(localStorage.getItem('wellcum-room-return-v5'));
+      assert.equal(saved.token, before.token);
+      assert.equal(saved.slot, before.slot);
+      assert.deepEqual(saved.connection, newEndpoint);
+      assert.equal(
+        calls.slice(index).some((call) => call.payload.op === 'join'),
+        false,
+      );
+      const unchanged = calls.length;
+      assert.throws(
+        () => client.updateRoomConnection('ZZZZZZZZ', newEndpoint),
+        /другой комнаты/,
+      );
+      assert.throws(
+        () =>
+          client.updateRoomConnection(host.code, {
+            ...newEndpoint,
+            accessKey: 'b'.repeat(64),
+          }),
+        /другой комнаты/,
+      );
+      assert.throws(
+        () =>
+          client.updateRoomConnection(host.code, {
+            ...newEndpoint,
+            url: 'ws://public.example/rooms',
+          }),
+        /защищённым/,
+      );
+      assert.equal(
+        calls.length,
+        unchanged,
+        'bad invitations never send the saved member token',
+      );
+      assert.deepEqual(getRoomConnection(), newEndpoint);
+    } finally {
+      await cleanup();
+    }
+  });
+
+void test('late old-endpoint responses cannot replace the recovered world or create a second poll loop', async () => {
+  setup();
+  desktopTransport();
+  try {
+    await client.openRoom('Host', 2, undefined, oldEndpoint);
+    await drain();
+    const code = client.roomSnapshot().code;
+    await api({ op: 'join', code, name: 'Guest' });
+    client.publishRoomWorld({
+      scene: 'city',
+      epoch: 20,
+      attempt: 12,
+      brief: false,
+      state: { ...freshCity(), x: 42 },
+    });
+    await nextPoll();
+    const previous = window.wellcumNetwork.request.bind(window.wellcumNetwork);
+    let releaseOld, beganOld;
+    const began = new Promise((resolve) => (beganOld = resolve));
+    window.wellcumNetwork.request = async (connection, payload) => {
+      if (connection.url === oldEndpoint.url && payload.op === 'poll') {
+        const reply = await previous(connection, payload);
+        beganOld();
+        await new Promise((resolve) => (releaseOld = resolve));
+        reply.body.snapshot.state.x = 999;
+        return reply;
+      }
+      return previous(connection, payload);
+    };
+    timers.shift().fn();
+    await began;
+    client.updateRoomConnection(code, newEndpoint);
+    await drain();
+    const epoch = client.roomWorld().epoch;
+    releaseOld();
+    await new Promise((resolve) => original.setTimeout(resolve, 10));
+    assert.equal(client.roomWorld().state.x, 42);
+    assert.equal(client.roomWorld().epoch, epoch);
+    assert.equal(client.roomWorld().attempt, 12);
+    assert.equal(client.roomWorld().state.paused, true);
+    assert.equal(client.roomSnapshot().status, 'connected');
+    assert.equal(timers.length, 1, 'only the new transport schedules polling');
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('late desktop recovery cannot attach its endpoint after the creator leaves the room', async () => {
+  setup();
+  desktopTransport();
+  try {
+    await client.openRoom('Host', 2, undefined, oldEndpoint);
+    await drain();
+    let finishRecovery;
+    window.wellcumNetwork.host = () =>
+      new Promise((resolve) => (finishRecovery = resolve));
+    const recovery = client.recoverHostedRoom();
+    const rejected = assert.rejects(recovery, /Комната уже закрыта/);
+    await client.leaveRoom();
+    finishRecovery({ state: 'ready', connection: newEndpoint, message: '' });
+    await rejected;
+    assert.equal(client.roomActive(), false);
+    assert.equal(getRoomConnection(), null);
+  } finally {
+    await cleanup();
+  }
+});
 
 void test('host reload first polls without a null snapshot and restores the server world before city RAF initialization', async () => {
   setup();

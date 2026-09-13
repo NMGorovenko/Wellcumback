@@ -10,6 +10,7 @@ export type DesktopHostStatus = {
   localAddresses?: string[];
   localInterfaces?: LocalInterface[];
   selectedAddress?: string;
+  recoverable?: boolean;
   message: string;
 };
 export interface DesktopNetwork {
