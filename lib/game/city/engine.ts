@@ -1,3 +1,9 @@
+import {
+  vehiclePose,
+  rememberVehicleStep,
+  setVehicleRemainder,
+  resetVehiclePresentation,
+} from './vehicle-presentation.ts';
 import { stepCar } from './car-physics.ts';
 import { freshPowertrain, type PowertrainState } from './powertrain.ts';
 import { resolveDrive, type DriveAxes } from '../input/drive.ts';
@@ -112,6 +118,7 @@ export function cityCarBlocked(x: number, z: number, heading: number) {
   );
 }
 export function resetCityCar(s: CityState) {
+  resetVehiclePresentation(s);
   Object.assign(s, {
     x: CITY_SPAWN.x,
     z: CITY_SPAWN.z,
@@ -188,10 +195,17 @@ export function tickCity(
   keys: ReadonlySet<string>,
   axes?: DriveAxes,
 ) {
-  if (s.paused || !Number.isFinite(dt) || dt <= 0) return;
+  if (s.paused) {
+    resetVehiclePresentation(s);
+    return;
+  }
+  if (!Number.isFinite(dt) || dt <= 0) return;
   s.accumulator += Math.min(dt, 0.1);
   while (s.accumulator + 1e-9 >= STEP) {
+    const previous = vehiclePose(s);
     step(s, keys, axes);
+    rememberVehicleStep(s, previous, vehiclePose(s), STEP);
     s.accumulator = Math.max(0, s.accumulator - STEP);
   }
+  setVehicleRemainder(s, s.accumulator);
 }

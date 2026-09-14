@@ -1,4 +1,5 @@
 'use client';
+import { presentedVehicle } from '@/lib/game/city/vehicle-presentation';
 import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
@@ -176,10 +177,10 @@ export default function CityScene({
     const currentLook = look.clone(),
       currentOutward = outward.clone();
     let cameraHeading = game.current.heading;
-    const localView = () =>
+    const localView = (state = game.current) =>
       mode.current === 'faces'
-        ? cityFaceCamera(game.current, aspect)
-        : cityDriveCamera({ ...game.current, heading: cameraHeading }, aspect);
+        ? cityFaceCamera(state, aspect)
+        : cityDriveCamera({ ...state, heading: cameraHeading }, aspect);
     let aspect = 1,
       viewportHeight = 1,
       overviewHalfHeight = 25,
@@ -222,7 +223,7 @@ export default function CityScene({
     resize();
     let lastCameraTime = performance.now();
     const render = (now: number) => {
-      const s = game.current,
+      const s = presentedVehicle(game.current).car,
         dt = s.paused ? 0 : Math.min((now - last) / 1000, 0.05);
       last = now;
       if (s.elapsed < lastElapsed) {
@@ -234,7 +235,7 @@ export default function CityScene({
       const cameraDelta = Math.min((now - lastCameraTime) / 1000, 0.05);
       lastCameraTime = now;
       cameraHeading = followCityHeading(cameraHeading, s.heading, cameraDelta);
-      const driveView = localView();
+      const driveView = localView(s);
       const smoothCamera = 1 - Math.exp(-cameraDelta * 8);
       const desiredLook =
         mode.current !== 'map'

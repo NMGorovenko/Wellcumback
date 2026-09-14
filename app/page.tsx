@@ -35,12 +35,9 @@ import MovingScene from '@/components/game/moving/scene';
 import { freshMoving } from '@/lib/game/moving/engine';
 import { ControlSettings } from '@/components/game/input/control-settings';
 import { NetworkDialog } from '@/components/game/network/network-dialog';
+import { RoomStatus } from '@/components/game/network/room-status';
 import { useRoom } from '@/hooks/use-room';
-import {
-  initializeRoomCity,
-  roomCommand,
-  roomRoleName,
-} from '@/lib/game/network/room-game';
+import { initializeRoomCity, roomCommand } from '@/lib/game/network/room-game';
 import ScreenGame from '@/components/game/screen/screen-game';
 import CleanGame from '@/components/game/clean/clean-game';
 import { useGameFullscreen } from '@/hooks/use-game-fullscreen';
@@ -300,21 +297,7 @@ export default function Home() {
           </button>
         </div>
       </header>
-      {online && (
-        <div className="room-strip">
-          <button onClick={() => setNetworkOpen(true)}>
-            Комната {room.code} ·{' '}
-            {room.roster.filter((p) => p.connected).length}/{room.capacity}
-          </button>
-          <span>
-            {room.message ||
-              (active
-                ? `Ты — ${roomRoleName(room.world, room.slot)}`
-                : `Руль: ${room.roster.find((p) => p.slot === (room.world?.driver ?? 0))?.name ?? 'ведущий'}`)}
-          </span>
-          <small>{room.ping ? `${room.ping} мс` : 'Соединяемся…'}</small>
-        </div>
-      )}
+      <RoomStatus room={room} onOpen={() => setNetworkOpen(true)} />
       {online && !room.world ? (
         <div className="room-recovery" aria-live="polite">
           <span>ИСТОРИЯ ПОДОЖДЁТ</span>

@@ -293,3 +293,22 @@ button:active:not(:disabled) {
 .race-lobby[data-split=true] .race-lobby-shared{padding:12px 20px}.race-lobby[data-split=true] .race-lobby-shared header button{padding:5px}.race-lobby[data-split=true] .race-lobby-shared h1{font-size:20px;margin:4px 0 10px}.race-lobby[data-split=true] .race-lobby-shared .race-choice-row{margin-bottom:8px}.race-lobby[data-split=true] .race-lobby-shared .race-options{margin:8px 0 0}.race-lobby[data-split=true] .race-lobby-shared .race-options button{padding:5px 9px}
 .race-lobby[data-split=true] .race-garage section{padding:12px 14px}.race-lobby[data-split=true] .race-player-heading{margin-bottom:6px}.race-lobby[data-split=true] .race-garage .race-choice-row{margin:7px 0}.race-lobby[data-split=true] .race-garage .race-choice-row button{padding:9px 6px}.race-lobby[data-split=true] .race-garage section>small{min-height:16px}.race-lobby[data-split=true] .race-garage-input{margin-top:10px}
 @media(max-height:760px) and (min-width:851px){.race-lobby-layer{padding:20px}.race-lobby[data-split=false]{padding:20px}.race-lobby[data-split=false] h1{margin:12px 0 18px}.race-lobby[data-split=false] .race-garage{padding:12px 0}}
+
+/* Room presence gets one thin row above the per-player race standings. */
+.play-viewport:has(.race-stage):has(.room-strip){--race-online-top:56px}
+.play-viewport:has(.race-stage) .room-strip{top:10px;right:96px;left:auto;width:max-content;max-width:min(440px,calc(100% - 160px));flex-wrap:nowrap;font-size:11px}
+.play-viewport:has(.race-stage) .room-strip-peers{flex:1 1 auto}
+.play-viewport:has(.race-stage) .room-strip-peers li{flex:1 1 auto}
+.play-viewport:has(.race-stage) .room-notice:not(:empty){position:absolute;top:calc(100% + 5px);right:0;width:max-content;max-width:min(440px,calc(100vw - 28px));padding:6px 9px;border-radius:6px;background:#172820ed;box-shadow:0 2px 8px #10201d40}
+.play-viewport:has(.race-stage):has(.room-notice:not(:empty)){--race-online-top:90px}
+.play-viewport:has(.room-strip) .race-ranking{top:var(--race-online-top)}
+.play-viewport:has(.room-strip) .race-player-view:not([data-views="3"]) .race-lap{top:var(--race-online-top)}
+.play-viewport:has(.room-strip) .race-corner-controls{top:calc(var(--race-online-top) + 66px)}
+.play-viewport:has(.room-strip) .race-lobby-layer{padding-top:54px}
+.play-viewport:has(.race-stage):has(.room-strip) .fps-meter{left:64px;transform:none}
+@media(max-width:650px){
+  .play-viewport:has(.race-stage):has(.room-strip){--race-online-top:94px}
+  .play-viewport:has(.race-stage) .room-strip{top:54px;right:14px;left:14px;max-width:none;width:auto}
+  .play-viewport:has(.race-stage):has(.room-notice:not(:empty)){--race-online-top:128px}
+  .play-viewport:has(.room-strip) .race-lobby-layer{padding-top:96px}
+}

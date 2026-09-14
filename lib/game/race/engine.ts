@@ -1,3 +1,9 @@
+import {
+  vehiclePose,
+  rememberVehicleStep,
+  setVehicleRemainder,
+  resetVehiclePresentation,
+} from '../city/vehicle-presentation.ts';
 import { cityCarBlocked, freshCity } from '../city/engine.ts';
 import { stepCar } from '../city/car-physics.ts';
 import { crossedGate, raceBoundaryHalfWidth, type Course } from './course.ts';
@@ -468,10 +474,31 @@ export function tickRace(
   inputs: ReadonlyMap<string, RaceInput>,
   course: Course,
 ) {
-  if (s.paused || !Number.isFinite(dt) || dt <= 0) return;
+  if (s.paused) {
+    s.racers.forEach((r) => resetVehiclePresentation(r.car));
+    return;
+  }
+  if (!Number.isFinite(dt) || dt <= 0) return;
   s.accumulator += Math.min(0.1, dt);
   while (s.accumulator + 1e-9 >= RACE_STEP && !s.paused) {
+    const previous = s.racers.map((r) => ({
+      pose: vehiclePose(r.car, r.elevation, r.pitch),
+      respawns: r.respawns,
+    }));
+    const phase = s.phase;
     step(s, RACE_STEP, inputs, course);
+    s.racers.forEach((r, i) =>
+      rememberVehicleStep(
+        r.car,
+        previous[i].pose,
+        vehiclePose(r.car, r.elevation, r.pitch),
+        RACE_STEP,
+        phase !== 'racing' ||
+          s.phase !== 'racing' ||
+          r.respawns !== previous[i].respawns,
+      ),
+    );
     s.accumulator = Math.max(0, s.accumulator - RACE_STEP);
   }
+  s.racers.forEach((r) => setVehicleRemainder(r.car, s.accumulator, s.paused));
 }

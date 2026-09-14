@@ -21,6 +21,11 @@ function signingOptions(mode = 'adhoc', env = process.env) {
       notarize: notarized,
       strictVerify: true,
       preAutoEntitlements: false,
+      // Locale DataPacks are sealed resources of Electron Framework, not code.
+      // Cover the version directory and the two framework symlink paths only.
+      signIgnore: [
+        '/Contents/Frameworks/Electron Framework\\.framework/(?:Versions/(?:A|Current)/)?Resources/[A-Za-z0-9_-]+\\.lproj/locale\\.pak$',
+      ],
       ...(signed
         ? {
             entitlements: path.join(__dirname, 'entitlements.mac.plist'),

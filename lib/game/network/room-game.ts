@@ -1,3 +1,8 @@
+import {
+  vehiclePose,
+  rememberVehicleStep,
+  setVehicleRemainder,
+} from '../city/vehicle-presentation.ts';
 import { newRaceWorld, applyRaceCommand, syncRaceLobby } from './room-race.ts';
 import { tickRace } from '../race/engine.ts';
 import { raceCourse } from '../race/course.ts';
@@ -540,6 +545,7 @@ export function tickRoomCity(
     const selected =
       inputArmed && roomFresh() ? new Set(input) : new Set<string>();
     selected.delete('KeyE'); // Story transitions are an explicit room command.
+    const previous = vehiclePose(s);
     tickCity(
       s,
       HOST_STEP,
@@ -552,11 +558,13 @@ export function tickRoomCity(
     );
     s.interaction = null;
     Object.assign(state, s);
+    rememberVehicleStep(state, previous, vehiclePose(s), HOST_STEP);
     publishRoomWorld({
       ...current,
       state: s as unknown as Record<string, unknown>,
     });
   });
+  setVehicleRemainder(state, hostAccumulator, state.paused);
 }
 export function tickRoomScreen(
   state: GameState,
@@ -767,9 +775,30 @@ export function tickRoomRace(
           : neutralRaceInput(),
       );
     }
+    const previous = s.racers.map((r) => ({
+      pose: vehiclePose(r.car, r.elevation, r.pitch),
+      respawns: r.respawns,
+    }));
+    const phase = s.phase;
     if (raceStartConfirmed())
       tickRace(s, HOST_STEP, inputs, raceCourse(s.trackId));
+    // Two 120 Hz race steps may arrive as one 60 Hz host batch. Interpolate
+    // the complete batch, then advance using the host's fractional remainder.
+    s.racers.forEach((r, i) =>
+      rememberVehicleStep(
+        r.car,
+        previous[i].pose,
+        vehiclePose(r.car, r.elevation, r.pitch),
+        HOST_STEP,
+        phase !== 'racing' ||
+          s.phase !== 'racing' ||
+          r.respawns !== previous[i].respawns,
+      ),
+    );
     Object.assign(state, s);
     publishRoomWorld({ ...current, brief: s.phase === 'lobby' });
   });
+  state.racers.forEach((r) =>
+    setVehicleRemainder(r.car, hostAccumulator, state.paused),
+  );
 }

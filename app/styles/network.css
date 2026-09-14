@@ -125,16 +125,72 @@
 .room-strip {
   display: flex;
   align-items: center;
-  gap: 14px;
-  min-height: 34px;
-  padding: 5px 10px;
-  font-size: 13px;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  min-height: 30px;
+  padding: 6px 9px;
+  font-size: 11px;
   background: #263529;
 }
-.room-strip small {
+.room-strip > button {
+  flex: none;
+  padding: 0;
+  font-size: inherit;
+}
+.room-strip-peers {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.room-strip-peers li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: #d9e3d0;
+}
+.room-strip-peers i {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #c3dc96;
+}
+.room-strip-peers [data-state='disconnected'] i {
+  background: #f0a383;
+}
+.room-strip-peers [data-state='unknown'] i {
+  background: #a3aaa0;
+}
+.room-strip-peers span {
+  max-width: 82px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.room-strip > .room-strip-ping {
   margin-left: auto;
   color: #b7c5ae;
   white-space: nowrap;
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.room-notice {
+  flex: 1 0 100%;
+  color: #ffd0a7;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.room-notice:empty {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 @media (max-width: 650px) {
   .room-strip {

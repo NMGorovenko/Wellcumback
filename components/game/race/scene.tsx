@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
+import { presentedVehicle } from '../../../lib/game/city/vehicle-presentation';
 import { RenderKit } from '../world/render-kit';
 import { createCityEnvironment } from '../city/environment';
 import { createMustang } from '../city/mustang';
@@ -167,7 +168,17 @@ export default function RaceScene({
     const animate = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const state = game.current;
+      const actual = game.current;
+      const state: RaceState = {
+        ...actual,
+        racers: actual.racers.map((r) => {
+          if (actual.phase !== 'racing') return r;
+          return {
+            ...r,
+            ...presentedVehicle(r.car, r.elevation, r.pitch, actual.paused),
+          };
+        }),
+      };
       // Animate wheels/heads exactly once. The viewport passes only read models.
       for (const item of models) {
         const r = state.racers.find((r) => r.id === item.id);

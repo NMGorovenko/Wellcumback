@@ -1,3 +1,4 @@
+import { presentedVehicle } from '../lib/game/city/vehicle-presentation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -1221,6 +1222,99 @@ void test('three devices own nine independent cars through real SQL, authenticat
     );
     assert.equal(state().racers.length, 9);
     assert.deepEqual(state(), paused);
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('host city presentation follows the outer fixed clock at144Hz without serializing history', async () => {
+  setup();
+  try {
+    await client.openRoom('Host', 3);
+    await drain();
+    const car = freshCity();
+    Object.assign(car, {
+      x: -80,
+      z: -54,
+      heading: Math.PI / 2,
+      vx: 32,
+      vz: 0,
+      speed: 32,
+    });
+    Object.assign(car.powertrain, { gear: 6, rpm: 4300, shiftReadyAt: 1e6 });
+    client.publishRoomWorld({
+      scene: 'city',
+      epoch: 200,
+      state: car,
+      brief: false,
+    });
+    await nextPoll();
+    const view = structuredClone(car);
+    let previous;
+    for (let frame = 0; frame < 100; frame++) {
+      now += 1000 / 144;
+      bridge.tickRoomCity(view, 1 / 144, new Set());
+      const saved = JSON.stringify(client.roomWorld());
+      const visual = presentedVehicle(view).car;
+      assert.equal(JSON.stringify(client.roomWorld()), saved);
+      if (frame > 8)
+        assert.ok(
+          visual.x > previous,
+          'healthy host must not repeat its city pose between outer steps',
+        );
+      previous = visual.x;
+    }
+    assert.equal(view.bumps, 0);
+    view.paused = true;
+    assert.equal(
+      presentedVehicle(view).car.x,
+      view.x,
+      'pause immediately shows the saved point',
+    );
+  } finally {
+    await cleanup();
+  }
+});
+void test('host race presentation interpolates whole60Hz batches, not only their last120Hz substep', async () => {
+  setup();
+  try {
+    await acceptedHostRace(2);
+    const s = state(),
+      car = s.racers[0].car;
+    Object.assign(car, {
+      x: -80,
+      z: -54,
+      heading: Math.PI / 2,
+      vx: 32,
+      vz: 0,
+      speed: 32,
+    });
+    Object.assign(car.powertrain, { gear: 6, rpm: 4300, shiftReadyAt: 1e6 });
+    let previous;
+    const deltas = [];
+    for (let frame = 0; frame < 100; frame++) {
+      step(neutral(2), 1 / 144);
+      const r = state().racers[0],
+        saved = JSON.stringify(state());
+      const visual = presentedVehicle(
+        r.car,
+        r.elevation,
+        r.pitch,
+        state().paused,
+      ).car;
+      assert.equal(JSON.stringify(state()), saved);
+      if (frame > 8) {
+        const delta = visual.x - previous;
+        assert.ok(delta > 0, 'no repeated outer-batch pose');
+        deltas.push(delta);
+      }
+      previous = visual.x;
+    }
+    for (let i = 1; i < deltas.length; i++)
+      assert.ok(
+        Math.abs(deltas[i] - deltas[i - 1]) < 0.005,
+        'no alternating one-substep/three-substep jump at batch boundary',
+      );
   } finally {
     await cleanup();
   }
