@@ -2,12 +2,14 @@ import {
   CONTROL_STORAGE_KEY,
   defaultControlSettings,
   loadControlSettings,
+  isPadGlyphPreference,
   parseControlSettings,
   rebindControl,
   saveControlSettings,
   type CanonicalKey,
   type ControlSettings,
   type InputProfile,
+  type PadGlyphPreference,
 } from './settings.ts';
 
 const initial = {
@@ -67,6 +69,26 @@ export function setControlBinding(
   const result = rebindControl(snapshot.settings, canonical, physical, profile);
   if (result.ok) update(result.settings);
   return result;
+}
+/** Preferences follow local players, independently of browser pad indexes. */
+export function setPadGlyphPreference(
+  player: number,
+  preference: PadGlyphPreference,
+): boolean {
+  if (
+    !Number.isInteger(player) ||
+    player < 0 ||
+    player >= 3 ||
+    !isPadGlyphPreference(preference)
+  )
+    return false;
+  if (snapshot.settings.padGlyphs[player] === preference) return true;
+  const padGlyphs = [
+    ...snapshot.settings.padGlyphs,
+  ] as ControlSettings['padGlyphs'];
+  padGlyphs[player] = preference;
+  update({ ...snapshot.settings, padGlyphs });
+  return true;
 }
 export const resetControlSettings = () => update(defaultControlSettings());
 export const setWorldPrompts = (showWorldPrompts: boolean) =>

@@ -115,8 +115,18 @@ void test('real WebSocket clients create, join, exchange all scene snapshots and
       [['KeyW'], []],
     );
     guest.close();
-    await new Promise((r) => setTimeout(r, 50));
-    assert.equal((await hp()).body.frozen, true);
+    // Closing the peer is asynchronous. Observe the relay's close handler;
+    // the 2s deadline stays below the 10s presence timeout so normal expiry
+    // cannot substitute for the WebSocket disconnect notification.
+    const closeDeadline = Date.now() + 2000;
+    let disconnected;
+    do {
+      disconnected = await hp();
+      assert.equal(disconnected.status, 200);
+      if (disconnected.body.frozen) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    } while (Date.now() < closeDeadline);
+    assert.equal(disconnected.body.frozen, true);
     const returned = await gp();
     assert.equal(returned.body.slot, 1);
     assert.equal(returned.body.resumed, true);

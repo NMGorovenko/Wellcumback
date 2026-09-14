@@ -15,6 +15,9 @@ import {
   ArrowLeft,
   Maximize,
 } from 'lucide-react';
+import { flushSync } from 'react-dom';
+import { RaceStartLights } from './start-lights';
+import { raceStartSnapshotKey } from '@/lib/game/race/start-signal';
 import { useGameLoop } from '@/hooks/use-game-loop';
 import { useControlSettings } from '@/hooks/use-control-settings';
 import { useCityAudio } from '@/hooks/use-city-audio';
@@ -164,7 +167,7 @@ export default function RaceGame({
   const localCount = Math.max(
     1,
     view.racers.filter((r) => r.memberSlot === slot).length,
-  ) as 1 | 2;
+  ) as 1 | 2 | 3;
   useEffect(() => {
     onLocalPlayers?.(localCount);
   }, [localCount, onLocalPlayers]);
@@ -212,6 +215,12 @@ export default function RaceGame({
       refresh();
     }
   };
+  const lastSnapshotSignal = useRef(raceStartSnapshotKey(view));
+  const garageCursors = useRef<(HTMLButtonElement | null)[]>([
+    null,
+    null,
+    null,
+  ]);
   const menuEnabled =
     view.phase === 'lobby' || view.phase === 'result' || view.paused;
   const menuItems = () =>
@@ -220,6 +229,33 @@ export default function RaceGame({
         'button:not(:disabled)',
       ) ?? [],
     );
+  const splitGarage = view.phase === 'lobby' && localCount > 1;
+  const personalItems = (player: number) =>
+    menuItems().filter((button) => {
+      const owner =
+        button.closest<HTMLElement>('[data-menu-player]')?.dataset.menuPlayer;
+      return owner === String(player) || (owner === undefined && player === 0);
+    });
+  const cursorFor = (player: number) => {
+    const items = personalItems(player),
+      old = garageCursors.current[player];
+    return old && items.includes(old)
+      ? old
+      : (items.find(
+          (b) =>
+            b.closest('[data-menu-player]') &&
+            b.getAttribute('aria-pressed') === 'true',
+        ) ?? items[0]);
+  };
+  const pointCursor = (
+    player: number,
+    button: HTMLButtonElement | undefined,
+  ) => {
+    garageCursors.current[player]?.removeAttribute('data-menu-cursor');
+    garageCursors.current[player] = button ?? null;
+    button?.setAttribute('data-menu-cursor', String(player));
+    button?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
   useGameLoop({
     game,
     keys,
@@ -228,7 +264,15 @@ export default function RaceGame({
     tickWhileBlocked: true,
     action: () => {},
     pause,
-    snapshot: setView,
+    snapshotKey: raceStartSnapshotKey,
+    snapshot: (next) => {
+      const key = raceStartSnapshotKey(next);
+      if (key !== lastSnapshotSignal.current) {
+        lastSnapshotSignal.current = key;
+        // Commit the green lamp before the next renderer frame can move a car.
+        flushSync(() => setView(next));
+      } else setView(next);
+    },
     tick: (s, dt, _keys, _drive, inputs) =>
       online
         ? tickRoomRace(s, dt, inputs ?? [])
@@ -246,23 +290,50 @@ export default function RaceGame({
       setPads(p);
       onGamepads?.(p);
     },
-    padMenu: {
-      enabled: menuEnabled,
-      onMove: (direction) => {
-        const items = menuItems(),
-          index = items.indexOf(document.activeElement as HTMLButtonElement),
-          delta = direction === 'up' || direction === 'left' ? -1 : 1;
-        items[(index + delta + items.length) % items.length]?.focus();
-      },
-      onConfirm: () => {
-        const items = menuItems();
-        (items.includes(document.activeElement as HTMLButtonElement)
-          ? (document.activeElement as HTMLButtonElement)
-          : items[0]
-        )?.click();
-      },
-      onBack: () => (view.phase === 'lobby' ? onExit() : pause()),
-    },
+    padMenu: splitGarage
+      ? {
+          enabled: menuEnabled,
+          perPlayer: true,
+          onMove: (direction, player = 0) => {
+            const items = personalItems(player),
+              current = cursorFor(player);
+            const delta = direction === 'up' || direction === 'left' ? -1 : 1;
+            pointCursor(
+              player,
+              items[
+                (items.indexOf(current) + delta + items.length) % items.length
+              ],
+            );
+          },
+          onConfirm: (player = 0) => {
+            const button = cursorFor(player);
+            pointCursor(player, button);
+            button?.click();
+          },
+          onBack: (player = 0) => {
+            if (player === 0) onExit();
+            else pointCursor(player, personalItems(player)[0]);
+          },
+        }
+      : {
+          enabled: menuEnabled,
+          onMove: (direction) => {
+            const items = menuItems(),
+              index = items.indexOf(
+                document.activeElement as HTMLButtonElement,
+              ),
+              delta = direction === 'up' || direction === 'left' ? -1 : 1;
+            items[(index + delta + items.length) % items.length]?.focus();
+          },
+          onConfirm: () => {
+            const items = menuItems();
+            (items.includes(document.activeElement as HTMLButtonElement)
+              ? (document.activeElement as HTMLButtonElement)
+              : items[0]
+            )?.click();
+          },
+          onBack: () => (view.phase === 'lobby' ? onExit() : pause()),
+        },
   });
   const configure = (fn: (s: RaceState) => void, command: RoomCommand) => {
     if (online) {
@@ -291,7 +362,7 @@ export default function RaceGame({
             !view.paused &&
             ['countdown', 'racing'].includes(view.phase)
           }
-          mix={local.length === 2 ? 0.6 : 1}
+          mix={local.length > 1 ? 1.2 / local.length : 1}
         />
       ))}
       <RaceScene
@@ -303,6 +374,7 @@ export default function RaceGame({
         local.map((r, i) => (
           <div
             className="race-player-view"
+            data-views={local.length}
             key={r.id}
             style={{
               left: `${(i * 100) / local.length}%`,
@@ -380,14 +452,7 @@ export default function RaceGame({
                 </span>
               </div>
             )}
-            {view.phase === 'countdown' && (
-              <output
-                className="race-countdown"
-                key={Math.ceil(view.countdown)}
-              >
-                {Math.ceil(view.countdown)}
-              </output>
-            )}
+            <RaceStartLights state={view} />
           </div>
         ))}
       {!menuEnabled && (
@@ -406,96 +471,136 @@ export default function RaceGame({
           ref={menu}
         >
           {view.phase === 'lobby' ? (
-            <div className="race-lobby">
-              <header>
-                <span>FRIENDSLOP · ГОНКИ</span>
-                <button onClick={onExit} aria-label="Вернуться в город">
-                  <ArrowLeft size={19} />
-                </button>
-              </header>
-              <h1>Ну что, наперегонки?</h1>
-              <div className="race-choice-row">
-                {(['krasnoyarsk', 'nordschleife'] as const).map((id) => (
-                  <button
-                    key={id}
-                    disabled={!canManage}
-                    aria-pressed={view.trackId === id}
-                    onClick={() =>
-                      configure((s) => (s.trackId = id), {
-                        kind: 'race-track',
-                        value: id,
-                      })
-                    }
-                  >
-                    <Flag size={18} />
-                    <span>
-                      {raceCourse(id).name}
-                      <small>
-                        {id === 'krasnoyarsk' ? 'Два берега' : 'Зелёный ад'}
-                      </small>
-                    </span>
+            <div
+              className="race-lobby"
+              data-split={localCount > 1}
+              data-players={localCount}
+              style={{ '--local-players': localCount } as CSSProperties}
+            >
+              <div className="race-lobby-shared">
+                <header>
+                  <span>FRIENDSLOP · ГОНКИ</span>
+                  <button onClick={onExit} aria-label="Вернуться в город">
+                    <ArrowLeft size={19} />
                   </button>
-                ))}
-              </div>
-              <div className="race-choice-row">
-                {(['circuit', 'drift'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    disabled={!canManage}
-                    aria-pressed={view.mode === mode}
-                    onClick={() =>
-                      configure((s) => (s.mode = mode), {
-                        kind: 'race-mode',
-                        value: mode,
-                      })
-                    }
-                  >
-                    {mode === 'circuit' ? 'Кто первый' : 'На очки дрифта'}
-                  </button>
-                ))}
-              </div>
-              <div className="race-options">
-                <span>Круги</span>
-                {([1, 3] as const).map((n) => (
-                  <button
-                    key={n}
-                    disabled={!canManage}
-                    aria-pressed={view.laps === n}
-                    onClick={() =>
-                      configure((s) => (s.laps = n), {
-                        kind: 'race-laps',
-                        value: n,
-                      })
-                    }
-                  >
-                    {n}
-                  </button>
-                ))}
-                <span>За этим экраном</span>
-                {([1, 2] as const).map((n) => (
-                  <button
-                    key={n}
-                    aria-pressed={localCount === n}
-                    onClick={() => {
-                      if (online) roomCommand({ kind: 'race-local', value: n });
-                      else {
-                        changeLocalRacers(game.current, slot, n, 'Игрок');
-                        refresh();
+                </header>
+                <h1>Ну что, наперегонки?</h1>
+                <div className="race-choice-row">
+                  {(['krasnoyarsk', 'nordschleife'] as const).map((id) => (
+                    <button
+                      key={id}
+                      disabled={!canManage}
+                      aria-pressed={view.trackId === id}
+                      onClick={() =>
+                        configure((s) => (s.trackId = id), {
+                          kind: 'race-track',
+                          value: id,
+                        })
                       }
-                    }}
-                  >
-                    {n}
-                  </button>
-                ))}
+                    >
+                      <Flag size={18} />
+                      <span>
+                        {raceCourse(id).name}
+                        <small>
+                          {id === 'krasnoyarsk' ? 'Два берега' : 'Зелёный ад'}
+                        </small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="race-choice-row">
+                  {(['circuit', 'drift'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      disabled={!canManage}
+                      aria-pressed={view.mode === mode}
+                      onClick={() =>
+                        configure((s) => (s.mode = mode), {
+                          kind: 'race-mode',
+                          value: mode,
+                        })
+                      }
+                    >
+                      {mode === 'circuit' ? 'Кто первый' : 'На очки дрифта'}
+                    </button>
+                  ))}
+                </div>
+                <div className="race-options">
+                  <span>Круги</span>
+                  {([1, 3] as const).map((n) => (
+                    <button
+                      key={n}
+                      disabled={!canManage}
+                      aria-pressed={view.laps === n}
+                      onClick={() =>
+                        configure((s) => (s.laps = n), {
+                          kind: 'race-laps',
+                          value: n,
+                        })
+                      }
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <span>За этим экраном</span>
+                  {([1, 2, 3] as const).map((n) => (
+                    <button
+                      key={n}
+                      aria-pressed={localCount === n}
+                      onClick={() => {
+                        if (online)
+                          roomCommand({ kind: 'race-local', value: n });
+                        else {
+                          changeLocalRacers(game.current, slot, n, 'Игрок');
+                          refresh();
+                        }
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="race-garage">
                 {local.map((r) => (
-                  <section key={r.id}>
-                    <strong>{r.name}</strong>
+                  <section
+                    key={r.id}
+                    data-menu-player={r.localIndex}
+                    aria-label={`Гараж: ${r.name}`}
+                    onFocusCapture={(event) => {
+                      if (
+                        splitGarage &&
+                        event.target instanceof HTMLButtonElement
+                      )
+                        pointCursor(r.localIndex, event.target);
+                    }}
+                  >
+                    <header className="race-player-heading">
+                      <strong>
+                        <i
+                          style={{
+                            background: CAR_COLORS.find(
+                              (c) => c.id === r.colorId,
+                            )!.hex,
+                          }}
+                        />
+                        {r.name}
+                      </strong>
+                      <span>
+                        {localCount > 1
+                          ? r.localIndex === 0
+                            ? 'Слева'
+                            : r.localIndex === localCount - 1
+                              ? 'Справа'
+                              : 'В центре'
+                          : 'Твоя машина'}
+                      </span>
+                    </header>
                     <div className="race-choice-row">
                       {(Object.keys(VEHICLES) as VehicleId[]).map((id) => (
                         <button
                           key={id}
+                          aria-label={`${r.name}: ${VEHICLES[id].name}`}
                           aria-pressed={r.vehicleId === id}
                           onClick={() => {
                             editCar(
@@ -534,6 +639,15 @@ export default function RaceGame({
                         />
                       ))}
                     </div>
+                    <div className="race-garage-input">
+                      <kbd>{prompt(r.localIndex, 'horizontal')}</kbd>
+                      <span>выбор</span>
+                      <kbd>
+                        {gamepadPrompt(pads, r.localIndex, 'action') ??
+                          keyboardPrompt(r.localIndex, 'action', 'race')}
+                      </kbd>
+                      <span>принять</span>
+                    </div>
                   </section>
                 ))}
               </div>
@@ -560,7 +674,9 @@ export default function RaceGame({
                   {online
                     ? local.every((r) => r.ready)
                       ? 'Готовы'
-                      : 'Готов'
+                      : localCount > 1
+                        ? 'Мы готовы'
+                        : 'Готов'
                     : 'На старт'}
                 </button>
                 {online && canManage && (

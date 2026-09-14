@@ -6,7 +6,10 @@ export function localRaceInputs(
   drives: readonly DriveAxes[] = [],
   count = 1,
 ): RaceInput[] {
-  return PLAYER_BINDINGS.slice(0, Math.min(2, count)).map((b, i) => ({
+  return PLAYER_BINDINGS.slice(
+    0,
+    Math.min(3, Math.max(0, Math.floor(count) || 0)),
+  ).map((b, i) => ({
     throttle:
       keys.has(b.up) || keys.has(b.down)
         ? Number(keys.has(b.up)) - Number(keys.has(b.down))

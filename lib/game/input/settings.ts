@@ -5,6 +5,26 @@ export type CanonicalKey =
   | (typeof PLAYER_BINDINGS)[number][PlayerControl]
   | 'KeyQ';
 export type InputProfile = 'game' | 'city' | 'race';
+export const PAD_GLYPH_PREFERENCES = [
+  'auto',
+  'xbox',
+  'playstation',
+  'generic',
+] as const;
+export type PadGlyphPreference = (typeof PAD_GLYPH_PREFERENCES)[number];
+export type PadGlyphBrand = Exclude<PadGlyphPreference, 'auto'>;
+export function isPadGlyphPreference(
+  value: unknown,
+): value is PadGlyphPreference {
+  return PAD_GLYPH_PREFERENCES.some((preference) => preference === value);
+}
+/** Presentation only. Browser-standard button mapping never depends on glyphs. */
+export function resolvePadGlyphBrand(
+  preference: PadGlyphPreference,
+  detected: PadGlyphBrand,
+): PadGlyphBrand {
+  return preference === 'auto' ? detected : preference;
+}
 export const CITY_KEYS = [
   'KeyW',
   'KeyA',
@@ -14,7 +34,7 @@ export const CITY_KEYS = [
   'ShiftLeft',
   'KeyQ',
 ] as const;
-export const RACE_KEYS = PLAYER_BINDINGS.slice(0, 2).flatMap((b) =>
+export const RACE_KEYS = PLAYER_BINDINGS.flatMap((b) =>
   Object.values(b),
 ) as CanonicalKey[];
 export const RACE_CONTROL_NAMES: Record<PlayerControl, string> = {
@@ -39,6 +59,7 @@ export type ControlSettings = {
   keys: Record<CanonicalKey, string>;
   cityKeys: Record<CityKey, string>;
   raceKeys: Partial<Record<CanonicalKey, string>>;
+  padGlyphs: [PadGlyphPreference, PadGlyphPreference, PadGlyphPreference];
   showWorldPrompts: boolean;
   showFps: boolean;
 };
@@ -68,6 +89,7 @@ export function defaultControlSettings(): ControlSettings {
     raceKeys: Object.fromEntries(
       RACE_KEYS.map((key) => [key, key === 'ShiftLeft' ? 'Space' : key]),
     ),
+    padGlyphs: ['auto', 'auto', 'auto'],
     showWorldPrompts: true,
     showFps: false,
   };
@@ -119,7 +141,7 @@ export function bindingName(
   profile: InputProfile = 'game',
 ): string {
   if (profile === 'race') {
-    for (let p = 0; p < 2; p++)
+    for (let p = 0; p < PLAYER_BINDINGS.length; p++)
       for (const [control, code] of Object.entries(PLAYER_BINDINGS[p]))
         if (code === key)
           return `${PLAYER_NAMES[p]} · ${RACE_CONTROL_NAMES[control as PlayerControl]}`;
@@ -263,22 +285,74 @@ export function parseControlSettings(raw: string | null): ControlSettings {
     }
     let raceKeys = defaults.raceKeys;
     if (obj.raceKeys && typeof obj.raceKeys === 'object') {
-      const values = RACE_KEYS.map((key) => obj.raceKeys![key]);
+      // Older v1 race saves have two players. Preserve their twelve bindings
+      // even when a previously free I/J/K/L/O/U key belongs to one of them.
+      const legacyKeys = PLAYER_BINDINGS.slice(0, 2).flatMap((b) =>
+        Object.values(b),
+      );
+      const legacyValues = legacyKeys.map((key) => obj.raceKeys![key]);
       if (
-        values.every(
+        legacyValues.every(
           (value) => typeof value === 'string' && !keyProblem(value),
         ) &&
-        new Set(values).size === RACE_KEYS.length
-      )
-        raceKeys = Object.fromEntries(
-          RACE_KEYS.map((key, i) => [key, values[i]]),
+        new Set(legacyValues).size === legacyKeys.length
+      ) {
+        const addedKeys = RACE_KEYS.slice(legacyKeys.length);
+        const savedAdded = addedKeys.map((key) => obj.raceKeys![key]);
+        const used = new Set(legacyValues as string[]);
+        const addedValid =
+          savedAdded.every(
+            (value) =>
+              typeof value === 'string' &&
+              !keyProblem(value) &&
+              !used.has(value),
+          ) && new Set(savedAdded).size === addedKeys.length;
+        const spare = [
+          'Numpad4',
+          'Numpad6',
+          'Numpad8',
+          'Numpad5',
+          'NumpadEnter',
+          'Numpad0',
+          ...Array.from({ length: 10 }, (_, i) => `Digit${i}`),
+          ...'ABCDEGHIJKLMNOPQRSTUVWXYZ'
+            .split('')
+            .map((letter) => `Key${letter}`),
+        ];
+        const reserved = new Set(
+          addedKeys.map((key) => defaults.raceKeys[key]),
         );
+        const addedValues = addedValid
+          ? savedAdded
+          : addedKeys.map((key, index) => {
+              const preferred = defaults.raceKeys[key]!;
+              const physical = [preferred, spare[index], ...spare].find(
+                (value) =>
+                  !used.has(value) &&
+                  (value === preferred || !reserved.has(value)),
+              )!;
+              used.add(physical);
+              return physical;
+            });
+        raceKeys = Object.fromEntries([
+          ...legacyKeys.map((key, i) => [key, legacyValues[i]]),
+          ...addedKeys.map((key, i) => [key, addedValues[i]]),
+        ]);
+      }
     }
+    // Existing v1 saves gain auto detection. Invalid entries affect only their player.
+    const savedGlyphs = Array.isArray(obj.padGlyphs) ? obj.padGlyphs : [];
+    const padGlyphs = defaults.padGlyphs.map((fallback, player) =>
+      isPadGlyphPreference(savedGlyphs[player])
+        ? savedGlyphs[player]
+        : fallback,
+    ) as ControlSettings['padGlyphs'];
     return {
       version: 1,
       keys,
       raceKeys,
       cityKeys,
+      padGlyphs,
       showFps: obj.showFps === true,
       showWorldPrompts:
         typeof obj.showWorldPrompts === 'boolean' ? obj.showWorldPrompts : true,

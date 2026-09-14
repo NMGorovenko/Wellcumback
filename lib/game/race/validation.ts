@@ -1,20 +1,21 @@
+import { CAR_COLORS } from './vehicles.ts';
 const obj = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 const integer = (v: unknown, min: number, max: number) =>
   finite(v) && Number.isInteger(v) && Number(v) >= min && Number(v) <= max;
-const colors = ['red', 'blue', 'yellow', 'green', 'violet', 'white', 'black'];
+const colors = new Set<string>(CAR_COLORS.map((color) => color.id));
 /** Validate flat command payloads before they enter the authoritative queue. */
 export function validRaceCommand(c: Record<string, unknown>) {
   switch (c.kind) {
     case 'race-car':
       return (
-        (c.localIndex === 0 || c.localIndex === 1) &&
+        integer(c.localIndex, 0, 2) &&
         (c.vehicleId === 'mustang' || c.vehicleId === 'amg-gt') &&
-        colors.includes(String(c.colorId))
+        colors.has(String(c.colorId))
       );
     case 'race-local':
-      return c.value === 1 || c.value === 2;
+      return c.value === 1 || c.value === 2 || c.value === 3;
     case 'race-laps':
       return c.value === 1 || c.value === 3;
     case 'race-track':
@@ -32,7 +33,7 @@ export function validRaceInputs(value: unknown) {
   return (
     Array.isArray(value) &&
     value.length >= 1 &&
-    value.length <= 2 &&
+    value.length <= 3 &&
     value.every(
       (input) =>
         obj(input) &&
@@ -46,6 +47,7 @@ export function validRaceInputs(value: unknown) {
 }
 export function validRaceState(value: unknown, capacity = 3) {
   if (
+    !integer(capacity, 1, 3) ||
     !obj(value) ||
     !['krasnoyarsk', 'nordschleife'].includes(String(value.trackId)) ||
     !['circuit', 'drift'].includes(String(value.mode)) ||
@@ -55,7 +57,7 @@ export function validRaceState(value: unknown, capacity = 3) {
     !integer(value.revision, 0, Number.MAX_SAFE_INTEGER) ||
     !Array.isArray(value.racers) ||
     value.racers.length < 1 ||
-    value.racers.length > 6 ||
+    value.racers.length > capacity * 3 ||
     ![value.elapsed, value.countdown, value.accumulator].every(
       (v) => finite(v) && Number(v) >= 0,
     )
@@ -67,13 +69,13 @@ export function validRaceState(value: unknown, capacity = 3) {
     if (
       !obj(r) ||
       !integer(r.memberSlot, 0, capacity - 1) ||
-      !integer(r.localIndex, 0, 1) ||
+      !integer(r.localIndex, 0, 2) ||
       r.id !== `${Number(r.memberSlot)}:${Number(r.localIndex)}` ||
       ids.has(r.id) ||
       typeof r.name !== 'string' ||
       r.name.length > 80 ||
       !['mustang', 'amg-gt'].includes(String(r.vehicleId)) ||
-      !colors.includes(String(r.colorId)) ||
+      !colors.has(String(r.colorId)) ||
       usedColors.has(r.colorId) ||
       typeof r.ready !== 'boolean' ||
       typeof r.started !== 'boolean' ||
@@ -109,8 +111,10 @@ export function validRaceState(value: unknown, capacity = 3) {
     ids.add(r.id);
     usedColors.add(r.colorId);
   }
-  return value.racers.every(
-    (r) => r.localIndex === 0 || ids.has(`${r.memberSlot}:0`),
+  return value.racers.every((r) =>
+    Array.from({ length: r.localIndex }, (_, i) => i).every((localIndex) =>
+      ids.has(`${r.memberSlot}:${localIndex}`),
+    ),
   );
 }
 export function frozenRaceConfig(state: Record<string, unknown>) {

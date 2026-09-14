@@ -141,16 +141,16 @@ export default function RaceScene({
         );
       return { group, mat, index: i };
     });
-    const cameras = [0, 1].map(
+    const cameras = [0, 1, 2].map(
       () => new THREE.PerspectiveCamera(57, 1, 0.15, 600),
     );
-    const headings = [
-      game.current.racers[0]?.car.heading ?? 0,
-      game.current.racers[1]?.car.heading ?? 0,
-    ];
-    const initialized = [false, false],
-      look = [new THREE.Vector3(), new THREE.Vector3()],
-      previousFocus = [new THREE.Vector3(), new THREE.Vector3()];
+    const headings = Array.from(
+      { length: 3 },
+      (_, i) => game.current.racers[i]?.car.heading ?? 0,
+    );
+    const initialized = [false, false, false],
+      look = Array.from({ length: 3 }, () => new THREE.Vector3()),
+      previousFocus = Array.from({ length: 3 }, () => new THREE.Vector3());
     let width = 1,
       height = 1,
       last = performance.now(),
@@ -193,12 +193,14 @@ export default function RaceScene({
       }
       updateEffects(state, dt);
       const ids = views.current.length ? views.current : [state.racers[0]?.id],
-        count = Math.min(2, ids.length);
+        count = Math.min(3, ids.length);
       renderer.setScissorTest(true);
       for (let i = 0; i < count; i++) {
         const r = state.racers.find((r) => r.id === ids[i]) ?? state.racers[0];
         if (!r) continue;
         const model = models.find((m) => m.id === r.id)!.model;
+        for (const item of models)
+          item.model.root.visible = state.phase !== 'lobby' || item.id === r.id;
         const x = Math.floor((i * width) / count),
           w = Math.floor(((i + 1) * width) / count) - x,
           aspect = w / height,
@@ -241,6 +243,14 @@ export default function RaceScene({
           look[i].y + heightOffset,
           look[i].z - fz * distance,
         );
+        if (preview) {
+          // A front-quarter view of this player's car, with space for its card.
+          const radius = 8.2 * Math.max(1, 0.65 / aspect);
+          const offset = new THREE.Vector3(0.64, 0.47, -0.77)
+            .multiplyScalar(radius)
+            .applyAxisAngle(new THREE.Vector3(0, 1, 0), model.root.rotation.y);
+          camera.position.copy(model.root.position).add(offset);
+        }
         if (terrainHeight) {
           const clear = clearRaceCamera(
             camera.position,
@@ -252,6 +262,11 @@ export default function RaceScene({
         camera.aspect = aspect;
         camera.fov = preview ? 48 : 57;
         camera.lookAt(look[i]);
+        if (preview && count === 1 && width > 850)
+          camera.setViewOffset(width, height, width * 0.22, 0, width, height);
+        else if (preview && count > 1)
+          camera.setViewOffset(w, height, 0, height * 0.035, w, height);
+        else camera.clearViewOffset();
         camera.updateProjectionMatrix();
         sun.position.set(px - 35, r.elevation + 70, pz + 25);
         sun.target.position.set(px, r.elevation, pz);

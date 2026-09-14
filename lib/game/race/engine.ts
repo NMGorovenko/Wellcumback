@@ -72,10 +72,17 @@ export function freshRace(): RaceState {
 export function changeLocalRacers(
   s: RaceState,
   slot: number,
-  count: 1 | 2,
+  count: 1 | 2 | 3,
   name: string,
 ) {
-  if (s.phase !== 'lobby') return;
+  if (
+    s.phase !== 'lobby' ||
+    !Number.isInteger(slot) ||
+    slot < 0 ||
+    slot >= 3 ||
+    (count !== 1 && count !== 2 && count !== 3)
+  )
+    return;
   s.racers = s.racers.filter(
     (r) => r.memberSlot !== slot || r.localIndex < count,
   );
@@ -384,6 +391,10 @@ function step(
   course: Course,
 ) {
   if (s.phase === 'countdown') {
+    // A held reset during the lights is not a fresh reset on green. Throttle
+    // stays available on the first racing step; no simulation runs before it.
+    for (const r of s.racers)
+      r.previousReset = inputs.get(r.id)?.reset ?? false;
     s.countdown = Math.max(0, s.countdown - dt);
     if (s.countdown < 1e-8) s.phase = 'racing';
     return;

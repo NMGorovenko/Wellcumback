@@ -15,6 +15,8 @@ export const CAR_COLORS = [
   { id: 'violet', name: 'Фиолетовый', hex: '#ae7ce5' },
   { id: 'white', name: 'Белый', hex: '#e9e9df' },
   { id: 'black', name: 'Чёрный', hex: '#141920' },
+  { id: 'orange', name: 'Оранжевый', hex: '#ef862f' },
+  { id: 'cyan', name: 'Бирюзовый', hex: '#40ced1' },
 ] as const;
 export type ColorId = (typeof CAR_COLORS)[number]['id'];
 export function defaultVehicleColor(

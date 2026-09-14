@@ -37,12 +37,8 @@ const dump = (sqlite) =>
 const withoutProtocol = (rows) =>
   rows.map(({ protocol_version: _version, ...row }) => row);
 
-void test('saved v6 AMG ONE and old Mustang Nordschleife survive migration but never restore into v7', async () => {
-  assert.equal(
-    ROOM_VERSION,
-    7,
-    'Fixture intentionally tests the v6 -> v7 boundary',
-  );
+void test('saved v6 AMG ONE and old Mustang Nordschleife survive migration but never restore into the current protocol', async () => {
+  assert.ok(ROOM_VERSION > 6, 'Fixture tests the persisted v6 boundary');
   const directory = mkdtempSync(join(tmpdir(), 'friendslop-room-upgrade-'));
   const filename = join(directory, 'rooms.sqlite');
   let store;
@@ -192,19 +188,19 @@ void test('saved v6 AMG ONE and old Mustang Nordschleife survive migration but n
       now,
     );
     assert.equal(created.status, 201);
-    assert.equal(created.body.version, 7);
+    assert.equal(created.body.version, ROOM_VERSION);
     const { code, token } = created.body;
     assert.equal(
       store.sqlite
         .prepare('SELECT protocol_version FROM rooms WHERE code=?')
         .get(code).protocol_version,
-      7,
+      ROOM_VERSION,
     );
     assert.equal(
       (
         await handleRoomRequest(
           store.db,
-          { op: 'poll', version: 7, code, token },
+          { op: 'poll', version: ROOM_VERSION, code, token },
           now + 1,
         )
       ).status,
@@ -214,7 +210,7 @@ void test('saved v6 AMG ONE and old Mustang Nordschleife survive migration but n
       (
         await handleRoomRequest(
           store.db,
-          { op: 'join', version: 7, code, name: 'Друг' },
+          { op: 'join', version: ROOM_VERSION, code, name: 'Друг' },
           now + 2,
         )
       ).status,
@@ -232,11 +228,140 @@ void test('saved v6 AMG ONE and old Mustang Nordschleife survive migration but n
       (
         await handleRoomRequest(
           store.db,
-          { op: 'poll', version: 7, code, token },
+          { op: 'poll', version: ROOM_VERSION, code, token },
           now + 3,
         )
       ).status,
       200,
+    );
+  } finally {
+    store?.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+void test('persisted v7 two-local race remains byte-for-byte intact when a v8 client tries to restore it', async () => {
+  assert.equal(ROOM_VERSION, 8);
+  const directory = mkdtempSync(join(tmpdir(), 'friendslop-room-v7-'));
+  const filename = join(directory, 'rooms.sqlite');
+  let store;
+  try {
+    store = createRoomDatabase(baseSchema, filename);
+    const created = await handleRoomRequest(
+      store.db,
+      { op: 'create', version: ROOM_VERSION, name: 'Ведущий', capacity: 3 },
+      now,
+    );
+    assert.equal(created.status, 201);
+    const host = created.body;
+    const joined = await handleRoomRequest(
+      store.db,
+      { op: 'join', version: ROOM_VERSION, code: host.code, name: 'Друзья' },
+      now + 1,
+    );
+    assert.equal(joined.status, 200);
+    const guest = joined.body;
+    const state = freshRace();
+    state.trackId = 'nordschleife';
+    state.mode = 'drift';
+    state.phase = 'racing';
+    state.paused = false;
+    state.players = 3;
+    state.elapsed = 143;
+    state.racers.push(
+      freshRacer(1, 0, 'Друг · 1', 'blue'),
+      freshRacer(1, 1, 'Друг · 2', 'black'),
+    );
+    Object.assign(state.racers[2], {
+      vehicleId: 'amg-gt',
+      score: 320,
+      combo: 125,
+      comboDuration: 1.25,
+      laps: 1,
+      nextGate: 4,
+      passedGates: 4,
+    });
+    const snapshot = {
+      scene: 'race',
+      epoch: 5,
+      attempt: 4,
+      brief: false,
+      roles: [0, 1, 2],
+      driver: 0,
+      state,
+    };
+    store.sqlite
+      .prepare(
+        'UPDATE rooms SET protocol_version=7,snapshot=?,snapshot_seq=32,epoch=5,pause_revision=2,pause_ack=1 WHERE code=?',
+      )
+      .run(JSON.stringify(snapshot), host.code);
+    store.sqlite
+      .prepare(
+        'UPDATE room_members SET last_seq=4 WHERE room_code=? AND slot=1',
+      )
+      .run(host.code);
+    store.sqlite
+      .prepare(
+        'INSERT INTO room_frames (room_code,slot,seq,epoch,payload,created_at) VALUES (?,1,4,5,?,?)',
+      )
+      .run(
+        host.code,
+        JSON.stringify({
+          seq: 4,
+          epoch: 5,
+          keys: [],
+          raceInputs: [
+            { throttle: 0, steer: 0, handbrake: false, reset: false },
+            { throttle: 1, steer: 0.5, handbrake: true, reset: false },
+          ],
+        }),
+        now,
+      );
+    const persisted = dump(store.sqlite);
+    store.close();
+    store = createRoomDatabase(baseSchema, filename);
+    assert.deepEqual(
+      dump(store.sqlite),
+      persisted,
+      'startup preserves the saved v7 room instead of relabelling it',
+    );
+    for (const request of [
+      { op: 'poll', token: host.token },
+      { op: 'poll', token: guest.token },
+      { op: 'poll', token: guest.token, rejoin: true },
+      { op: 'join', name: 'Новый участник' },
+    ]) {
+      const response = await handleRoomRequest(
+        store.db,
+        { version: 8, code: host.code, ...request },
+        now + 10,
+      );
+      assert.equal(response.status, 409);
+      assert.equal(response.body.error.code, 'VERSION_MISMATCH');
+      assert.equal(response.body.snapshot, undefined);
+    }
+    assert.deepEqual(
+      dump(store.sqlite),
+      persisted,
+      'rejected v8 requests never reset race progress, pending drift, credentials, pause, ACK or queued input',
+    );
+    const newRoom = await handleRoomRequest(
+      store.db,
+      { op: 'create', version: 8, name: 'Новая комната' },
+      now + 20,
+    );
+    assert.equal(newRoom.status, 201);
+    assert.equal(
+      store.sqlite
+        .prepare('SELECT protocol_version FROM rooms WHERE code=?')
+        .get(newRoom.body.code).protocol_version,
+      8,
+    );
+    assert.equal(
+      store.sqlite
+        .prepare('SELECT protocol_version FROM rooms WHERE code=?')
+        .get(host.code).protocol_version,
+      7,
     );
   } finally {
     store?.close();

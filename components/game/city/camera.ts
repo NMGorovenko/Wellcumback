@@ -81,10 +81,7 @@ export function cityFaceCamera(
       y: y / length,
       z: outwardZ,
     },
-    halfHeight: Math.max(
-      4.25 + speed * 0.055,
-      halfWidth / Math.max(0.3, aspect),
-    ),
+    halfHeight: Math.max(3.75 + speed * 0.1, halfWidth / Math.max(0.3, aspect)),
   };
 }
 

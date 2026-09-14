@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
+import { raceStartSignal } from '@/lib/game/race/start-signal';
 import type { RaceState } from '@/lib/game/race/types';
 
 /** Quiet, brief race signals. Spoken dialogue is deliberately absent. */
@@ -7,7 +8,8 @@ export function useRaceCues(enabled: boolean, state: RaceState, slot: number) {
   const audio = useRef<AudioContext | null>(null);
   const previous = useRef({
     phase: state.phase,
-    count: Math.ceil(state.countdown),
+    signal: raceStartSignal(state),
+    count: Math.ceil(Math.max(0, state.countdown - 1e-8)),
     events: '',
   });
   useEffect(() => {
@@ -29,9 +31,10 @@ export function useRaceCues(enabled: boolean, state: RaceState, slot: number) {
     const events = local
       .map((r) => `${r.id}:${r.passedGates}:${r.feedbackUntil}`)
       .join('|');
-    const count = Math.ceil(state.countdown),
+    const count = Math.ceil(Math.max(0, state.countdown - 1e-8)),
+      signal = raceStartSignal(state),
       old = previous.current;
-    previous.current = { phase: state.phase, count, events };
+    previous.current = { phase: state.phase, signal, count, events };
     const context = audio.current;
     if (
       !context ||
@@ -47,9 +50,8 @@ export function useRaceCues(enabled: boolean, state: RaceState, slot: number) {
       state.phase === 'countdown' &&
       (old.phase !== 'countdown' || old.count !== count)
     )
-      notes = [440];
-    else if (state.phase === 'racing' && old.phase === 'countdown')
-      notes = [660, 880];
+      notes = [signal === 'yellow' ? 520 : 390];
+    else if (signal === 'green' && old.signal !== 'green') notes = [660, 880];
     else if (state.phase === 'result' && old.phase !== 'result')
       notes = [523, 659, 784];
     else if (old.events !== events && state.phase === 'racing') {

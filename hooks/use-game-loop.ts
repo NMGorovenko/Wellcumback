@@ -30,9 +30,12 @@ import {
 
 export type GamepadMenu = {
   enabled: boolean;
-  onMove: (direction: PadDirection) => void;
-  onConfirm: () => void;
-  onBack: () => void;
+  /** Personal callbacks receive the assigned local player, default menus stay shared. */
+  perPlayer?: boolean;
+  onMove: (direction: PadDirection, player?: number) => void;
+  onConfirm: (player?: number) => void;
+  /** Escape is shared keyboard input and is routed to player 0. */
+  onBack: (player?: number) => void;
   onDirectChoice?: (index: number) => void;
 };
 type PadStatus = Pick<PadFrame, 'assignments' | 'unsupported'>;
@@ -47,6 +50,7 @@ export function useGameLoop<
   action,
   pause,
   snapshot,
+  snapshotKey,
   padMenu,
   onGamepads,
   tickWhileBlocked = false,
@@ -65,6 +69,8 @@ export function useGameLoop<
   action: () => void;
   pause: () => void;
   snapshot: (state: T) => void;
+  /** Events that must be visible on the same frame as simulation. */
+  snapshotKey?: (state: T) => string;
   padMenu?: GamepadMenu;
   onGamepads?: (status: PadStatus) => void;
   /** City transport keeps sending neutral heartbeats while a dialog blocks controls. */
@@ -78,6 +84,7 @@ export function useGameLoop<
     action,
     pause,
     snapshot,
+    snapshotKey,
     padMenu,
     onGamepads,
     tickWhileBlocked,
@@ -90,6 +97,7 @@ export function useGameLoop<
       action,
       pause,
       snapshot,
+      snapshotKey,
       padMenu,
       onGamepads,
       tickWhileBlocked,
@@ -101,6 +109,7 @@ export function useGameLoop<
     action,
     pause,
     snapshot,
+    snapshotKey,
     padMenu,
     onGamepads,
     tickWhileBlocked,
@@ -114,7 +123,8 @@ export function useGameLoop<
     let previousBindings = getControlSettings(),
       previousBlocked = isControlInputBlocked();
     const padState = createPadInput(),
-      navigation = createPadNavigation();
+      navigation = createPadNavigation(),
+      playerNavigation = PLAYER_BINDINGS.map(() => createPadNavigation());
     let last = performance.now(),
       frame = 0,
       elapsed = 0,
@@ -122,7 +132,9 @@ export function useGameLoop<
       focused = document.hasFocus();
     let previousPaused = game.current.paused,
       previousMenu = !!callbacks.current.padMenu?.enabled,
-      statusKey = '';
+      previousPerPlayer = !!callbacks.current.padMenu?.perPlayer,
+      statusKey = '',
+      lastSnapshotKey = callbacks.current.snapshotKey?.(game.current);
     let previousRacePads: number[] = [];
     const keyDirections = Object.fromEntries(
       PLAYER_BINDINGS.flatMap((binding) => [
@@ -138,6 +150,10 @@ export function useGameLoop<
       resetPadInput(padState);
       navigation.direction = null;
       navigation.repeatAt = 0;
+      playerNavigation.forEach((cursor) => {
+        cursor.direction = null;
+        cursor.repeatAt = 0;
+      });
       primaryPadHeld = false;
     };
     const down = (event: KeyboardEvent) => {
@@ -159,9 +175,32 @@ export function useGameLoop<
       const code = canonicalKeyForPhysical(
         getControlSettings(),
         event.code,
-        menu?.enabled ? 'game' : callbacks.current.profile,
+        menu?.enabled && !menu.perPlayer ? 'game' : callbacks.current.profile,
       );
       if (menu?.enabled) {
+        if (menu.perPlayer) {
+          const count =
+            callbacks.current.inputPlayers ?? inputPlayerCount(game.current);
+          const player = code
+            ? PLAYER_BINDINGS.findIndex((binding) =>
+                Object.values(binding).some((key) => key === code),
+              )
+            : -1;
+          if (code && player >= 0 && player < count) {
+            // Secondary keys such as Space must not activate another card's
+            // focused button through the browser's native default action.
+            event.preventDefault();
+            if (keyDirections[code]) {
+              menu.onMove(keyDirections[code], player);
+            } else if (PLAYER_BINDINGS[player].action === code) {
+              if (!event.repeat) menu.onConfirm(player);
+            }
+          } else if (event.code === 'Escape') {
+            event.preventDefault();
+            if (!event.repeat) menu.onBack(0);
+          }
+          return;
+        }
         if (code && keyDirections[code]) {
           event.preventDefault();
           menu.onMove(keyDirections[code]);
@@ -234,6 +273,7 @@ export function useGameLoop<
       if (
         previousPaused !== game.current.paused ||
         previousMenu !== menuEnabled ||
+        previousPerPlayer !== !!menu?.perPlayer ||
         previousBlocked !== blocked ||
         previousBindings !== settings
       )
@@ -288,10 +328,24 @@ export function useGameLoop<
         drive = neutralDrive();
         primaryPadHeld = false;
       } else if (menuEnabled && menu) {
-        const nav = navigateGamepad(navigation, pads, now / 1000);
-        if (nav.back) menu.onBack();
-        else if (nav.confirm) menu.onConfirm();
-        else if (nav.direction) menu.onMove(nav.direction);
+        if (menu.perPlayer) {
+          for (let player = 0; player < playerNavigation.length; player++) {
+            const nav = navigateGamepad(
+              playerNavigation[player],
+              pads,
+              now / 1000,
+              player,
+            );
+            if (nav.back) menu.onBack(player);
+            else if (nav.confirm) menu.onConfirm(player);
+            else if (nav.direction) menu.onMove(nav.direction, player);
+          }
+        } else {
+          const nav = navigateGamepad(navigation, pads, now / 1000);
+          if (nav.back) menu.onBack();
+          else if (nav.confirm) menu.onConfirm();
+          else if (nav.direction) menu.onMove(nav.direction);
+        }
         merged = new Set();
         drive = neutralDrive();
         primaryPadHeld = false;
@@ -323,8 +377,11 @@ export function useGameLoop<
       }
       previousPaused = game.current.paused;
       previousMenu = menuEnabled;
+      previousPerPlayer = !!menu?.perPlayer;
       elapsed += dt;
-      if (elapsed >= 1 / 30) {
+      const nextSnapshotKey = callbacks.current.snapshotKey?.(game.current);
+      if (elapsed >= 1 / 30 || nextSnapshotKey !== lastSnapshotKey) {
+        lastSnapshotKey = nextSnapshotKey;
         callbacks.current.snapshot({ ...game.current });
         elapsed = 0;
       }

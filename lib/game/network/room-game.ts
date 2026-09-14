@@ -696,7 +696,7 @@ export function roomRoleName(world: RoomWorld | null, slot: number) {
   return roles[roomActor(world, slot)] ?? 'Друг';
 }
 
-/** Device slots own one or two car inputs. Each host step advances the world once. */
+/** Each of the three device slots owns up to three car inputs. Each host step advances the world once. */
 export function tickRoomRace(
   state: RaceState,
   dt: number,

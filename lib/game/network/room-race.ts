@@ -59,14 +59,16 @@ export function applyRaceCommand(
   syncRaceLobby(s, roster);
   if (
     command.kind === 'race-local' &&
-    (command.value === 1 || command.value === 2)
+    (command.value === 1 || command.value === 2 || command.value === 3)
   ) {
     const member = roster.find((m) => m.slot === slot);
     if (!member) return null;
     changeLocalRacers(s, slot, command.value, member.name);
   } else if (
     command.kind === 'race-car' &&
-    (command.localIndex === 0 || command.localIndex === 1) &&
+    (command.localIndex === 0 ||
+      command.localIndex === 1 ||
+      command.localIndex === 2) &&
     command.vehicleId &&
     Object.hasOwn(VEHICLES, command.vehicleId) &&
     CAR_COLORS.some((c) => c.id === command.colorId)

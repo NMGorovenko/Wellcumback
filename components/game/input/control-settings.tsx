@@ -24,9 +24,11 @@ import {
   PLAYER_NAMES,
   getPhysicalBinding,
   physicalKeyLabel,
+  resolvePadGlyphBrand,
   type CanonicalKey,
   type InputProfile,
   type PlayerControl,
+  type PadGlyphPreference,
 } from '@/lib/game/input/settings';
 import { acquireControlInputBlock } from '@/lib/game/input/settings-store';
 
@@ -56,26 +58,24 @@ function PadHelp({
   profile,
   player,
   playerNames,
+  glyphPreference,
+  onGlyphPreferenceChange,
 }: {
   pads: PadOverview;
   profile: InputProfile;
   player: number;
   playerNames: readonly string[];
+  glyphPreference: PadGlyphPreference;
+  onGlyphPreferenceChange: (preference: PadGlyphPreference) => void;
 }) {
   const assigned = pads.assignments.find(
     (pad) => pad.player === (profile === 'city' ? 0 : player),
   );
-  const fallback: Record<number, string> = {
-    0: 'A / ×',
-    1: 'B / ○',
-    2: 'X / □',
-    5: 'RB / R1',
-    6: 'LT / L2',
-    7: 'RT / R2',
-    9: 'Menu / Options',
-  };
-  const label = (button: number) =>
-    assigned ? padButtonLabel(assigned.brand, button) : fallback[button];
+  const brand = resolvePadGlyphBrand(
+    glyphPreference,
+    assigned?.brand ?? 'generic',
+  );
+  const label = (button: number) => padButtonLabel(brand, button);
   const rows =
     profile !== 'game'
       ? [
@@ -84,12 +84,7 @@ function PadHelp({
           ['Тормоз / назад', label(6)],
           ['Дрифт', label(2)],
           ...(profile === 'race'
-            ? [
-                [
-                  'Вернуться на трассу',
-                  assigned ? padButtonLabel(assigned.brand, 3) : 'Y / △',
-                ],
-              ]
+            ? [['Вернуться на трассу', label(3)]]
             : [
                 ['Начать историю', label(0)],
                 ['Сигнал', label(5)],
@@ -104,11 +99,32 @@ function PadHelp({
   return (
     <section className="control-pad-info" aria-label="Управление геймпадом">
       <div className="control-section-heading">
-        <strong>{assigned ? assigned.label : 'Xbox / PlayStation'}</strong>
+        <strong>{assigned ? assigned.label : 'Геймпад'}</strong>
         <span>
           {profile === 'city' ? 'Один водитель' : playerNames[player]}
         </span>
       </div>
+      <fieldset className="control-device-tabs flex-wrap">
+        <legend>Значки кнопок</legend>
+        {(
+          [
+            ['auto', 'Авто'],
+            ['xbox', 'Xbox'],
+            ['playstation', 'PlayStation'],
+            ['generic', 'Общие'],
+          ] as const
+        ).map(([value, title]) => (
+          <button
+            key={value}
+            type="button"
+            data-control-focus
+            aria-pressed={glyphPreference === value}
+            onClick={() => onGlyphPreferenceChange(value)}
+          >
+            {title}
+          </button>
+        ))}
+      </fieldset>
       <dl className="control-pad-mapping">
         {rows.map(([action, button]) => (
           <div key={action}>
@@ -184,6 +200,7 @@ function OpenControlSettings({
     reset,
     setWorldPrompts,
     setShowFps,
+    setPadGlyphPreference,
   } = useControlSettings();
   const [activeProfile, setActiveProfile] = useState<InputProfile>(profile);
   const [device, setDevice] = useState<'keyboard' | 'pad'>('keyboard');
@@ -347,7 +364,7 @@ function OpenControlSettings({
             <strong>Машина</strong>
             <small>один водитель</small>
           </button>
-          {[0, 1].map((index) => (
+          {[0, 1, 2].map((index) => (
             <button
               key={`race-${index}`}
               data-control-focus
@@ -438,6 +455,16 @@ function OpenControlSettings({
             profile={activeProfile}
             player={player}
             playerNames={playerNames}
+            glyphPreference={
+              settings.padGlyphs[activeProfile === 'city' ? 0 : player] ??
+              'auto'
+            }
+            onGlyphPreferenceChange={(preference) =>
+              setPadGlyphPreference(
+                activeProfile === 'city' ? 0 : player,
+                preference,
+              )
+            }
           />
         )}
         <label className="control-prompts-toggle">

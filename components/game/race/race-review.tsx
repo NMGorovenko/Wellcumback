@@ -37,7 +37,7 @@ export default function RaceReview() {
     const s = game.current;
     s.trackId = 'nordschleife';
     s.phase = 'lobby';
-    changeLocalRacers(s, 0, input.players as 1 | 2, 'Осмотр');
+    changeLocalRacers(s, 0, input.players as 1 | 2 | 3, 'Осмотр');
     s.phase = 'racing';
     s.paused = false;
     s.racers.forEach((r, i) => {
@@ -79,7 +79,7 @@ export default function RaceReview() {
             distance: { type: 'number', minimum: 0, maximum: 4000 },
             speed: { type: 'number', minimum: 0, maximum: 54 },
             lateral: { type: 'number', minimum: -7, maximum: 7 },
-            players: { type: 'integer', enum: [1, 2] },
+            players: { type: 'integer', enum: [1, 2, 3] },
             vehicle: { type: 'string', enum: ['mustang', 'amg-gt'] },
             headingOffset: { type: 'number', minimum: -3.15, maximum: 3.15 },
           },
@@ -108,7 +108,7 @@ export default function RaceReview() {
             input.speed > 54 ||
             Math.abs(input.lateral) > 7 ||
             Math.abs(input.headingOffset) > 3.15 ||
-            ![1, 2].includes(input.players) ||
+            ![1, 2, 3].includes(input.players) ||
             !['mustang', 'amg-gt'].includes(input.vehicle)
           )
             throw new Error('Invalid review position');
@@ -170,7 +170,7 @@ export default function RaceReview() {
         />
         <button
           onClick={() =>
-            place({ ...review, players: review.players === 1 ? 2 : 1 })
+            place({ ...review, players: (review.players % 3) + 1 })
           }
         >
           {review.players} экран

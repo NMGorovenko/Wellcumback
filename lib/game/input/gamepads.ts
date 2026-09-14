@@ -3,6 +3,7 @@ import { getControlSettings } from './settings-store.ts';
 import {
   getPhysicalBinding,
   physicalKeyLabel,
+  resolvePadGlyphBrand,
   type CanonicalKey,
   type InputProfile,
 } from './settings.ts';
@@ -27,6 +28,12 @@ export type PadAssignment = PadIdentity & {
   player: number;
   ready: boolean;
 };
+export type PadNavigationInput = {
+  x: number;
+  y: number;
+  confirm: boolean;
+  back: boolean;
+};
 export type PadFrame = {
   keys: Set<string>;
   drive?: DriveAxes;
@@ -35,7 +42,9 @@ export type PadFrame = {
   pausePressed: boolean;
   assignments: PadAssignment[];
   unsupported: number[];
-  navigation: { x: number; y: number; confirm: boolean; back: boolean };
+  navigation: PadNavigationInput;
+  /** Assigned local player index, independent of browser device index. */
+  navigationByPlayer: PadNavigationInput[];
 };
 type PadMemory = {
   id: string;
@@ -118,10 +127,7 @@ export function mapGamepads(
   const count =
     profile === 'city'
       ? 1
-      : Math.min(
-          profile === 'race' ? 2 : 3,
-          Math.max(1, Math.floor(players) || 1),
-        );
+      : Math.min(PLAYER_BINDINGS.length, Math.max(1, Math.floor(players) || 1));
   const connected = raw
     .filter((pad): pad is PadLike => !!pad?.connected)
     .sort((a, b) => a.index - b.index);
@@ -144,6 +150,12 @@ export function mapGamepads(
       .filter((pad) => pad.mapping !== 'standard')
       .map((pad) => pad.index),
     navigation: { x: 0, y: 0, confirm: false, back: false },
+    navigationByPlayer: Array.from({ length: count }, () => ({
+      x: 0,
+      y: 0,
+      confirm: false,
+      back: false,
+    })),
   };
   standard.forEach((pad, ordinal) => {
     let player = count > 1 && standard.length === 1 ? 1 : ordinal;
@@ -259,6 +271,12 @@ export function mapGamepads(
     }
     frame.navigation.confirm ||= actionPressed;
     frame.navigation.back ||= pausePressed;
+    frame.navigationByPlayer[player] = {
+      x: memory.x,
+      y: memory.y,
+      confirm: actionPressed,
+      back: pausePressed,
+    };
     memory.action = action;
     memory.pause = pause;
     frame.assignments.push({
@@ -275,8 +293,17 @@ export function navigateGamepad(
   state: PadNavigationState,
   frame: PadFrame,
   now: number,
+  player?: number,
 ): PadNavigation {
-  const input = frame.navigation;
+  const input =
+    player === undefined
+      ? frame.navigation
+      : (frame.navigationByPlayer[player] ?? {
+          x: 0,
+          y: 0,
+          confirm: false,
+          back: false,
+        });
   if (input.back || input.confirm)
     return {
       direction: null,
@@ -417,13 +444,17 @@ export function gamepadPrompt(
 ): string | null {
   const assignment = frame.assignments.find((pad) => pad.player === player);
   if (!assignment) return null;
+  const brand = resolvePadGlyphBrand(
+    getControlSettings().padGlyphs[player] ?? 'auto',
+    assignment.brand,
+  );
   if (control === 'move') return 'левый стик / крестовина';
   if (control === 'horizontal') return 'стик ←/→';
   if (control === 'vertical')
     return profile !== 'game'
-      ? `${padButtonLabel(assignment.brand, 7)} / ${padButtonLabel(assignment.brand, 6)}`
+      ? `${padButtonLabel(brand, 7)} / ${padButtonLabel(brand, 6)}`
       : 'стик ↑/↓';
-  const label = (button: number) => padButtonLabel(assignment.brand, button);
+  const label = (button: number) => padButtonLabel(brand, button);
   if (profile !== 'game' && control === 'secondary') return label(2);
   if (profile === 'race' && control === 'action') return label(3);
   if (control === 'pause') return `${label(1)} / ${label(9)}`;

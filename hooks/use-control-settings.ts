@@ -8,6 +8,7 @@ import {
   setControlBinding,
   setWorldPrompts,
   setShowFps,
+  setPadGlyphPreference,
   subscribeControlSettings,
 } from '@/lib/game/input/settings-store';
 
@@ -25,5 +26,6 @@ export function useControlSettings() {
     reset: resetControlSettings,
     setWorldPrompts,
     setShowFps,
+    setPadGlyphPreference,
   };
 }
