@@ -150,16 +150,21 @@ void test('Studgorodok descends onto Dubrovinskogo and physically passes beneath
     'GPS enters lower embankment without climbing the upper bridge',
   );
   assert.ok(
-    route.some(
-      (p) =>
+    route.slice(1).some((end, i) => {
+      // Graph nodes are only junctions. Removing a spurious side street
+      // leaves one longer quay edge, still passing beneath the bridge.
+      const p = { x: (route[i].x + end.x) / 2, z: (route[i].z + end.z) / 2 };
+      return (
         p.x > -750 &&
         p.x < -660 &&
         distanceToRoad(
           p.x,
           p.z,
           cityRoads.find((r) => r.id === 'left-quay:3'),
-        ) < 0.1,
-    ),
+        ) < 0.1
+      );
+    }),
+    'a route segment follows the actual lower quay through the underpass',
   );
 });
 void test('Kvant is the fourteenth reachable stop with a clear forecourt and exit', () => {

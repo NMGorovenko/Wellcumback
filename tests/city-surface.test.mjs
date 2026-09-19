@@ -124,7 +124,8 @@ void test('ordinary fixed-step driving crosses above and beneath the deck withou
       };
     const car = carOn(road, p),
       startY = car.elevation;
-    let maxStep = 0;
+    let maxStep = 0,
+      highest = startY;
     for (let i = 0; i < 240; i++) {
       const previous = car.elevation;
       const hit = stepCityCar(
@@ -138,6 +139,7 @@ void test('ordinary fixed-step driving crosses above and beneath the deck withou
         `${road.id} blocked at ${car.x},${car.z}`,
       );
       maxStep = Math.max(maxStep, Math.abs(car.elevation - previous));
+      highest = Math.max(highest, car.elevation);
       assert.ok(
         Math.abs(car.elevation - cityRoadHeight(road, car.x, car.z)) < 0.12,
       );
@@ -149,8 +151,8 @@ void test('ordinary fixed-step driving crosses above and beneath the deck withou
     assert.ok(maxStep < 0.05, 'no discrete layer switch');
     if (road === upper)
       assert.ok(
-        car.elevation < startY - 2,
-        'descending bridge changes elevation',
+        highest > startY + 1 && car.elevation < highest - 1,
+        'the shared street rises to the deck crest, then descends toward the river',
       );
   }
 });

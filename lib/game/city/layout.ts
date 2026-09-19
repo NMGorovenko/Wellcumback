@@ -1235,13 +1235,24 @@ for (const zone of CITY_NEIGHBOURHOODS) {
       end: CityPoint | undefined,
       part = 0;
     const flush = () => {
-      if (start && end)
-        cityRoads.push({
-          id: `district-${zone.id}:${id}:${part++}`,
-          from: start,
-          to: end,
-          width,
-        });
+      if (start && end) {
+        const roadId = `district-${zone.id}:${id}:${part++}`;
+        // Keep the local street grid out of the stacked Nikolaevsky junction.
+        // Its real access is Svobodny, not a shortcut across the ramp and quay.
+        if (roadId !== 'district-stud:east-west-3:1')
+          cityRoads.push({
+            id: roadId,
+            from: start,
+            to:
+              roadId === 'district-stud:north-south-2:0'
+                ? {
+                    ...cityRoads.find((r) => r.id === 'svobodny-mira-9maya:0')!
+                      .to,
+                  }
+                : end,
+            width,
+          });
+      }
       start = end = undefined;
     };
     for (let i = 1; i < points.length; i++) {
@@ -1293,6 +1304,7 @@ for (const zone of CITY_NEIGHBOURHOODS) {
     .sort((a, b) => a.length - b.length);
   let joined = 0;
   for (const link of links) {
+    if (zone.id === 'stud') break; // Three cross streets already join Svobodny.
     if (clearNeighbourhoodStreet(link.from, link.to, width)) {
       cityRoads.push({
         id: `district-${zone.id}-access:${joined}`,

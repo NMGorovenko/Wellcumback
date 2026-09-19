@@ -10,6 +10,11 @@ import {
 } from '../components/game/city/relief.ts';
 import { cityRoads, RIVER_SECTIONS } from '../lib/game/city/layout.ts';
 import {
+  freshCity,
+  resetCityCar,
+  teleportCityCar,
+} from '../lib/game/city/engine.ts';
+import {
   cityGroundHeight,
   cityRoadHeight,
   cityRoadLayer,
@@ -309,6 +314,48 @@ void test('rendered road height follows the drivable surface through sharp parce
     0,
     JSON.stringify(failures.sort((a, b) => b.error - a.error).slice(0, 5)),
   );
+});
+
+void test('fresh, reset and Nikita arrivals leave the entire car above rendered junction asphalt', () => {
+  const { colors } = renderedCity(),
+    asphalt = surfaceProbe(colors.get('535b5e') ?? []);
+  const fresh = freshCity();
+  const reset = { ...fresh, x: 0, z: 0, elevation: -3, surfaceId: 'ground' };
+  resetCityCar(reset);
+  const arrival = freshCity();
+  assert.ok(teleportCityCar(arrival, 'nikita'));
+  for (const { label, car } of [
+    { label: 'fresh', car: fresh },
+    { label: 'reset', car: reset },
+    { label: 'arrival', car: arrival },
+  ]) {
+    for (const along of [-2, 0, 2])
+      for (const across of [-0.9, 0, 0.9]) {
+        const x =
+          car.x +
+          Math.sin(car.heading) * along +
+          Math.cos(car.heading) * across;
+        const z =
+          car.z -
+          Math.cos(car.heading) * along +
+          Math.sin(car.heading) * across;
+        const contact = citySurfacePose(
+          x,
+          z,
+          car.heading,
+          car.elevation,
+          car.surfaceId,
+        );
+        const nearbyDecks = asphalt(x, z).filter(
+          (y) => y > contact.elevation + 0.18 && y < contact.elevation + 3,
+        );
+        assert.equal(
+          nearbyDecks.length,
+          0,
+          `${label}: visible deck intersects car at ${x},${z}: road ${contact.elevation}, decks ${JSON.stringify(nearbyDecks)}`,
+        );
+      }
+  }
 });
 
 void test('bank faces close the visible gap from the river to the elevated land', () => {

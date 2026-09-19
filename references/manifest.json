@@ -149,6 +149,11 @@
       "path": "references/city/kirenskogo-baykitskaya-doner-house.png",
       "bytes": 503648,
       "sha256": "54dd8fcb9b3a3902f0006d96310f4a99aaaac2e35fd7678a44b94b6206fbcfe1"
+    },
+    {
+      "path": "references/bugs/bridge-spawn.png",
+      "bytes": 411853,
+      "sha256": "eb7a829559d5bb75942b937d0b2456d8793f011c2525ea4c45bee91b38629205"
     }
   ]
 }

@@ -225,6 +225,7 @@ const nikoApproach = cityRoads.filter((r) =>
 );
 const approachStart = nikoApproach[0].from,
   approachEnd = nikoApproach.at(-1)!.to;
+const junctionStreet = cityRoads.find((r) => r.id === 'svobodny-mira-9maya:0')!;
 const approachLength = nikoApproach.reduce(
   (s, r) => s + length(r.from, r.to),
   0,
@@ -262,7 +263,26 @@ function nikolaevskyHeight(x: number, z: number) {
   const min = Math.min(approachGap * approachGap, bridgeGap * bridgeGap);
   const wa = Math.exp(-(approachGap * approachGap - min) / 64),
     wb = Math.exp(-(bridgeGap * bridgeGap - min) / 64);
-  return (approach * wa + bridgeHeight('nikolaevsky', x, z) * wb) / (wa + wb);
+  const deck =
+    (approach * wa + bridgeHeight('nikolaevsky', x, z) * wb) / (wa + wb);
+  // The whole starting fork shares Svobodny's ground, not just its centre
+  // vertex. Continue upward from the nearest street edge at a bounded grade;
+  // the far deck and the actual underpass retain their separate elevations.
+  const centre = projection({ x, z }, junctionStreet.from, junctionStreet.to);
+  const gap = length(centre, { x, z });
+  if (gap <= junctionStreet.width / 2 + 0.75) return cityGroundHeight(x, z);
+  const inside = Math.min(
+    1,
+    (junctionStreet.width / 2 + 0.75) / Math.max(gap, 1e-9),
+  );
+  const edge = {
+    x: centre.x + (x - centre.x) * inside,
+    z: centre.z + (z - centre.z) * inside,
+  };
+  const ceiling =
+    cityGroundHeight(edge.x, edge.z) +
+    Math.max(0, gap - junctionStreet.width / 2 - 0.75) * 0.14;
+  return Math.min(deck, ceiling);
 }
 export function cityRoadHeight(road: CityRoad, x: number, z: number): number {
   if (road.bridge === 'nikolaevsky' || road.id.startsWith('nikolaevsky-left:'))
@@ -370,7 +390,14 @@ function selectSurface(
               ) * 0.3
             : 0) -
           (v.road && v.surfaceId === previousSurfaceId ? 0.15 : 0);
-    return cost(a) + a.endPenalty - cost(b) - b.endPenalty;
+    // Rounded segment caps are real road surface. With a known elevation,
+    // an endpoint preference must never outweigh several metres of vertical
+    // separation and select the earth underneath an adjoining deck corner.
+    const endCost = (v: typeof a) =>
+      previousHeight === undefined
+        ? v.endPenalty
+        : Math.min(v.endPenalty, 0.25);
+    return cost(a) + endCost(a) - cost(b) - endCost(b);
   });
   return candidates[0];
 }

@@ -209,7 +209,12 @@ export function clearCityCruiseCamera(
   if (fraction * Math.hypot(delta.x, delta.z) < 4.5)
     return {
       x: car.x,
-      y: Math.min(Math.max(elevation + 6, eyeY), ceilingAt(car.x, car.z)),
+      // A ceiling farther along the blocked boom must not discard the desired
+      // portrait height when the fallback sits directly above the car.
+      y: Math.min(
+        Math.max(elevation + 6, desired.y, eyeY),
+        ceilingAt(car.x, car.z),
+      ),
       z: car.z,
     };
   return {
