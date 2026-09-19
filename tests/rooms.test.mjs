@@ -1,4 +1,5 @@
-import { CITY_ROUTES } from '../lib/game/city/layout.ts';
+import { cityRoads } from '../lib/game/city/layout.ts';
+import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
 import test from 'node:test';
 import { ROOM_VERSION } from '../lib/game/network/room-types.ts';
 import assert from 'node:assert/strict';
@@ -586,20 +587,27 @@ void test('concurrent host epoch cannot keep a returning guest offline', async (
   );
 });
 
-void test('room protocol carries the six-speed city at 115 km/h and preserves it through the reconnect pause', async () => {
+void test('room protocol carries the six-speed city at 300 km/h and preserves it through the reconnect pause', async () => {
   const { freshCity, tickCity } = await import('../lib/game/city/engine.ts');
   const { hostPoll, guestPoll } = await party(2);
+  const road = cityRoads.find((r) => r.id === 'left-quay:1');
+  const dx = road.to.x - road.from.x,
+    dz = road.to.z - road.from.z,
+    length = Math.hypot(dx, dz);
   const city = {
     ...freshCity(),
-    ...CITY_ROUTES.studPlaneta.at(-2),
-    heading: 0,
+    x: road.from.x + (dx / length) * 15,
+    z: road.from.z + (dz / length) * 15,
+    heading: Math.atan2(dx, -dz),
   };
-  for (let i = 0; i < 360; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
+  for (let i = 0; i < 1500; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
+  assert.equal(city.bumps, 0);
+  assert.ok(Math.abs(city.speed - CITY_TOP_SPEED) < 1e-8);
   const world = { ...snapshot(3), state: city };
   const published = await hostPoll({ snapshot: world, snapshotSeq: 1 });
   assert.equal(published.status, 200);
   const seen = await guestPoll();
-  assert.equal(seen.body.snapshot.state.speed, 32);
+  assert.equal(seen.body.snapshot.state.speed, city.speed);
   assert.equal(seen.body.snapshot.state.powertrain.gear, 6);
   assert.deepEqual(seen.body.snapshot.state.powertrain, city.powertrain);
   await hostPoll({}, 1000 + MEMBER_STALE_MS + 1);
@@ -611,7 +619,7 @@ void test('room protocol carries the six-speed city at 115 km/h and preserves it
     1000 + MEMBER_STALE_MS + 3,
   );
   assert.equal(held.body.snapshot.state.paused, true);
-  assert.equal(back.body.snapshot.state.speed, 32);
+  assert.equal(back.body.snapshot.state.speed, city.speed);
   assert.deepEqual(back.body.snapshot.state.powertrain, city.powertrain);
 });
 

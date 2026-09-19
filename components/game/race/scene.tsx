@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { presentedVehicle } from '../../../lib/game/city/vehicle-presentation';
 import { RenderKit } from '../world/render-kit';
 import { createCityEnvironment } from '../city/environment';
+import { createCityAtmosphere } from '../city/atmosphere';
 import { createMustang } from '../city/mustang';
 import { createAmgGt } from './amg-gt';
 import { createNordschleife } from './nordschleife';
@@ -43,6 +44,8 @@ export default function RaceScene({
       course.id === 'krasnoyarsk' ? '#8cabb3' : '#9aaeb5',
     );
     scene.fog = new THREE.Fog(scene.background, 180, 430);
+    const atmosphere =
+      course.id === 'krasnoyarsk' ? createCityAtmosphere(kit) : null;
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
@@ -290,6 +293,7 @@ export default function RaceScene({
         });
         renderer.setViewport(x, 0, w, height);
         renderer.setScissor(x, 0, w, height);
+        atmosphere?.update(camera, state.elapsed);
         renderer.render(scene, camera);
       }
       countFrame(now);

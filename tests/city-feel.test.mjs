@@ -3,6 +3,7 @@ import {
   CITY_ROUTES,
   BRIDGES,
   cityBuildings,
+  cityRoads,
   riverBankZ,
 } from '../lib/game/city/layout.ts';
 import test from 'node:test';
@@ -26,7 +27,7 @@ const slip = (s) =>
 void test('Mustang accelerates promptly, coasts naturally, and brakes before reversing', () => {
   const accelerating = streetCity();
   advance(accelerating, 1, ['KeyW']);
-  assert.ok(accelerating.speed > 11 && accelerating.speed <= 18);
+  assert.ok(accelerating.speed > 8 && accelerating.speed <= 11);
   assert.equal(accelerating.bumps, 0);
   const coast = { ...streetCity(), vz: -10, speed: 10 };
   advance(coast, 1);
@@ -106,7 +107,7 @@ void test('a moderate-speed handbrake turn builds real lateral slip and releases
 void test('the higher forward limit cannot tunnel through buildings, banks, or bridge rails', () => {
   const straight = streetCity();
   advance(straight, 1.7, ['KeyW']);
-  assert.ok(straight.speed > 19 && straight.speed <= CITY_TOP_SPEED);
+  assert.ok(straight.speed > 13 && straight.speed <= CITY_TOP_SPEED);
   assert.equal(straight.bumps, 0);
   const building = cityBuildings.find((b) => b.kind === 'borisova');
   const bankX = CITY_ROUTES.western.at(-1).x;
@@ -207,18 +208,23 @@ void test('automatic drift trajectories match on 30, 60 and 144Hz displays', () 
 });
 
 void test('six-speed full throttle keeps pulling beyond the old ceiling while partial triggers stay gentle', () => {
+  const road = cityRoads.find((r) => r.id === 'left-quay:1');
+  const dx = road.to.x - road.from.x,
+    dz = road.to.z - road.from.z,
+    length = Math.hypot(dx, dz);
   const full = {
       ...streetCity(),
-      ...CITY_ROUTES.studPlaneta.at(-2),
-      heading: 0,
+      x: road.from.x + (dx / length) * 15,
+      z: road.from.z + (dz / length) * 15,
+      heading: Math.atan2(dx, -dz),
     },
     partial = streetCity();
   const marks = new Map();
-  for (let i = 0; i < 360; i++) {
+  for (let i = 0; i < 1500; i++) {
     tickCity(full, 1 / 60, new Set(['KeyW']));
     if (i < 30)
       tickCity(partial, 1 / 60, new Set(), { throttle: 0.25, steer: 0 });
-    for (const speed of [18, 100 / 3.6, CITY_TOP_SPEED - 0.01])
+    for (const speed of [18, 100 / 3.6, 200 / 3.6, CITY_TOP_SPEED - 0.01])
       if (full.speed >= speed && !marks.has(speed))
         marks.set(speed, (i + 1) / 60);
   }
@@ -227,17 +233,23 @@ void test('six-speed full throttle keeps pulling beyond the old ceiling while pa
     'a quarter trigger remains suitable for parking',
   );
   assert.ok(
-    marks.get(18) < 1.6,
+    marks.get(18) > 2 && marks.get(18) < 2.8,
     'launch still reaches the former 65 km/h ceiling quickly',
   );
   assert.ok(
-    marks.get(100 / 3.6) > 2 && marks.get(100 / 3.6) < 3.6,
+    marks.get(100 / 3.6) > 3.5 && marks.get(100 / 3.6) < 4.5,
     'sustained torque reaches 100 km/h with readable shift pauses',
   );
   assert.ok(
-    marks.get(CITY_TOP_SPEED - 0.01) > marks.get(18) + 1.5,
-    'several seconds of acceleration replace the abrupt old limiter',
+    marks.get(200 / 3.6) > 9 && marks.get(200 / 3.6) < 12,
+    '200 km/h needs a sustained straight after the strong launch',
   );
+  assert.ok(
+    marks.get(CITY_TOP_SPEED - 0.01) > 22 &&
+      marks.get(CITY_TOP_SPEED - 0.01) < 30,
+    '300 km/h builds progressively rather than arriving instantly',
+  );
+  assert.equal(CITY_TOP_SPEED * 3.6, 300);
   assert.equal(full.powertrain.gear, 6);
   assert.equal(full.bumps, 0);
 });
@@ -255,7 +267,7 @@ void test('fractional refresh periods cannot silently lose a city simulation tic
 });
 
 void test('higher speed power limiting never makes a partial trigger stronger than full throttle', () => {
-  for (const speed of [24, 30]) {
+  for (const speed of [24, 30, 55, 75, CITY_TOP_SPEED - 0.1]) {
     const accelerations = [0.25, 0.5, 0.75, 0.9, 1].map((throttle) => {
       const s = {
         ...streetCity(),

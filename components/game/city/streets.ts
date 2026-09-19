@@ -80,29 +80,39 @@ export function createStreetDetails(
         );
         face.position.set(x, 2.5, -side * 1.6 + facing * 0.05);
         face.rotation.y = facing < 0 ? Math.PI : 0;
-        kit.sphere(
-          0.055,
-          0.055,
-          0.026,
-          '#263b42',
-          x,
-          2.58,
-          face.position.z + facing * 0.015,
-          g,
-          8,
+        // The walking person is ink on the sign, not a collection of tiny
+        // cylinders and spheres. Flat geometry keeps its silhouette readable
+        // while dense neighbourhoods do not multiply hundreds of hidden faces.
+        const ink = kit.material('#263b42');
+        const head = kit.mesh(new THREE.CircleGeometry(0.055, 8), ink, g);
+        head.position.set(x, 2.58, face.position.z + facing * 0.015);
+        head.rotation.y = facing < 0 ? Math.PI : 0;
+        const person = new THREE.Shape();
+        const outline = [
+          [-0.01, 0.06],
+          [0.08, 0.025],
+          [0.14, -0.04],
+          [0.12, -0.065],
+          [0.05, -0.015],
+          [0.04, -0.08],
+          [0.14, -0.16],
+          [0.1, -0.19],
+          [0.015, -0.12],
+          [-0.08, -0.19],
+          [-0.11, -0.16],
+          [-0.04, -0.07],
+          [-0.04, 0],
+          [-0.12, -0.045],
+          [-0.14, -0.02],
+          [-0.035, 0.055],
+        ];
+        outline.forEach(([px, py], i) =>
+          i ? person.lineTo(px, py) : person.moveTo(px, py),
         );
-        for (const dir of [-1, 1])
-          kit.rod(
-            new THREE.Vector3(x, 2.46, face.position.z + facing * 0.02),
-            new THREE.Vector3(
-              x + dir * 0.12,
-              2.29,
-              face.position.z + facing * 0.02,
-            ),
-            0.022,
-            '#263b42',
-            g,
-          );
+        person.closePath();
+        const body = kit.mesh(new THREE.ShapeGeometry(person), ink, g);
+        body.position.set(x, 2.45, face.position.z + facing * 0.015);
+        body.rotation.y = facing < 0 ? Math.PI : 0;
       }
     }
   }

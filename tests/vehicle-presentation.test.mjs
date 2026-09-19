@@ -7,6 +7,7 @@ import {
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { freshCity, tickCity, resetCityCar } from '../lib/game/city/engine.ts';
+import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
 import { freshRace, tickRace, RACE_STEP } from '../lib/game/race/engine.ts';
 import { raceCourse } from '../lib/game/race/course.ts';
 import { neutralRaceInput } from '../lib/game/race/types.ts';
@@ -27,8 +28,8 @@ function straight(car = freshCity()) {
     ...straightStart,
     heading: 0,
     vx: 0,
-    vz: -32,
-    speed: 32,
+    vz: -CITY_TOP_SPEED,
+    speed: CITY_TOP_SPEED,
     paused: false,
   });
   Object.assign(car.powertrain, { gear: 6, rpm: 4300, shiftReadyAt: 1e6 });
@@ -50,18 +51,22 @@ for (const hz of [60, 120, 144, 240]) {
       if (frame / hz > 1 / 60)
         close(
           visual.z,
-          straightStart.z - 32 * (frame / hz - 1 / 60),
+          straightStart.z - CITY_TOP_SPEED * (frame / hz - 1 / 60),
           'bounded one-step interpolation delay',
         );
       if (previous !== undefined && frame / hz > 3 / 60)
         close(
           visual.z - previous,
-          -32 / hz,
+          -CITY_TOP_SPEED / hz,
           'every rendered frame advances evenly',
         );
       previous = visual.z;
     }
-    close(car.z, straightStart.z - 32, 'authoritative final distance');
+    close(
+      car.z,
+      straightStart.z - CITY_TOP_SPEED,
+      'authoritative final distance',
+    );
     assert.equal(
       car.bumps,
       0,

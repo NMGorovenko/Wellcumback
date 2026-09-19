@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { handleRoomRequest, MEMBER_STALE_MS } from '../lib/server/rooms.ts';
 import { freshCity } from '../lib/game/city/engine.ts';
+import { cityTravelArrival } from '../lib/game/city/engine.ts';
 import { freshGame } from '../lib/game/screen/engine.ts';
 import { freshClean } from '../lib/game/clean/engine.ts';
 import { freshMoving } from '../lib/game/moving/engine.ts';
@@ -1607,6 +1608,108 @@ void test('clean handoff publishes a new epoch and discards old queued commands'
     assert.equal(client.roomWorld().attempt, 7);
   } finally {
     unsubscribe();
+    await cleanup();
+  }
+});
+
+void test('city fast travel is leader-only, preserves roles/progress and publishes the arrival to passengers', async () => {
+  setup();
+  try {
+    const { code, guest, epoch } = await hostCity(0);
+    const world = client.roomWorld();
+    world.roles = [0, 1, 2];
+    world.attempt = 73;
+    Object.assign(world.state, {
+      elapsed: 300,
+      bumps: 8,
+      driftDistance: 90,
+      vx: 17,
+      vz: 3,
+      speed: 18,
+      drifting: true,
+      driftBlend: 0.7,
+      previousAction: true,
+      previousHorn: true,
+    });
+    const before = structuredClone(world);
+    bridge.roomCommand({ kind: 'city-travel', value: 'planeta' }, 1);
+    assert.deepEqual(
+      client.roomWorld(),
+      before,
+      'passenger cannot mutate the car',
+    );
+    bridge.roomCommand({ kind: 'city-travel', value: 'bad-destination' }, 0);
+    assert.deepEqual(
+      client.roomWorld(),
+      before,
+      'arbitrary destinations cannot mutate the car',
+    );
+    const invalid = await api({
+      op: 'poll',
+      code,
+      token: guest.token,
+      frames: [
+        {
+          seq: 1,
+          epoch,
+          keys: [],
+          command: { kind: 'city-travel', value: 'bad-destination' },
+        },
+      ],
+    });
+    assert.equal(invalid.status, 400);
+    bridge.roomCommand({ kind: 'city-travel', value: 'planeta' }, 0);
+    const arrival = cityTravelArrival('planeta');
+    assert.equal(client.roomWorld().epoch, epoch + 1);
+    assert.deepEqual(client.roomWorld().roles, [0, 1, 2]);
+    assert.equal(client.roomWorld().driver, 0);
+    assert.equal(client.roomWorld().attempt, 73);
+    assert.equal(client.roomWorld().state.x, arrival.x);
+    assert.equal(client.roomWorld().state.z, arrival.z);
+    assert.equal(client.roomWorld().state.speed, 0);
+    assert.equal(client.roomWorld().state.drifting, false);
+    assert.equal(client.roomWorld().state.elapsed, 300);
+    assert.equal(client.roomWorld().state.bumps, 8);
+    assert.equal(client.roomWorld().state.driftDistance, 90);
+    await nextPoll();
+    const passenger = (await api({ op: 'poll', code, token: guest.token }))
+      .body;
+    assert.equal(passenger.snapshot.epoch, epoch + 1);
+    assert.equal(passenger.snapshot.state.x, arrival.x);
+    assert.equal(passenger.snapshot.state.z, arrival.z);
+    assert.equal(passenger.snapshot.state.speed, 0);
+    assert.equal(passenger.snapshot.state.travelRevision, 1);
+    const copy = freshCity();
+    bridge.tickRoomCity(copy, 0.1, new Set(['KeyW']), {
+      throttle: 1,
+      steer: 0,
+    });
+    assert.equal(
+      copy.speed,
+      0,
+      'held throttle is disarmed after the travel epoch',
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+void test('a transferred city leader can travel through the coordinator while the former leader cannot', async () => {
+  setup();
+  try {
+    await hostCity(0);
+    bridge.roomCommand({ kind: 'leader', value: 1 }, 0);
+    await nextPoll();
+    const world = client.roomWorld(),
+      before = structuredClone(world);
+    bridge.roomCommand({ kind: 'city-travel', value: 'udachny' }, 0);
+    assert.deepEqual(client.roomWorld(), before);
+    bridge.roomCommand({ kind: 'city-travel', value: 'udachny' }, 1);
+    assert.equal(client.roomWorld().state.x, cityTravelArrival('udachny').x);
+    assert.deepEqual(client.roomWorld().roles, [1, 0, 2]);
+    assert.equal(client.roomWorld().driver, 1);
+    assert.equal(client.roomWorld().attempt, before.attempt);
+  } finally {
     await cleanup();
   }
 });

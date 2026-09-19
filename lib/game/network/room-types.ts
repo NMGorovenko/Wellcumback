@@ -1,7 +1,7 @@
 import type { RaceInput } from '../race/types.ts';
 import type { VehicleId, ColorId } from '../race/vehicles.ts';
 import type { DriveAxes } from '../input/drive.ts';
-export const ROOM_VERSION = 9;
+export const ROOM_VERSION = 10;
 export type RoomScene =
   | 'city'
   | 'screen'
@@ -18,6 +18,7 @@ export type RoomCommand = {
     | 'chairs'
     | 'begin'
     | 'restart'
+    | 'city-travel'
     | 'episode'
     | 'exit'
     | 'wheel'

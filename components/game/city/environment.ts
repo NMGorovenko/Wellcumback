@@ -143,9 +143,9 @@ export function createCityEnvironment(kit: RenderKit) {
   polygon(
     [{ x: minX, z: minZ }, { x: maxX, z: minZ }, ...north.slice().reverse()],
     0,
-    '#a5b397',
+    '#82966d',
   );
-  polygon([...south, { x: maxX, z: maxZ }, { x: minX, z: maxZ }], 0, '#a5b397');
+  polygon([...south, { x: maxX, z: maxZ }, { x: minX, z: maxZ }], 0, '#82966d');
   polygon([...north, ...south.slice().reverse()], -3, '#367f9e');
   for (const side of [-1, 1])
     for (let i = 0; i < RIVER_SECTIONS.length - 1; i++) {
@@ -186,7 +186,7 @@ export function createCityEnvironment(kit: RenderKit) {
   for (const island of CITY_ISLANDS) polygon(island.points, 0.027, '#708858');
   for (const road of cityRoads) {
     ribbon(kit, root, road.from, road.to, road.width + 1.2, 0.045, '#d0cdbc');
-    ribbon(kit, root, road.from, road.to, road.width, 0.058, '#536671');
+    ribbon(kit, root, road.from, road.to, road.width, 0.058, '#535b5e');
     const dx = road.to.x - road.from.x,
       dz = road.to.z - road.from.z,
       length = Math.hypot(dx, dz);
@@ -498,7 +498,7 @@ export function createCityEnvironment(kit: RenderKit) {
         (ring.material as THREE.MeshBasicMaterial).opacity = selected
           ? 0.92
           : 0.42;
-        sign.visible = !overview && selected;
+        sign.visible = !overview && index === targetStop && index !== nearStop;
         // Only the selected destination gets a large label; neighbouring story
         // entrances would overlap at the scale of the whole city.
         overviewLabel.visible = overview && selected;

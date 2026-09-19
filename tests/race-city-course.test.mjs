@@ -105,7 +105,11 @@ void test('all nine city grid slots face the straight start gate and cross it wi
       { throttle: 0.8, steer: 0, handbrake: false, reset: false },
     ]),
   );
-  for (let frame = 0; frame < 60 * 6; frame++)
+  for (
+    let frame = 0;
+    frame < 60 * 8 && !state.racers.every((r) => r.started);
+    frame++
+  )
     tickRace(state, 1 / 60, inputs, course);
   state.racers.forEach((r) => {
     assert.equal(r.started, true);
@@ -198,7 +202,7 @@ function drivingInput(car) {
   };
 }
 for (const vehicleId of ['mustang', 'amg-gt'])
-  void test(`${vehicleId}: ordinary driving completes all three city laps below ten minutes`, () => {
+  void test(`${vehicleId}: ordinary driving completes all three city laps below ten minutes`, (t) => {
     const state = ready(vehicleId),
       racer = state.racers[0];
     for (let frame = 0; frame < 60 * 600 && state.phase !== 'result'; frame++) {
@@ -227,4 +231,7 @@ for (const vehicleId of ['mustang', 'amg-gt'])
     );
     assert.equal(racer.passedGates, course.gates.length * 3 + 1);
     assert.equal(racer.respawns, 0);
+    t.diagnostic(
+      `Three city laps: ${racer.finishTime.toFixed(2)} s, no respawns`,
+    );
   });

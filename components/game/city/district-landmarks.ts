@@ -35,14 +35,30 @@ export function createDistrictLandmark(
   if (b.kind === 'borisova') {
     // Орбита: two pale towers, orange strips and glazed rounded balcony bays.
     for (const side of [-1, 1]) {
-      box(6.2, b.h, b.d - 2, '#d7d9d0', side * 4.6, b.h / 2, -0.5);
-      box(6.4, 0.22, b.d - 1.7, '#6e7e82', side * 4.6, b.h + 0.1, -0.5);
+      box(
+        b.w * 0.37,
+        b.h,
+        b.d - 2,
+        '#d7d9d0',
+        side * b.w * 0.27,
+        b.h / 2,
+        -0.5,
+      );
+      box(
+        b.w * 0.38,
+        0.22,
+        b.d - 1.7,
+        '#6e7e82',
+        side * b.w * 0.27,
+        b.h + 0.1,
+        -0.5,
+      );
       box(
         0.55,
         b.h - 0.4,
         0.12,
         '#b76b55',
-        side * 6.7,
+        side * b.w * 0.42,
         b.h / 2,
         b.d / 2 - 1.44,
       );
@@ -51,22 +67,22 @@ export function createDistrictLandmark(
         1.35,
         b.h - 0.6,
         '#8baca6',
-        side * 4.2,
+        side * b.w * 0.26,
         b.h / 2,
         b.d / 2 - 1.55,
         g,
       );
       bay.scale.z = 0.75;
-      for (let floor = 1; floor < 11; floor++) {
-        const y = floor * 1.6;
-        box(6.3, 0.1, b.d - 1.9, '#e4dfc0', side * 4.6, y, -0.5);
+      for (let floor = 1; floor < 18; floor++) {
+        const y = floor * (b.h / 18);
+        box(b.w * 0.375, 0.1, b.d - 1.9, '#e4dfc0', side * b.w * 0.27, y, -0.5);
         for (const dx of [-1.7, 0, 1.7]) {
           box(
             0.9,
             0.9,
             0.08,
             '#536671',
-            side * 4.6 + dx,
+            side * b.w * 0.27 + dx,
             y - 0.6,
             -b.d / 2 + 0.46,
           );
@@ -75,7 +91,7 @@ export function createDistrictLandmark(
             0.95,
             0.62,
             '#40545a',
-            side * 4.2 + dx * 0.55,
+            side * b.w * 0.26 + dx * 0.55,
             y - 0.48,
             b.d / 2 - 1,
           );
@@ -97,10 +113,10 @@ export function createDistrictLandmark(
   } else if (b.kind === 'ikit') {
     box(b.w - 0.4, b.h, b.d - 1, '#d4d2b7', 0, b.h / 2, -0.3);
     for (let floor = 0; floor < 5; floor++) {
-      const y = 0.65 + floor * 1.06;
+      const y = 1.25 + floor * (b.h / 5);
       box(b.w - 0.2, 0.18, 0.12, '#805e51', 0, y + 0.52, b.d / 2 - 0.75);
       for (let x = -b.w / 2 + 1; x < b.w / 2 - 0.5; x += 1.4)
-        box(0.92, 0.66, 0.07, '#536671', x, y, b.d / 2 - 0.77);
+        box(1.05, 1.55, 0.07, '#536671', x, y, b.d / 2 - 0.77);
     }
     box(2.2, b.h + 0.7, 0.34, '#ccb79a', 1.5, (b.h + 0.7) / 2, b.d / 2 - 0.5);
     box(2.4, 1.5, 0.12, '#40545a', 5.6, 0.85, b.d / 2 - 0.62);

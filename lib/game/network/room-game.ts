@@ -8,6 +8,7 @@ import {
   vehiclePose,
   rememberVehicleStep,
   setVehicleRemainder,
+  resetVehiclePresentation,
 } from '../city/vehicle-presentation.ts';
 import { newRaceWorld, applyRaceCommand, syncRaceLobby } from './room-race.ts';
 import { tickRace } from '../race/engine.ts';
@@ -46,6 +47,7 @@ import {
 import {
   freshCity,
   resetCityCar,
+  teleportCityCar,
   tickCity,
   type CityState,
 } from '../city/engine.ts';
@@ -276,6 +278,22 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
     suspendRemoteInput();
     inputArmed = false;
     publishRoomWorld({ ...world });
+    return;
+  }
+  if (command.kind === 'city-travel') {
+    if (!isOwner || world.scene !== 'city' || typeof command.value !== 'string')
+      return;
+    if (!teleportCityCar(world.state as unknown as CityState, command.value))
+      return;
+    suspendRemoteInput();
+    inputArmed = false;
+    localActionPulse = '';
+    hostAccumulator = 0;
+    publishRoomWorld({
+      ...world,
+      epoch: world.epoch + 1,
+      attempt: world.attempt ?? world.epoch,
+    });
     return;
   }
   if (command.kind === 'restart' && isOwner && world.scene === 'city') {
@@ -519,6 +537,7 @@ function hostSteps(
     }
   }
 }
+const receivedCityEpoch = new WeakMap<CityState, number>();
 export function tickRoomCity(
   state: CityState,
   dt: number,
@@ -531,9 +550,12 @@ export function tickRoomCity(
   if (!roomHost()) {
     captureRoomInput(keys, drive);
     const { x, z, heading } = state;
+    const discontinuity = receivedCityEpoch.get(state) !== world.epoch;
+    receivedCityEpoch.set(state, world.epoch);
     Object.assign(state, world.state);
+    if (discontinuity) resetVehiclePresentation(state);
     const amount = 1 - Math.exp(-dt * 18);
-    if (Math.hypot(x - state.x, z - state.z) < 10) {
+    if (!discontinuity && Math.hypot(x - state.x, z - state.z) < 10) {
       state.x = x + (state.x - x) * amount;
       state.z = z + (state.z - z) * amount;
       state.heading =

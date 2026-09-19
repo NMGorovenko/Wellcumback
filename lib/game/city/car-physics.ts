@@ -1,6 +1,7 @@
 import type { CityState } from './engine.ts';
 import {
   advancePowertrain,
+  CITY_TOP_SPEED,
   freshPowertrain,
   type TransmissionTuning,
 } from './powertrain.ts';
@@ -26,21 +27,21 @@ export type VehicleTuning = {
   transmission?: TransmissionTuning;
 };
 export const CITY_MUSTANG: VehicleTuning = {
-  maxSpeed: 32,
-  acceleration: 26,
-  power: 260,
-  brake: 30,
+  maxSpeed: CITY_TOP_SPEED,
+  acceleration: 9.5,
+  power: 640,
+  brake: 18,
   reverseAcceleration: 10,
-  torqueFalloff: 0.3,
+  torqueFalloff: 0.02,
   shiftTorque: 0.28,
   grip: 7.5,
   driftGrip: 0.55,
   automaticSlip: 0.52,
-  downforce: 0,
+  downforce: 0.0004,
   yaw: 1.7,
   driftYaw: 1.1,
-  steeringSpeed: Infinity,
-  drag: 0.2,
+  steeringSpeed: 24,
+  drag: 0.08,
 };
 /** One fixed vehicle step, shared by city and races. No dialogue or mission side effects.
  * Raw contacts must be returned even during the cosmetic bump cooldown. */
@@ -96,8 +97,8 @@ export function stepCar(
   const motor = (s.powertrain ??= freshPowertrain());
   advancePowertrain(motor, forward, gas, dt, tuning.transmission);
   const changing = motor.time < motor.shiftUntil;
-  // Strong initial torque carries on beyond the old 65 km/h ceiling. The
-  // automatic briefly unloads the driven wheels as well as the exhaust.
+  // Strong launch torque becomes power-limited at speed, so reaching the
+  // arcade ceiling takes a sustained straight. Shifts unload wheels and exhaust.
   const fullTorque =
     tuning.acceleration - Math.max(0, forward) * tuning.torqueFalloff;
   const acceleration = opposing

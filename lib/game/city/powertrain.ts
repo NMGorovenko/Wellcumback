@@ -10,7 +10,8 @@ export type PowertrainState = {
   shiftToRpm: number;
   shiftReadyAt: number;
 };
-export const CITY_TOP_SPEED = 32;
+/** Deliberate arcade limit, in metres per second (300 km/h on the HUD). */
+export const CITY_TOP_SPEED = 300 / 3.6;
 export const AUTOMATIC_RATIOS = [4.15, 2.7, 1.65, 1.16, 0.86, 0.62] as const;
 export const SHIFT_DURATION = 0.2;
 export const freshPowertrain = (): PowertrainState => ({
@@ -40,7 +41,9 @@ const STANDARD: TransmissionTuning = {
   ratios: AUTOMATIC_RATIOS,
   idle: 780,
   maxRpm: 5700,
-  rpmPerSpeed: 165,
+  // Spread six gears across the larger road-speed range without
+  // raising the V8's pitch, idle or redline.
+  rpmPerSpeed: 65,
   shiftRpm: 5000,
   duration: SHIFT_DURATION,
   maxSpeed: CITY_TOP_SPEED,

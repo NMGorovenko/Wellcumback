@@ -12,6 +12,9 @@ import {
   CITY_ROUTES,
   CITY_SPAWN,
   CITY_ISLANDS,
+  CITY_NEIGHBOURHOODS,
+  CITY_COURTYARDS,
+  distanceToRoad,
   cityRoads,
   cityStops,
   cityBuildings,
@@ -162,11 +165,16 @@ void test('city geometry is batched and animated frames never allocate new graph
       if (o.isMesh) {
         meshes++;
         triangles +=
-          (o.geometry.index?.count ?? o.geometry.attributes.position.count) / 3;
+          ((o.geometry.index?.count ?? o.geometry.attributes.position.count) /
+            3) *
+          (o.isInstancedMesh ? o.count : 1);
       }
     });
-    assert.ok(meshes < 100, `${meshes} render batches`);
-    assert.ok(triangles < 1600000, `${triangles} triangles`);
+    assert.ok(meshes < 150, `${meshes} render batches`);
+    assert.ok(
+      triangles < 2000000,
+      `${triangles} triangles including instances`,
+    );
     assert.ok(
       kit.geometries.size < 150,
       'source mesh geometry released after batching',
@@ -191,4 +199,76 @@ void test('overview camera fits the whole expanded geography across wide and por
     assert.ok(Number.isFinite(c.distance));
   }
   assert.ok(!cityCarBlocked(CITY_SPAWN.x, CITY_SPAWN.z, CITY_SPAWN.heading));
+});
+
+void test('compact districts have deep residential blocks, varied heights and open green courtyards', () => {
+  const homes = cityBuildings.filter(
+    (b) => b.style && b.district !== 'connecting-streets',
+  );
+  const mainRoads = cityRoads.filter((r) => !r.id.startsWith('district-'));
+  const interior = homes.filter((b) =>
+    mainRoads.every((r) => distanceToRoad(b.x, b.z, r) > 60),
+  );
+  assert.ok(
+    interior.length > homes.length * 0.5,
+    'buildings occupy actual blocks beyond main-road frontage',
+  );
+  for (const district of CITY_NEIGHBOURHOODS) {
+    const houses = homes.filter((b) => b.district === district.id);
+    const coverage =
+      houses.reduce((area, b) => area + b.w * b.d, 0) /
+      (district.columns * district.rows * district.cell ** 2);
+    assert.ok(
+      coverage > 0.075,
+      `${district.id} is a developed compact neighbourhood (${coverage})`,
+    );
+    assert.ok(
+      houses.length >= 18,
+      `${district.id} must be more than one landmark`,
+    );
+    assert.ok(
+      CITY_COURTYARDS.some((c) => c.district === district.id),
+      `${district.id} keeps courtyard greenery`,
+    );
+    for (const b of houses) {
+      const floors = b.floors;
+      assert.ok(Number.isInteger(floors));
+      assert.ok(
+        b.h / floors >= 2.6 && b.h / floors <= 2.81,
+        'windows represent a consistent physical storey',
+      );
+      if (district.id === 'centre') assert.ok(floors >= 2 && floors <= 5);
+      if (district.id === 'udachny') assert.ok(floors >= 1 && floors <= 3);
+      if (district.id !== 'vzletka')
+        assert.ok(floors <= 9, 'towers do not spread into every district');
+      if (b.style === 'tower') assert.ok(floors >= 14 && floors <= 25);
+    }
+  }
+  assert.ok(
+    homes.some((b) => b.orientation === 'north-south' && b.d / b.w > 3),
+    'crosswise slabs enclose courtyards',
+  );
+  assert.ok(
+    homes.some((b) => !b.orientation && b.w / b.d > 3),
+    'long slab frontages differ from point towers',
+  );
+  for (const court of CITY_COURTYARDS) {
+    assert.equal(inCityWater(court.x, court.z), false);
+    assert.ok(
+      cityBuildings.every(
+        (b) =>
+          Math.abs(b.x - court.x) >= (b.w + court.w) / 2 ||
+          Math.abs(b.z - court.z) >= (b.d + court.d) / 2,
+      ),
+      'courtyard stays outside building parcels',
+    );
+    assert.ok(
+      cityRoads.every(
+        (r) =>
+          distanceToRoad(court.x, court.z, r) >
+          r.width / 2 + Math.min(court.w, court.d) / 2,
+      ),
+      'courtyard never fills a road',
+    );
+  }
 });

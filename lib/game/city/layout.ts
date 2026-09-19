@@ -612,6 +612,9 @@ export type CityBuilding = CityRect & {
     | 'fresco';
   style?: 'heritage' | 'panel' | 'tower' | 'cottage';
   lowDetail?: boolean;
+  floors?: number;
+  district?: string;
+  orientation?: 'north-south';
 };
 const landmark = (
   kind: NonNullable<CityBuilding['kind']>,
@@ -623,8 +626,8 @@ const landmark = (
   color: string,
 ): CityBuilding => ({ ...cityGeo(lat, lon), w, d, h, color, kind });
 export const cityBuildings: CityBuilding[] = [
-  landmark('borisova', 55.992306, 92.795672, 16, 22, 18, '#d8d8cd'),
-  landmark('ikit', 55.994336, 92.797027, 26, 13, 6, '#d6cfb4'),
+  landmark('borisova', 55.992306, 92.795672, 26, 28, 48, '#d8d8cd'),
+  landmark('ikit', 55.994336, 92.797027, 48, 18, 13.5, '#d6cfb4'),
   landmark('university', 56.004, 92.772, 35, 21, 7, '#ccb79a'),
   landmark('planeta', 56.050913, 92.904369, 65, 28, 9, '#bd9573'),
   landmark('komsomoll', 56.019849, 92.900873, 60, 20, 12, '#d8d9cf'),
@@ -684,6 +687,219 @@ export function cityParcelClear(x: number, z: number, w: number, d: number) {
       ROUNDABOUT.outerRadius + Math.hypot(w, d) / 2 + 5
   );
 }
+/** Schematic developed districts: dense blocks, then genuine green gaps between
+ * them. These are art-directed neighbourhood envelopes, not cadastral parcels. */
+export const CITY_NEIGHBOURHOODS = [
+  {
+    id: 'centre',
+    x: -920,
+    z: -520,
+    columns: 11,
+    rows: 4,
+    cell: 100,
+    style: 'heritage',
+  },
+  {
+    id: 'stud',
+    x: -1850,
+    z: 300,
+    columns: 4,
+    rows: 4,
+    cell: 110,
+    style: 'panel',
+  },
+  {
+    id: 'railway',
+    x: -1350,
+    z: -220,
+    columns: 4,
+    rows: 4,
+    cell: 110,
+    style: 'panel',
+  },
+  {
+    id: 'akadem',
+    x: -2730,
+    z: 560,
+    columns: 5,
+    rows: 2,
+    cell: 115,
+    style: 'panel',
+  },
+  {
+    id: 'udachny',
+    x: -4270,
+    z: 1010,
+    columns: 7,
+    rows: 3,
+    cell: 100,
+    style: 'cottage',
+  },
+  {
+    id: 'vzletka',
+    x: 700,
+    z: -2280,
+    columns: 8,
+    rows: 8,
+    cell: 140,
+    style: 'tower',
+  },
+  {
+    id: 'green-grove',
+    x: 1850,
+    z: -2290,
+    columns: 7,
+    rows: 4,
+    cell: 130,
+    style: 'panel',
+  },
+  {
+    id: 'sverdlovsk',
+    x: -830,
+    z: 1550,
+    columns: 9,
+    rows: 3,
+    cell: 130,
+    style: 'panel',
+  },
+  {
+    id: 'kirov',
+    x: 1100,
+    z: 530,
+    columns: 8,
+    rows: 3,
+    cell: 110,
+    style: 'panel',
+  },
+  {
+    id: 'leninsky',
+    x: 2330,
+    z: -150,
+    columns: 7,
+    rows: 5,
+    cell: 130,
+    style: 'panel',
+  },
+  {
+    id: 'aprelskaya',
+    x: 2240,
+    z: 1100,
+    columns: 7,
+    rows: 4,
+    cell: 130,
+    style: 'panel',
+  },
+] as const;
+export const CITY_COURTYARDS: (CityRect & { district: string })[] = [];
+const trunkRoads = [...cityRoads];
+const nearRectangle = (x: number, z: number, p: CityRect, padding = 0) =>
+  Math.abs(x - p.x) < p.w / 2 + padding &&
+  Math.abs(z - p.z) < p.d / 2 + padding;
+function clearNeighbourhoodStreet(
+  from: CityPoint,
+  to: CityPoint,
+  width: number,
+) {
+  const length = Math.hypot(to.x - from.x, to.z - from.z);
+  for (let at = 0; at <= length; at += Math.min(4, length || 1)) {
+    const t = at / Math.max(1, length),
+      x = from.x + (to.x - from.x) * t,
+      z = from.z + (to.z - from.z) * t;
+    if (
+      inCityWater(x, z, width / 2 + 8) ||
+      onCityIsland(x, z) ||
+      cityBuildings.some((b) => nearRectangle(x, z, b, width / 2 + 4)) ||
+      CITY_PARKING.some((p) => nearRectangle(x, z, p, width / 2 + 2)) ||
+      Math.hypot(x - ROUNDABOUT.x, z - ROUNDABOUT.z) <
+        ROUNDABOUT.outerRadius + 8
+    )
+      return false;
+  }
+  return true;
+}
+// Cross streets turn each developed area into a district of walkable/drivable
+// blocks. Segmenting at each junction lets a landmark keep its open forecourt.
+for (const zone of CITY_NEIGHBOURHOODS) {
+  const width =
+    zone.style === 'cottage' ? 9 : zone.style === 'heritage' ? 12 : 13;
+  const nodes: CityPoint[] = [];
+  for (let col = 0; col <= zone.columns; col++)
+    for (let row = 0; row <= zone.rows; row++)
+      nodes.push({ x: zone.x + col * zone.cell, z: zone.z + row * zone.cell });
+  const streetLine = (points: CityPoint[], id: string) => {
+    let start: CityPoint | undefined,
+      end: CityPoint | undefined,
+      part = 0;
+    const flush = () => {
+      if (start && end)
+        cityRoads.push({
+          id: `district-${zone.id}:${id}:${part++}`,
+          from: start,
+          to: end,
+          width,
+        });
+      start = end = undefined;
+    };
+    for (let i = 1; i < points.length; i++) {
+      if (clearNeighbourhoodStreet(points[i - 1], points[i], width)) {
+        start ??= points[i - 1];
+        end = points[i];
+      } else flush();
+    }
+    flush();
+  };
+  for (let col = 0; col <= zone.columns; col++)
+    streetLine(
+      Array.from({ length: zone.rows + 1 }, (_, row) => ({
+        x: zone.x + col * zone.cell,
+        z: zone.z + row * zone.cell,
+      })),
+      `north-south-${col}`,
+    );
+  for (let row = 0; row <= zone.rows; row++)
+    streetLine(
+      Array.from({ length: zone.columns + 1 }, (_, col) => ({
+        x: zone.x + col * zone.cell,
+        z: zone.z + row * zone.cell,
+      })),
+      `east-west-${row}`,
+    );
+  // Each district links back to the existing main network. No isolated decorative
+  // road grids, and no accidental new shortcut over the river.
+  const links = nodes
+    .flatMap((from) =>
+      trunkRoads
+        .filter((r) => !r.bridge)
+        .map((r) => {
+          const dx = r.to.x - r.from.x,
+            dz = r.to.z - r.from.z;
+          const t = Math.max(
+            0,
+            Math.min(
+              1,
+              ((from.x - r.from.x) * dx + (from.z - r.from.z) * dz) /
+                (dx * dx + dz * dz),
+            ),
+          );
+          const to = { x: r.from.x + t * dx, z: r.from.z + t * dz };
+          return { from, to, length: Math.hypot(from.x - to.x, from.z - to.z) };
+        }),
+    )
+    .filter((l) => l.length > 2 && l.length < 350)
+    .sort((a, b) => a.length - b.length);
+  let joined = 0;
+  for (const link of links) {
+    if (clearNeighbourhoodStreet(link.from, link.to, width)) {
+      cityRoads.push({
+        id: `district-${zone.id}-access:${joined}`,
+        from: link.from,
+        to: link.to,
+        width,
+      });
+      if (++joined === 2) break;
+    }
+  }
+}
 const palette = [
   '#c3b192',
   '#aebec1',
@@ -692,77 +908,138 @@ const palette = [
   '#c6a496',
   '#9eafb9',
 ];
-// Populate street corridors, not an evenly spaced grid across empty land.
-for (const [ri, r] of cityRoads.entries()) {
+function addHouse(b: CityBuilding) {
   if (
-    r.bridge ||
-    r.id.startsWith('predmostnaya-ring') ||
-    r.id.startsWith('tatyshev') ||
-    r.id.startsWith('otdyha')
+    !cityParcelClear(b.x, b.z, b.w, b.d) ||
+    cityBuildings.some(
+      (p) =>
+        nearRectangle(b.x, b.z, p, 0) ||
+        (Math.abs(b.x - p.x) < (b.w + p.w) / 2 + 3 &&
+          Math.abs(b.z - p.z) < (b.d + p.d) / 2 + 3),
+    )
   )
-    continue;
+    return false;
+  cityBuildings.push(b);
+  return true;
+}
+for (const [zi, zone] of CITY_NEIGHBOURHOODS.entries()) {
+  for (let col = 0; col < zone.columns; col++)
+    for (let row = 0; row < zone.rows; row++) {
+      const x = zone.x + (col + 0.5) * zone.cell,
+        z = zone.z + (row + 0.5) * zone.cell;
+      const seed = zi * 157 + col * 17 + row * 31;
+      const courtyard = {
+        x,
+        z,
+        w: zone.cell * 0.31,
+        d: zone.cell * 0.31,
+        district: zone.id,
+      };
+      if (
+        cityParcelClear(x, z, courtyard.w, courtyard.d) &&
+        !cityBuildings.some((b) => nearRectangle(x, z, b, zone.cell * 0.19))
+      )
+        CITY_COURTYARDS.push(courtyard);
+      // Narrow old-city frontage, long Soviet blocks, point towers and pitched
+      // cottages produce different silhouettes before any facade colour is read.
+      const heritage = zone.style === 'heritage',
+        cottage = zone.style === 'cottage';
+      const towers = zone.style === 'tower' && (col + row) % 3 !== 0;
+      const style: NonNullable<CityBuilding['style']> = towers
+        ? 'tower'
+        : zone.style === 'tower'
+          ? 'panel'
+          : zone.style;
+      const placements =
+        heritage || cottage
+          ? [-1, 1].flatMap((side) =>
+              [-1, 0, 1].map((slot) => ({
+                dx: slot * zone.cell * (heritage ? 0.265 : 0.25),
+                dz: side * zone.cell * (heritage ? 0.29 : 0.34),
+                vertical: false,
+              })),
+            )
+          : [
+              { dx: 0, dz: -zone.cell * 0.33, vertical: false },
+              { dx: 0, dz: zone.cell * 0.33, vertical: false },
+              { dx: -zone.cell * 0.34, dz: 0, vertical: true },
+              { dx: zone.cell * 0.34, dz: 0, vertical: true },
+            ];
+      placements.forEach((p, i) => {
+        const n = seed + i * 11;
+        const floors = heritage
+          ? 2 + (n % 4)
+          : cottage
+            ? 1 + (n % 3)
+            : towers
+              ? 14 + (n % 12)
+              : zone.id === 'akadem' || zone.id === 'stud'
+                ? [5, 5, 9][n % 3]
+                : [5, 5, 9, 9][n % 4];
+        const width = heritage
+          ? 21 + (n % 4)
+          : cottage
+            ? 13 + (n % 4)
+            : towers
+              ? 23 + (n % 6)
+              : zone.cell * 0.57;
+        const depth = heritage ? 19 : cottage ? 11 : towers ? 24 : 13.5;
+        addHouse({
+          x: x + p.dx,
+          z: z + p.dz,
+          w: p.vertical ? depth : width,
+          d: p.vertical ? width : depth,
+          h: floors * (heritage ? 2.8 : cottage ? 2.6 : 2.7),
+          floors,
+          style,
+          district: zone.id,
+          orientation: p.vertical ? 'north-south' : undefined,
+          color: palette[n % palette.length],
+          lowDetail: true,
+        });
+      });
+    }
+}
+// Small villages and older blocks punctuate the routes between districts.
+// They are deliberately sparse: the dense urban fabric belongs inside quarters.
+for (const [ri, r] of trunkRoads.entries()) {
+  if (r.bridge || /tatyshev|otdyha|predmostnaya-ring/.test(r.id)) continue;
   const dx = r.to.x - r.from.x,
     dz = r.to.z - r.from.z,
-    l = Math.hypot(dx, dz),
-    nx = -dz / l,
-    nz = dx / l;
-  for (let t = 40; t < l - 35; t += 48)
+    l = Math.hypot(dx, dz);
+  for (let t = 85; t < l - 60; t += 210)
     for (const side of [-1, 1]) {
-      const i = Math.floor(t / 48) + ri * 7,
-        x = r.from.x + (dx * t) / l + nx * side * (r.width / 2 + 24),
-        z = r.from.z + (dz * t) / l + nz * side * (r.width / 2 + 24);
-      const style: NonNullable<CityBuilding['style']> =
-        x < -3200
-          ? 'cottage'
-          : x < -2100
-            ? i % 5 === 0
-              ? 'tower'
-              : 'panel'
-            : x > -400 && x < 850 && z > -300 && z < 180
-              ? 'heritage'
-              : z < -850
-                ? 'tower'
-                : 'panel';
-      const w =
-        style === 'panel'
-          ? 26 + (i % 3) * 8
-          : style === 'heritage'
-            ? 22 + (i % 3) * 3
-            : style === 'tower'
-              ? 18
-              : 12;
-      const d =
-        style === 'panel'
-          ? 12
-          : style === 'heritage'
-            ? 14
-            : style === 'tower'
-              ? 19
-              : 10;
+      const x = r.from.x + (dx * t) / l - (dz / l) * side * (r.width / 2 + 22);
+      const z = r.from.z + (dz * t) / l + (dx / l) * side * (r.width / 2 + 22);
       if (
-        !cityParcelClear(x, z, w, d) ||
-        cityBuildings.some(
-          (b) =>
-            Math.abs(x - b.x) < (w + b.w) / 2 + 5 &&
-            Math.abs(z - b.z) < (d + b.d) / 2 + 5,
+        CITY_NEIGHBOURHOODS.some(
+          (a) =>
+            x > a.x - 35 &&
+            x < a.x + a.columns * a.cell + 35 &&
+            z > a.z - 35 &&
+            z < a.z + a.rows * a.cell + 35,
         )
       )
         continue;
-      cityBuildings.push({
+      const n = ri + Math.floor(t / 210),
+        style =
+          x < -3100 ? 'cottage' : x < 850 && z < 180 ? 'heritage' : 'panel';
+      const floors =
+        style === 'cottage'
+          ? 1 + (n % 2)
+          : style === 'heritage'
+            ? 2 + (n % 3)
+            : 5;
+      addHouse({
         x,
         z,
-        w,
-        d,
-        h:
-          style === 'tower'
-            ? 22 + (i % 5) * 4
-            : style === 'panel'
-              ? 8 + (i % 3) * 4
-              : style === 'heritage'
-                ? 5.5 + (i % 2) * 2
-                : 3.5 + (i % 2),
-        color: palette[i % palette.length],
+        w: style === 'panel' ? 42 : 20,
+        d: style === 'panel' ? 13 : 12,
+        h: floors * 2.7,
+        floors,
         style,
+        district: 'connecting-streets',
+        color: palette[n % palette.length],
         lowDetail: true,
       });
     }

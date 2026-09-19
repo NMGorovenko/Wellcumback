@@ -1,5 +1,5 @@
 /* oxlint-disable typescript/no-require-imports -- Electron-only test entry; never included in the packaged app. */
-const { app, dialog } = require('electron');
+const { app, dialog, BrowserWindow } = require('electron');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 
@@ -51,6 +51,7 @@ async function waitFor(contents, expression, label) {
     focused: document.hasFocus(), hidden: document.hidden,
     paused: Boolean(document.querySelector('.city-pause-menu')),
     speed: document.querySelector('.city-speed')?.textContent,
+    selected: document.querySelector('.city-pause-menu .pad-selected')?.textContent,
     destination: document.querySelector('.city-heading')?.textContent,
     arrival: document.querySelector('.city-arrival')?.textContent
   })`);
@@ -73,19 +74,61 @@ app.on('browser-window-created', (_event, window) => {
   });
 });
 
+async function ensureNativeFocus(contents) {
+  const visibleFocus = 'document.hasFocus() && !document.hidden';
+  if (await contents.executeJavaScript(visibleFocus)) return;
+  const window = BrowserWindow.fromWebContents(contents);
+  if (!window || window.isDestroyed())
+    throw new Error('Smoke window was closed');
+  // A QA run can lose foreground status to another macOS Space/app between
+  // actions. Restore this disposable window, never fake document visibility or
+  // disable the production blur pause. Explicit resume remains part of the test.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (process.platform === 'darwin') app.show();
+    if (window.isMinimized()) window.restore();
+    window.show();
+    app.focus({ steal: true });
+    window.focus();
+    contents.focus();
+    await pause(50);
+    if (await contents.executeJavaScript(visibleFocus)) return;
+  }
+  throw new Error(
+    `Smoke window cannot gain visible focus: ${JSON.stringify({
+      visible: window.isVisible(),
+      focused: window.isFocused(),
+      minimized: window.isMinimized(),
+      appHidden: process.platform === 'darwin' ? app.isHidden() : undefined,
+    })}`,
+  );
+}
+
 async function tapKey(contents, keyCode, held = 70) {
+  await ensureNativeFocus(contents);
   contents.sendInputEvent({ type: 'keyDown', keyCode });
   await pause(held);
   contents.sendInputEvent({ type: 'keyUp', keyCode });
   await pause(70);
 }
 
+async function selectCityPauseItem(contents, label) {
+  // Exercise actual keyboard navigation; menu additions must not invalidate a
+  // hard-coded count of Down presses or accidentally select a different action.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const selected = await contents.executeJavaScript(
+      `document.querySelector('.city-pause-menu .pad-selected')?.textContent ?? ''`,
+    );
+    if (selected.includes(label)) return;
+    await tapKey(contents, 'Down');
+  }
+  throw new Error(
+    `Native keyboard could not select city pause action: ${label}`,
+  );
+}
+
 async function inspectCityInput(window) {
   const contents = window.webContents;
-  window.focus();
-  app.focus({ steal: true });
-  contents.focus();
-  await waitFor(contents, `document.hasFocus()`, 'native focus before driving');
+  await ensureNativeFocus(contents);
   for (const keyCode of ['S', 'W'])
     contents.sendInputEvent({ type: 'keyUp', keyCode });
   if (
@@ -131,14 +174,14 @@ async function inspectCityInput(window) {
     `Boolean(document.querySelector('.city-pause-menu'))`,
     'keyboard city pause',
   );
-  for (let i = 0; i < 2; i++) await tapKey(contents, 'Down');
+  await selectCityPauseItem(contents, 'Игроков в истории:');
   // The fresh hub defaults to two players; both fake devices should appear below.
   await waitFor(
     contents,
-    `document.querySelector('.city-pause-menu .pad-selected')?.textContent.includes('2')`,
+    `/Игроков в истории:\\s*2$/.test(document.querySelector('.city-pause-menu .pad-selected')?.textContent ?? '')`,
     'two-player setting',
   );
-  for (let i = 0; i < 4; i++) await tapKey(contents, 'Down');
+  await selectCityPauseItem(contents, 'Управление');
   assert.equal(
     await contents.executeJavaScript(
       `document.querySelector('.city-pause-menu .pad-selected')?.textContent`,
@@ -189,6 +232,7 @@ async function inspectCityInput(window) {
     'keyboard resume',
   );
   const button = async (pad, index, pressed) => {
+    await ensureNativeFocus(contents);
     await contents.executeJavaScript(
       `Object.assign(window.__desktopSmokePads[${pad}].buttons[${index}], { pressed: ${pressed}, value: ${pressed ? 1 : 0} })`,
     );
@@ -242,7 +286,7 @@ async function inspectCityInput(window) {
     `Boolean(document.querySelector('.city-pause-menu'))`,
     'pause before stories',
   );
-  await tapKey(contents, 'Down');
+  await selectCityPauseItem(contents, 'Все истории');
   await tapKey(contents, 'Return');
   await waitFor(
     contents,
@@ -265,10 +309,7 @@ async function inspect(window) {
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   window.setAlwaysOnTop(true);
   window.show();
-  window.focus();
-  app.focus({ steal: true });
-  contents.focus();
-  await waitFor(contents, `document.hasFocus()`, 'native game window focus');
+  await ensureNativeFocus(contents);
   await waitFor(
     contents,
     `Boolean(document.querySelector('canvas') && document.querySelector('[aria-label="Клавиатура и геймпады"]'))`,

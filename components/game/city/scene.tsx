@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import type { CityState } from '@/lib/game/city/engine';
 import { RenderKit } from '../world/render-kit';
 import { createCityEnvironment } from './environment';
+import { createCityAtmosphere } from './atmosphere';
 import { createMustang } from './mustang';
 import { citySpeech } from '@/lib/game/city/dialogue';
 import { placeSpeechBubble } from '../world/speech-position';
@@ -50,8 +51,9 @@ export default function CityScene({
     if (!element) return;
     const countRenderedFrame = renderedFrameCounter();
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#8cabb3');
+    scene.background = new THREE.Color('#b8ced4');
     const kit = new RenderKit(scene);
+    const atmosphere = createCityAtmosphere(kit);
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
@@ -67,7 +69,7 @@ export default function CityScene({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.7));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.28;
+    renderer.toneMappingExposure = 1.0;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.domElement.setAttribute(
@@ -85,11 +87,11 @@ export default function CityScene({
       0.1,
       overview.far,
     );
-    const cruiseFar = Math.max(500, Math.min(1600, overview.distance * 0.65));
+    const cruiseFar = Math.max(2000, Math.min(5200, overview.distance * 0.65));
     const cruiseCamera = new THREE.PerspectiveCamera(58, 1, 0.12, cruiseFar);
     const cruiseFog = new THREE.Fog(
       scene.background,
-      cruiseFar * 0.48,
+      cruiseFar * 0.26,
       cruiseFar * 0.95,
     );
     const cruisePosition = new THREE.Vector3(),
@@ -108,7 +110,7 @@ export default function CityScene({
     camera.position.copy(look).addScaledVector(outward, cameraDistance);
     camera.lookAt(look);
     camera.updateMatrixWorld();
-    const sun = new THREE.DirectionalLight('#ffe4b0', 3.0);
+    const sun = new THREE.DirectionalLight('#fff0d7', 2.5);
     sun.position.set(-22, 38, 16);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1536, 1536);
@@ -125,8 +127,8 @@ export default function CityScene({
       .crossVectors(shadowOutward, shadowRight)
       .normalize();
     scene.add(sun.target);
-    scene.add(sun, new THREE.HemisphereLight('#d4ecff', '#91a083', 2.1));
-    const evening = new THREE.DirectionalLight('#a9c8ff', 1.25);
+    scene.add(sun, new THREE.HemisphereLight('#d4ecff', '#7d876c', 1.25));
+    const evening = new THREE.DirectionalLight('#b5caff', 0.4);
     evening.position.set(23, 16, -15);
     scene.add(evening);
     const city = createCityEnvironment(kit),
@@ -401,6 +403,7 @@ export default function CityScene({
         puff.sprite.scale.setScalar(0.35 + puff.age * 0.7);
         puff.sprite.material.opacity = (1 - puff.age / 1.55) * 0.43;
       });
+      atmosphere.update(activeCamera, s.elapsed, mode.current === 'cruise');
       renderer.render(scene, activeCamera);
       countRenderedFrame(performance.now());
       raf = requestAnimationFrame(render);

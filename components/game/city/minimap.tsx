@@ -1,5 +1,10 @@
 'use client';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
+import {
+  cityNavigationRoute,
+  cityRouteLength,
+  minimapTarget,
+} from '@/lib/game/city/navigation';
 import { Maximize2 } from 'lucide-react';
 import {
   BRIDGES,
@@ -22,7 +27,7 @@ const river = [
     .map((p) => `${p.x},${p.z + p.half}`),
 ].join(' ');
 /** Shared world coordinates make both bridges and both banks reliable at any scale. */
-const MapStreets = memo(function MapStreets() {
+export const MapStreets = memo(function MapStreets() {
   return (
     <>
       <rect
@@ -97,6 +102,28 @@ const MapStreets = memo(function MapStreets() {
     </>
   );
 });
+export function MapCar({
+  state,
+  size,
+}: {
+  state: Pick<CityState, 'x' | 'z' | 'heading'>;
+  size: number;
+}) {
+  return (
+    <g
+      transform={`translate(${state.x} ${state.z}) rotate(${(state.heading * 180) / Math.PI}) scale(${size})`}
+    >
+      <circle r="7.5" fill="#142922" fillOpacity=".9" />
+      <path
+        d="M0 -6 L4.5 4 L0 2 L-4.5 4 Z"
+        fill="#fff7df"
+        stroke="#d74032"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </g>
+  );
+}
 export default function CityMinimap({
   state,
   target,
@@ -106,61 +133,83 @@ export default function CityMinimap({
   target: number;
   onExpand: () => void;
 }) {
+  const destination = cityStops[target];
+  const cellX = Math.round(state.x / 35),
+    cellZ = Math.round(state.z / 35);
+  const route = useMemo(
+    () => cityNavigationRoute({ x: cellX * 35, z: cellZ * 35 }, destination),
+    [cellX, cellZ, destination],
+  );
+  const marker = minimapTarget(state, destination);
+  const distance = cityRouteLength(route);
   return (
     <button
       type="button"
       className="city-minimap"
       onClick={onExpand}
-      aria-label={`Миникарта: ${cityStops[target].title}. Открыть весь город`}
-      title="Открыть весь город"
+      aria-label={`Ближайшие улицы. Цель: ${destination.title}. Открыть карту города`}
+      title="Карта города · M"
+      aria-keyshortcuts="M"
     >
       <span className="city-minimap-title">
-        <span>КРАСНОЯРСК</span>
+        <span>РЯДОМ С ТОБОЙ</span>
         <span>
           С ↑ <Maximize2 size={11} />
         </span>
       </span>
       <svg
-        viewBox={`${minX} ${minZ} ${maxX - minX} ${maxZ - minZ}`}
+        viewBox={`${state.x - 330} ${state.z - 225} 660 450`}
         aria-hidden="true"
       >
         <MapStreets />
-        {cityStops.map((s, i) => (
-          <g key={s.id}>
-            {i === target && (
-              <circle
-                cx={s.x}
-                cy={s.z}
-                r="120"
-                fill="none"
-                stroke={s.color}
-                strokeWidth="12"
-                className="city-minimap-target"
-              />
-            )}
-            <circle
-              cx={s.x}
-              cy={s.z}
-              r={i === target ? 50 : 35}
-              fill={s.color}
-              stroke="#182c27"
-              strokeWidth="10"
-            />
-          </g>
-        ))}
-        <g
-          transform={`translate(${state.x} ${state.z}) rotate(${(state.heading * 180) / Math.PI}) scale(18)`}
-        >
-          <circle r="6.5" fill="#142922" fillOpacity=".8" />
-          <path
-            d="M0 -6 L4.5 4 L0 2 L-4.5 4 Z"
-            fill="#fff7df"
-            stroke="#d74032"
-            strokeWidth="1.5"
+        {route.length > 1 && (
+          <polyline
+            points={route.map((p) => `${p.x},${p.z}`).join(' ')}
+            fill="none"
+            stroke="#eff59d"
+            strokeWidth="10"
+            strokeLinecap="round"
             strokeLinejoin="round"
           />
+        )}
+        {cityStops
+          .filter(
+            (p) =>
+              Math.abs(p.x - state.x) < 330 && Math.abs(p.z - state.z) < 225,
+          )
+          .map((p) => (
+            <circle
+              key={p.id}
+              cx={p.x}
+              cy={p.z}
+              r="11"
+              fill={p.color}
+              stroke="#142922"
+              strokeWidth="4"
+            />
+          ))}
+        <g transform={`translate(${marker.x} ${marker.z})`}>
+          <circle r="22" fill="#172a24" stroke="#edf4a6" strokeWidth="4" />
+          {marker.offscreen ? (
+            <path
+              d="M0 -13 L9 7 L0 3 L-9 7 Z"
+              transform={`rotate(${marker.angle})`}
+              fill="#edf4a6"
+            />
+          ) : (
+            <circle r="9" fill="#edf4a6" />
+          )}
         </g>
+        <MapCar state={state} size={3.8} />
       </svg>
+      <span className="city-minimap-caption">
+        <span>{destination.title}</span>
+        <b>
+          {distance > 999
+            ? `${(distance / 1000).toFixed(1)} км`
+            : `${Math.round(distance)} м`}
+        </b>
+      </span>
     </button>
   );
 }

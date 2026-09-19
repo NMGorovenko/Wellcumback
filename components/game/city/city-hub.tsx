@@ -1,6 +1,12 @@
 'use client';
 import { isRoomLeader } from '@/lib/game/network/room-roles';
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
 import {
   ArrowUpRight,
   MapPin,
@@ -8,6 +14,7 @@ import {
   Pause,
   Play,
   Camera,
+  Map as MapIcon,
 } from 'lucide-react';
 import { useCityAudio } from '@/hooks/use-city-audio';
 import { useGameLoop } from '@/hooks/use-game-loop';
@@ -22,6 +29,7 @@ import {
   freshCity,
   tickCity,
   resetCityCar,
+  teleportCityCar,
   type CityState,
 } from '@/lib/game/city/engine';
 import { cityStops, type CityMission } from '@/lib/game/city/layout';
@@ -29,6 +37,8 @@ import CityScene from './scene';
 import { citySpeech } from '@/lib/game/city/dialogue';
 import { SpeechBubble } from '../world/speech-bubble';
 import CityMinimap from './minimap';
+import { CityMap, type CityMapHandle } from './city-map';
+import './city-map.css';
 import { CITY_CAMERA_MODES, type CityCameraMode } from './camera';
 import { useGameInspection } from '@/hooks/use-game-inspection';
 import { useRoom } from '@/hooks/use-room';
@@ -36,6 +46,8 @@ import {
   closeRoomSession,
   roomActive,
   roomFresh,
+  roomWorld,
+  roomSnapshot,
 } from '@/lib/game/network/room-client';
 import { roomCommand, tickRoomCity } from '@/lib/game/network/room-game';
 const disconnectNetwork = () => {
@@ -97,8 +109,140 @@ export default function CityHub({
   const canResume = canManage && (!shared || roomFresh());
   const isDriver = !shared || (room.world?.driver ?? 0) === room.slot;
   const [view, setView] = useState(freshCity);
-  useCityAudio(sound, view);
   const [target, setTarget] = useState(0);
+  const [mapOpen, setMapOpen] = useState(false);
+  const mapOpenRef = useRef(false);
+  const mapControl = useRef<CityMapHandle>(null);
+  const [travel, setTravel] = useState<'idle' | 'out' | 'in'>('idle');
+  const [mapMessage, setMapMessage] = useState('');
+  const seenTravelRevision = useRef<number | null>(null);
+  const pendingTravel = useRef<{ index: number; revision: number } | null>(
+    null,
+  );
+  const mapBusy = travel !== 'idle';
+  useCityAudio(sound && !mapOpen && !mapBusy, view);
+  const openMap = useCallback(() => {
+    if (mapBusy) return;
+    keys.current.clear();
+    mapOpenRef.current = true;
+    setMapOpen(true);
+    setMapMessage('');
+  }, [mapBusy]);
+  const closeMap = useCallback(() => {
+    if (mapBusy) return;
+    keys.current.clear();
+    mapOpenRef.current = false;
+    setMapOpen(false);
+  }, [mapBusy]);
+  const navigateTo = (index: number) => {
+    setTarget(index);
+    closeMap();
+  };
+  const travelTo = (index: number) => {
+    if (!canManage || mapBusy || (shared && !roomFresh())) return;
+    keys.current.clear();
+    pendingTravel.current = {
+      index,
+      revision: game.current.travelRevision ?? 0,
+    };
+    setMapMessage('');
+    setTravel('out');
+  };
+  const completeTravel = () => {
+    pendingTravel.current = null;
+    keys.current.clear();
+    mapOpenRef.current = false;
+    setMapOpen(false);
+    setTravel('in');
+  };
+  useEffect(() => {
+    if (travel !== 'out') return;
+    const commit = window.setTimeout(() => {
+      const pending = pendingTravel.current;
+      if (!pending) return;
+      const stop = cityStops[pending.index];
+      if (isNetworkDrive()) {
+        const world = roomWorld();
+        if (
+          !world ||
+          world.scene !== 'city' ||
+          !roomFresh() ||
+          !isRoomLeader(world, roomSnapshot().slot)
+        ) {
+          pendingTravel.current = null;
+          setTravel('idle');
+          setMapMessage('Перемещение доступно ведущему при активной связи.');
+          return;
+        }
+        roomCommand({ kind: 'city-travel', value: stop.id });
+      } else if (teleportCityCar(game.current, stop.id)) {
+        setTarget(pending.index);
+        setView({ ...game.current });
+        completeTravel();
+      } else {
+        pendingTravel.current = null;
+        setTravel('idle');
+        setMapMessage(
+          'Не удалось найти свободный подъезд. Выбери другое место.',
+        );
+      }
+    }, 220);
+    const deadline = window.setTimeout(() => {
+      if (pendingTravel.current) {
+        pendingTravel.current = null;
+        setTravel('idle');
+        setMapMessage(
+          'Ждём подтверждения комнаты. Попробуй после восстановления связи.',
+        );
+      }
+    }, 7000);
+    return () => {
+      window.clearTimeout(commit);
+      window.clearTimeout(deadline);
+    };
+  }, [travel]);
+  useEffect(() => {
+    const pending = pendingTravel.current;
+    const revision = view.travelRevision ?? 0;
+    if (revision !== seenTravelRevision.current) {
+      const wasInitialized = seenTravelRevision.current !== null;
+      seenTravelRevision.current = revision;
+      // Passengers receive the same authoritative arrival without initiating it.
+      if (wasInitialized && !pending && travel === 'idle') setTravel('in');
+    }
+    if (travel === 'out' && pending && revision > pending.revision) {
+      setTarget(pending.index);
+      completeTravel();
+    }
+  }, [view.travelRevision, travel]);
+  useEffect(() => {
+    if (travel !== 'in') return;
+    const timer = window.setTimeout(() => setTravel('idle'), 240);
+    return () => window.clearTimeout(timer);
+  }, [travel]);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (
+        event.code !== 'KeyM' ||
+        event.repeat ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        isControlInputBlocked() ||
+        canonicalKeyForPhysical(settings, 'KeyM', 'city') ||
+        (event.target instanceof HTMLElement &&
+          event.target.closest(
+            'input,textarea,select,[contenteditable="true"]',
+          ))
+      )
+        return;
+      event.preventDefault();
+      if (mapOpenRef.current) closeMap();
+      else openMap();
+    };
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
+  }, [settings, closeMap, openMap]);
   const [cameraMode, setCameraMode] = useState<CityCameraMode>('drive');
   const cameraNames = {
     drive: 'За машиной',
@@ -117,7 +261,13 @@ export default function CityHub({
           (CITY_CAMERA_MODES.indexOf(current) + 1) % CITY_CAMERA_MODES.length
         ],
     );
-  const cameraPad = useRef({ id: '', held: false, ready: false });
+  const cameraPad = useRef({
+    id: '',
+    held: false,
+    ready: false,
+    mapHeld: false,
+    mapReady: false,
+  });
   const cameraKeyboard = !canonicalKeyForPhysical(settings, 'KeyC', 'city');
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -128,6 +278,8 @@ export default function CityHub({
         event.ctrlKey ||
         event.altKey ||
         !cameraKeyboard ||
+        mapOpenRef.current ||
+        mapBusy ||
         isControlInputBlocked()
       )
         return;
@@ -148,7 +300,7 @@ export default function CityHub({
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  }, [cameraKeyboard]);
+  }, [cameraKeyboard, mapBusy]);
   const [pauseSelected, setPauseSelected] = useState(0);
   const pauseButtons = useRef<(HTMLButtonElement | null)[]>([]);
   useEffect(() => {
@@ -161,6 +313,10 @@ export default function CityHub({
   const keys = useRef(new Set<string>());
   useGameInspection(game, keys);
   const pause = () => {
+    if (mapOpenRef.current || mapBusy) {
+      if (document.hasFocus()) closeMap();
+      return;
+    }
     if (isNetworkDrive()) {
       const resume = document.hasFocus() && game.current.paused;
       if (resume && !canResume) return;
@@ -174,6 +330,7 @@ export default function CityHub({
     setView({ ...game.current });
   };
   const launch = () => {
+    if (mapOpenRef.current || mapBusy) return;
     const s = game.current,
       stop = cityStops[s.nearStop];
     if (canStart && stop?.mission && s.speed < 2.3) {
@@ -206,6 +363,7 @@ export default function CityHub({
     { id: 'stories', label: 'Все истории', disabled: shared },
     { id: 'races', label: 'Гонки', disabled: !canManage },
     { id: 'players', label: `Игроков в истории: ${players}`, disabled: shared },
+    { id: 'map', label: 'Карта города и перемещение' },
     { id: 'target', label: `Куда едем: ${cityStops[target].title}` },
     {
       id: 'camera',
@@ -245,6 +403,9 @@ export default function CityHub({
         break;
       case 'players':
         onPlayers((players % 3) + 1);
+        break;
+      case 'map':
+        openMap();
         break;
       case 'target':
         setTarget((target + 1) % cityStops.length);
@@ -306,16 +467,45 @@ export default function CityHub({
       const memory = cameraPad.current;
       const padId = pad ? `${pad.index}:${pad.id}` : '';
       if (memory.id !== padId)
-        Object.assign(memory, { id: padId, ready: false, held: false });
+        Object.assign(memory, {
+          id: padId,
+          ready: false,
+          held: false,
+          mapHeld: false,
+          mapReady: false,
+        });
       const held =
         !!pad &&
         (!!pad.buttons[3]?.pressed || (pad.buttons[3]?.value ?? 0) > 0.5);
       if (!held) memory.ready = true;
-      if (pad && memory.ready && held && !memory.held) cycleCamera();
+      if (
+        pad &&
+        memory.ready &&
+        held &&
+        !memory.held &&
+        !mapOpenRef.current &&
+        !mapBusy
+      )
+        cycleCamera();
+      const mapHeld =
+        !!pad &&
+        (!!pad.buttons[8]?.pressed || (pad.buttons[8]?.value ?? 0) > 0.5);
+      if (!mapHeld) memory.mapReady = true;
+      if (pad && memory.mapReady && mapHeld && !memory.mapHeld) {
+        if (mapOpenRef.current) closeMap();
+        else openMap();
+      }
+      memory.mapHeld = mapHeld;
       memory.held = held;
-      if (shared) tickRoomCity(s, dt, input, axes);
-      else tickCity(s, dt, input, axes);
-      if (s.interaction) {
+      if (shared)
+        tickRoomCity(
+          s,
+          dt,
+          mapOpenRef.current || mapBusy ? new Set() : input,
+          mapOpenRef.current || mapBusy ? { throttle: 0, steer: 0 } : axes,
+        );
+      else if (!mapOpenRef.current && !mapBusy) tickCity(s, dt, input, axes);
+      if (s.interaction && !mapOpenRef.current && !mapBusy) {
         const id = s.interaction as CityMission;
         s.interaction = null;
         s.paused = true;
@@ -335,13 +525,26 @@ export default function CityHub({
     inputPlayers: shared ? 1 : undefined,
     profile: 'city',
     padMenu: {
-      enabled: view.paused,
-      onMove: movePause,
+      enabled: mapOpen || mapBusy || view.paused,
+      onMove: (direction) => {
+        if (mapBusy) return;
+        if (mapOpen) mapControl.current?.move(direction);
+        else movePause(direction);
+      },
       onConfirm: () => {
+        if (mapBusy) return;
+        if (mapOpen) {
+          mapControl.current?.confirm();
+          return;
+        }
         const item = pauseItems[pauseSelected];
         if (!item.disabled) runPauseAction(item.id);
       },
-      onBack: pause,
+      onBack: () => {
+        if (mapBusy) return;
+        if (mapOpen) closeMap();
+        else pause();
+      },
     },
   });
   const stop = cityStops[view.nearStop];
@@ -359,7 +562,7 @@ export default function CityHub({
       : '';
   return (
     <section
-      className={`city-hub city-view-${cameraMode}`}
+      className={`city-hub city-view-${cameraMode}${mapOpen ? ' city-map-open' : ''}`}
       aria-label="Поездка по Красноярску между историями"
     >
       <div className="city-world">
@@ -375,12 +578,8 @@ export default function CityHub({
           text={speech?.text ?? ''}
           visible={!!speech}
         />
-        {cameraMode !== 'map' && !view.paused && (
-          <CityMinimap
-            state={view}
-            target={target}
-            onExpand={() => setCameraMode('map')}
-          />
+        {!mapOpen && !view.paused && (
+          <CityMinimap state={view} target={target} onExpand={openMap} />
         )}
         <div className="city-heading">
           <span>КРАСНОЯРСК · КАРТА ИСТОРИЙ</span>
@@ -396,6 +595,14 @@ export default function CityHub({
           </p>
         </div>
         <div className="city-actions">
+          <button
+            onClick={openMap}
+            aria-label="Открыть карту города"
+            aria-keyshortcuts="M"
+          >
+            <MapIcon size={16} />
+            Карта <kbd>M</kbd>
+          </button>
           <button
             aria-label={`Камера: ${cameraNames[cameraMode]}. Показать: ${cameraNames[nextCamera]}`}
             title={`Следующий вид: ${cameraNames[nextCamera]}${cameraShortcut ? ` · ${cameraShortcut}` : ''}`}
@@ -471,7 +678,7 @@ export default function CityHub({
             </span>
           </div>
         )}
-        {view.paused && (
+        {view.paused && !mapOpen && (
           <div className="city-pause">
             <section className="city-pause-menu" aria-label="Пауза на карте">
               <h2>Куда дальше?</h2>
@@ -500,6 +707,30 @@ export default function CityHub({
             </section>
           </div>
         )}
+        {mapOpen && (
+          <CityMap
+            ref={mapControl}
+            state={view}
+            target={target}
+            canTravel={canManage && (!shared || roomFresh())}
+            busy={mapBusy}
+            message={mapMessage}
+            travelReason={
+              !canManage
+                ? 'Перемещает машину ведущий комнаты. GPS можно выбрать самому.'
+                : 'Ждём связь с комнатой.'
+            }
+            onClose={closeMap}
+            onNavigate={navigateTo}
+            onTravel={travelTo}
+          />
+        )}
+        <div
+          className={`city-travel-fade ${travel === 'out' ? 'is-out' : travel === 'in' ? 'is-in' : ''}`}
+          aria-hidden={travel === 'idle'}
+        >
+          {travel === 'out' && 'Перемещаемся…'}
+        </div>
       </div>
       <div className="city-bottom">
         {shared && (

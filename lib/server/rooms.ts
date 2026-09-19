@@ -5,6 +5,7 @@ import {
   validRaceCommand,
 } from '../game/race/validation.ts';
 import type { RaceInput } from '../game/race/types.ts';
+import { cityStops } from '../game/city/layout.ts';
 /** Host-authoritative room relay. No game simulation or secrets belong in logs. */
 import { ROOM_VERSION } from '../game/network/room-types.ts';
 export { ROOM_VERSION };
@@ -32,6 +33,7 @@ const COMMANDS = new Set([
   'chairs',
   'begin',
   'restart',
+  'city-travel',
   'episode',
   'exit',
   'wheel',
@@ -268,6 +270,11 @@ function readFrames(value: unknown): RoomInput[] {
         typeof raw.command.kind !== 'string' ||
         !COMMANDS.has(raw.command.kind) ||
         !validRaceCommand(raw.command) ||
+        (raw.command.kind === 'city-travel' &&
+          !cityStops.some(
+            (stop) =>
+              stop.id === (raw.command as Record<string, unknown>).value,
+          )) ||
         !boundedJson(raw.command, 5) ||
         jsonBytes(raw.command) > 1024
       )

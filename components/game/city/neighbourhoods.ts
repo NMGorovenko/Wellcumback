@@ -6,6 +6,7 @@ import {
   inCityWater,
   CITY_BOUNDS,
   CITY_PARKING,
+  CITY_COURTYARDS,
   type CityBuilding,
 } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
@@ -214,6 +215,9 @@ function houseGeometry() {
     detail = true,
     frontEntries = false,
     endColor = color,
+    explicitFloors?: number,
+    leftCoveredHeight = 0,
+    rightCoveredHeight = 0,
   ) {
     const left = x - w / 2,
       right = x + w / 2,
@@ -224,12 +228,15 @@ function houseGeometry() {
     const columns = (span: number) =>
       tile === SOLID
         ? 1
-        : Math.max(1, Math.min(detail ? 22 : 10, Math.round(span / 2.65)));
-    const floorHeight = [1.85, 1.65, 1.8, 2.5][Math.floor(tile / 3)] || 2.95;
+        : Math.max(1, Math.min(detail ? 22 : 7, Math.round(span / 2.65)));
+    const floorHeight = [2.8, 2.7, 2.7, 2.6][Math.floor(tile / 3)] || 2.95;
     const floors =
       tile === SOLID
         ? 1
-        : Math.max(1, Math.min(detail ? 32 : 18, Math.round(h / floorHeight)));
+        : Math.max(
+            1,
+            Math.min(32, explicitFloors ?? Math.round(h / floorHeight)),
+          );
     wall(
       [left, bottom, front],
       [1, 0, 0],
@@ -251,26 +258,27 @@ function houseGeometry() {
       columns(w),
       floors,
     );
-    wall(
-      [right, bottom, front],
-      [0, 0, -1],
-      d,
-      h,
-      endColor,
-      tile,
-      columns(d),
-      floors,
-    );
-    wall(
-      [left, bottom, back],
-      [0, 0, 1],
-      d,
-      h,
-      endColor,
-      tile,
-      columns(d),
-      floors,
-    );
+    // Adjacent slab sections hide their common walls. Keep only an exposed
+    // upper strip at a height step, instead of drawing every hidden window.
+    for (const side of [-1, 1]) {
+      const covered = Math.max(
+        0,
+        Math.min(h, side < 0 ? leftCoveredHeight : rightCoveredHeight),
+      );
+      if (covered >= h) continue;
+      wall(
+        side < 0
+          ? [left, bottom + covered, back]
+          : [right, bottom + covered, front],
+        side < 0 ? [0, 0, 1] : [0, 0, -1],
+        d,
+        h - covered,
+        endColor,
+        tile,
+        columns(d),
+        Math.max(1, Math.round((floors * (h - covered)) / h)),
+      );
+    }
     face(
       [
         [left, top, front],
@@ -341,9 +349,10 @@ export function createNeighbourhoodBuilding(
   const g = houseGeometry(),
     { box } = g;
   // Recess the walls so that balconies and entrance canopies remain in the parcel.
-  const w = Math.max(1, b.w - 0.5),
-    d = Math.max(1, b.d - 0.6),
-    h = b.h * (b.style === 'panel' ? [0.76, 1, 0.88, 0.96][variant] : 1);
+  const turned = b.orientation === 'north-south';
+  const w = Math.max(1, (turned ? b.d : b.w) - 0.5),
+    d = Math.max(1, (turned ? b.w : b.d) - 0.6),
+    h = b.h;
   const facade = facadePalette[b.style][seed % facadePalette[b.style].length],
     end = ['#797c72', '#977764', '#778887', '#87847a'][variant];
   const trim = '#e7dfc9',
@@ -359,6 +368,8 @@ export function createNeighbourhoodBuilding(
     x = 0,
     z = 0,
     tint = facade,
+    leftCoveredHeight = 0,
+    rightCoveredHeight = 0,
   ) =>
     box(
       bw,
@@ -372,6 +383,9 @@ export function createNeighbourhoodBuilding(
       !low,
       true,
       b.style === 'panel' || b.style === 'tower' ? end : tint,
+      b.floors ? Math.max(1, Math.round((b.floors * bh) / h)) : undefined,
+      leftCoveredHeight,
+      rightCoveredHeight,
     );
   const cornice = (y: number, thickness = 0.22) =>
     box(w + 0.28, thickness, d + 0.28, trim, 0, y, 0);
@@ -442,7 +456,18 @@ export function createNeighbourhoodBuilding(
         variant === 1 && section % 2
           ? facadePalette.panel[(seed + 2) % facadePalette.panel.length]
           : facade;
-      body(sw, sh, d, x, 0, sectionTint);
+      const sectionHeight = (i: number) =>
+        h * ((variant === 2 || variant === 3) && i % 2 ? 0.78 : 1);
+      body(
+        sw,
+        sh,
+        d,
+        x,
+        0,
+        sectionTint,
+        section > 0 ? sectionHeight(section - 1) : 0,
+        section < sections - 1 ? sectionHeight(section + 1) : 0,
+      );
       box(sw + 0.04, 0.2, d + 0.15, roof, x, sh + 0.05, 0);
       if (low) {
         box(1.6, 0.14, 0.52, roof, x, 1.9, d / 2 - 0.04);
@@ -578,6 +603,9 @@ export function createNeighbourhoodBuilding(
   const mesh = kit.mesh(g.finish(), housingMaterial(kit), root);
   mesh.name = `housing-${b.style}-${variant}${low ? '-distant' : ''}`;
   mesh.position.set(b.x, 0, b.z);
+  if (turned) mesh.rotation.y = Math.PI / 2;
+  mesh.userData.floors = b.floors;
+  mesh.userData.district = b.district;
   mesh.castShadow = !low;
   return true;
 }
@@ -637,6 +665,23 @@ export function createNeighbourhoodGreenery(kit: RenderKit, root: THREE.Group) {
     occupied.set(key, cell);
     points.push({ x, z, scale, pine: x < -2100 ? n % 3 !== 0 : n % 4 === 0 });
   };
+  // Each compact residential block has an open green middle. Keep lawns away
+  // from through-roads and parked cars, then plant a perimeter rather than
+  // filling the entire district uniformly with trees.
+  CITY_COURTYARDS.forEach((court, i) => {
+    const radius = Math.min(court.w, court.d) * 0.47;
+    if (clear(court.x, court.z, radius)) {
+      lawns.push({ x: court.x, z: court.z, radius });
+      for (let n = 0; n < 8; n++) {
+        const angle = (n * Math.PI) / 4;
+        addTree(
+          court.x + Math.cos(angle) * radius * 0.82,
+          court.z + Math.sin(angle) * radius * 0.82,
+          i * 17 + n,
+        );
+      }
+    }
+  });
   // Alternating roadside birch groups and deeper courtyard groves leave visible
   // gaps at entrances. A small meadow under a grove breaks up empty pale ground.
   cityRoads.forEach((r, ri) => {
@@ -659,7 +704,7 @@ export function createNeighbourhoodGreenery(kit: RenderKit, root: THREE.Group) {
         const x = r.from.x + tx * t - tz * side * offset;
         const z = r.from.z + tz * t + tx * side * offset;
         const radius = 10 + (n % 4);
-        if (courtyard && lawns.length < 240 && clear(x, z, radius))
+        if (courtyard && lawns.length < 480 && clear(x, z, radius))
           lawns.push({ x, z, radius });
         for (let tree = 0; tree < 5; tree++) {
           const along = (tree - 2) * 5.5;

@@ -362,48 +362,68 @@ export function createNorthernChapel(kit: RenderKit, root: THREE.Group) {
     );
   for (const dx of [-9, 8]) fir(kit, root, x + dx, z + 2, 1.5, 2);
 }
+/** Continuous forested foothills outside the playable streets. Their broad,
+ * irregular silhouette replaces the row of identical ornamental spheres. */
 export function createSiberianRidges(kit: RenderKit, root: THREE.Group) {
-  const z = CITY_BOUNDS.maxZ + 15;
-  for (
-    let i = 0;
-    i < Math.ceil((CITY_BOUNDS.maxX - CITY_BOUNDS.minX) / 150);
-    i++
-  ) {
-    const x = CITY_BOUNDS.minX + i * 150;
-    kit.sphere(
-      100,
-      40 + (i % 3) * 10,
-      70,
-      '#60816f',
-      x,
-      1,
-      z + (i % 3) * 12,
-      root,
-      10,
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 1,
+    side: THREE.DoubleSide,
+  });
+  kit.materials.add(material);
+  const palette = ['#405f51', '#587466', '#718a7b'];
+  for (let layer = 0; layer < 3; layer++) {
+    const positions: number[] = [],
+      colors: number[] = [],
+      uv: number[] = [],
+      indices: number[] = [];
+    const segments = 160,
+      rows = 5;
+    for (let row = 0; row < rows; row++) {
+      const t = row / (rows - 1);
+      for (let i = 0; i <= segments; i++) {
+        const x =
+          CITY_BOUNDS.minX -
+          1400 +
+          (i / segments) * (CITY_BOUNDS.maxX - CITY_BOUNDS.minX + 2800);
+        const wave =
+          0.53 +
+          0.19 * Math.sin(x * 0.0017 + layer * 1.3) +
+          0.11 * Math.sin(x * 0.0043 + layer * 2.7) +
+          0.045 * Math.sin(x * 0.014);
+        const westernMass = Math.exp(-Math.pow((x + 2500) / 2100, 2));
+        const height =
+          (90 + wave * 180 + westernMass * 210 + layer * 48) *
+          Math.sin(t * Math.PI * 0.76);
+        positions.push(
+          x,
+          row === 0 ? -8 : height,
+          CITY_BOUNDS.maxZ + 28 + layer * 570 + t * 920,
+        );
+        const color = new THREE.Color(palette[layer]);
+        color.multiplyScalar(
+          0.88 + t * 0.16 + Math.sin(x * 0.008 + row) * 0.035,
+        );
+        colors.push(color.r, color.g, color.b);
+        uv.push(i / segments, t);
+        if (row < rows - 1 && i < segments) {
+          const a = row * (segments + 1) + i,
+            b = a + segments + 1;
+          indices.push(a, b, a + 1, a + 1, b, b + 1);
+        }
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(positions, 3),
     );
-    for (let t = 0; t < 5; t++)
-      fir(
-        kit,
-        root,
-        x - 7 + t * 3.4,
-        z - 4 + (t % 2) * 5,
-        2.1 + (t % 3) * 0.3,
-        4.8 + (i % 3) * 0.8,
-      );
-  }
-  // Southwestern right-bank rocks interrupt the soft wooded ridge instead of repeating peaks.
-  for (let j = 0; j < 9; j++) {
-    const rock = kit.mesh(
-      new THREE.DodecahedronGeometry(1, 0),
-      kit.material(j % 2 ? C.rock : '#a69c89'),
-      root,
-    );
-    rock.scale.set(2.6 + (j % 2), 5 + (j % 3), 2.2);
-    rock.position.set(
-      -83 + j * 3.2,
-      7 + (j % 3) * 1.5,
-      z - 1 + Math.sin(j) * 2,
-    );
-    rock.rotation.z = (j - 4) * 0.07;
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    const ridge = kit.mesh(geometry, material, root);
+    ridge.name = `forested-sayan-ridge-${layer}`;
+    ridge.castShadow = false;
   }
 }

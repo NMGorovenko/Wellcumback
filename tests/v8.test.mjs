@@ -1,8 +1,9 @@
-import { CITY_ROUTES } from '../lib/game/city/layout.ts';
+import { CITY_ROUTES, cityRoads } from '../lib/game/city/layout.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { advanceV8, freshV8, exhaustWave } from '../lib/game/audio/v8-model.ts';
 import { freshCity, tickCity, resetCityCar } from '../lib/game/city/engine.ts';
+import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
 const input = (speed, throttle = 1) => ({
   speed,
   throttle,
@@ -10,14 +11,26 @@ const input = (speed, throttle = 1) => ({
   lateral: 0,
   horn: false,
 });
+const fullSpeedRun = () => {
+  const road = cityRoads.find((r) => r.id === 'left-quay:1');
+  const dx = road.to.x - road.from.x,
+    dz = road.to.z - road.from.z,
+    length = Math.hypot(dx, dz);
+  return {
+    ...freshCity(),
+    x: road.from.x + (dx / length) * 15,
+    z: road.from.z + (dz / length) * 15,
+    heading: Math.atan2(dx, -dz),
+  };
+};
 void test('V8 idles, revs and shifts without affecting vehicle speed', () => {
   const s = freshV8();
   for (let i = 0; i < 60; i++) advanceV8(s, input(0, 0), 1 / 60);
   assert.ok(s.rpm > 720 && s.rpm < 900);
   let shifts = 0,
     gear = s.gear;
-  for (let i = 0; i < 360; i++) {
-    advanceV8(s, input(Math.min(32, i / 10)), 1 / 60);
+  for (let i = 0; i < 900; i++) {
+    advanceV8(s, input(Math.min(CITY_TOP_SPEED, i / 10)), 1 / 60);
     assert.ok(s.rpm <= 5700 && Number.isFinite(s.rpm));
     if (s.gear !== gear) {
       shifts++;
@@ -30,23 +43,19 @@ void test('V8 idles, revs and shifts without affecting vehicle speed', () => {
     s.rpm > 4100 && s.rpm < 4500,
     'top gear cruises without sitting on the limiter',
   );
-  advanceV8(s, input(32, 0), 1 / 60);
+  advanceV8(s, input(CITY_TOP_SPEED, 0), 1 / 60);
   assert.equal(s.crackle, true);
-  advanceV8(s, input(32, 1), 1 / 60);
-  advanceV8(s, input(32, 0), 1 / 60);
+  advanceV8(s, input(CITY_TOP_SPEED, 1), 1 / 60);
+  advanceV8(s, input(CITY_TOP_SPEED, 0), 1 / 60);
   assert.equal(s.crackle, false);
 });
 for (const rate of [30, 60, 144])
   void test(`actual city acceleration has five audible automatic upshifts at ${rate} Hz`, () => {
-    // The long final 9 Maya approach is a real unobstructed city road.
-    const city = {
-        ...freshCity(),
-        ...CITY_ROUTES.studPlaneta.at(-2),
-        heading: 0,
-      },
+    // The 1.45 km quay straight gives the complete 300 km/h run real road space.
+    const city = fullSpeedRun(),
       motor = freshV8();
     const shifts = [];
-    for (let i = 0; i < 6 * rate; i++) {
+    for (let i = 0; i < 25 * rate; i++) {
       tickCity(city, 1 / rate, new Set(['KeyW']));
       const previousGear = motor.gear;
       advanceV8(
@@ -54,9 +63,11 @@ for (const rate of [30, 60, 144])
         {
           speed: city.speed,
           powertrain: city.powertrain,
-          forward: -city.vz,
+          forward:
+            city.vx * Math.sin(city.heading) - city.vz * Math.cos(city.heading),
           throttle: city.throttle,
-          lateral: city.vx,
+          lateral:
+            city.vx * Math.cos(city.heading) + city.vz * Math.sin(city.heading),
           horn: false,
         },
         1 / rate,
@@ -77,7 +88,7 @@ for (const rate of [30, 60, 144])
     assert.equal(city.bumps, 0);
     assert.equal(shifts.length, 5);
     assert.ok(
-      shifts[0].time < 1.05,
+      shifts[0].time > 1.5 && shifts[0].time < 2.3,
       'first shift accompanies the rapid real acceleration',
     );
     for (const shift of shifts) {
@@ -98,22 +109,29 @@ for (const rate of [30, 60, 144])
     const intervals = shifts.map(
       (shift, i) => shift.time - (shifts[i - 1]?.time ?? 0),
     );
-    assert.ok(intervals[1] <= 0.45, 'second shift remains quick');
-    assert.ok(intervals[3] >= 0.6, 'fourth gear lasts longer');
     assert.ok(
-      intervals[4] >= 1.2 && intervals[4] >= intervals[3] * 2,
+      intervals[1] > 1 && intervals[1] < 2,
+      'second gear has an audible acceleration range',
+    );
+    assert.ok(intervals[3] >= 3, 'fourth gear lasts longer');
+    assert.ok(
+      intervals[4] >= 5 && intervals[4] >= intervals[3] * 1.5,
       'fifth gear builds speed for substantially longer',
     );
     const top = motor.gear;
     for (let i = 0; i < 2 * rate; i++)
-      advanceV8(motor, input(32, i % 2 ? 0 : 1), 1 / rate);
+      advanceV8(motor, input(CITY_TOP_SPEED, i % 2 ? 0 : 1), 1 / rate);
     assert.equal(
       motor.gear,
       top,
       'pedal changes at steady speed do not hunt gears',
     );
-    for (let i = 0; i < 6 * rate; i++)
-      advanceV8(motor, input(Math.max(0, 32 - (i / rate) * 10), 0), 1 / rate);
+    for (let i = 0; i < 10 * rate; i++)
+      advanceV8(
+        motor,
+        input(Math.max(0, CITY_TOP_SPEED - (i / rate) * 12), 0),
+        1 / rate,
+      );
     assert.equal(motor.gear, 1);
     assert.ok(motor.rpm < 900, 'braking to a stop returns to idle');
   });
@@ -245,11 +263,7 @@ void test('V8 graph reuses sources, clears transients and disposes exactly once'
 });
 
 void test('authoritative gearbox freezes on pause and survives JSON reconnect without an audio-only restart', () => {
-  const city = {
-    ...freshCity(),
-    ...CITY_ROUTES.studPlaneta.at(-2),
-    heading: 0,
-  };
+  const city = fullSpeedRun();
   for (let i = 0; i < 150; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
   city.paused = true;
   const before = structuredClone(city);
@@ -277,14 +291,10 @@ void test('authoritative gearbox freezes on pause and survives JSON reconnect wi
   );
 });
 void test('each automatic shift unloads real wheel acceleration as well as exhaust volume', () => {
-  const city = {
-    ...freshCity(),
-    ...CITY_ROUTES.studPlaneta.at(-2),
-    heading: 0,
-  };
+  const city = fullSpeedRun();
   let priorAcceleration = 0,
     cuts = 0;
-  for (let i = 0; i < 220; i++) {
+  for (let i = 0; i < 1200; i++) {
     const speed = city.speed,
       gear = city.powertrain.gear;
     tickCity(city, 1 / 60, new Set(['KeyW']));
