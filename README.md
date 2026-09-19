@@ -1,6 +1,6 @@
 # FRIENDSLOP
 
-**[Релиз 0.15.0 (готовится)](https://github.com/NMGorovenko/Wellcumback/releases/tag/v0.15.0)** · [Изменения](docs/releases/v0.15.0.md) · [Проверки и ограничения](docs/acceptance-v0.15.0.md)
+**[Релиз 0.15.0](https://github.com/NMGorovenko/Wellcumback/releases/tag/v0.15.0)** · [Изменения](docs/releases/v0.15.0.md) · [Проверки и ограничения](docs/acceptance-v0.15.0.md)
 
 **0.15.0**: упрощённый Красноярск с рельефом, мостами, Орбитой, кольцом у ИКИТ и Doner House; большая карта по **M**, GPS и быстрое перемещение; Mustang до 300 км/ч и «Байки Ромы 2». [Приёмка и ограничения](docs/acceptance-v0.15.0.md).
 
