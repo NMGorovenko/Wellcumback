@@ -1,0 +1,185 @@
+{
+  "version": "0.15.1",
+  "status": "artifacts_verified",
+  "sourceFreezeAt": "2026-09-19T20:49:48.492Z",
+  "source_files_verified": 319,
+  "unpackaged_test_helper_changes": [],
+  "checkedAt": "2026-09-19T20:54:14.140Z",
+  "renderer_sha256": "2d7777ffdda5ebaa0786ced389655efe5bda11b020423dd0856009054ce8b1fe",
+  "source_renderer_sha256": "e130df3bd37201a5255ea42fffb049eb390e284429712f7c241e3fba42097180",
+  "notarization": false,
+  "windows_runtime_launch_tested": false,
+  "native_smoke": {
+    "status": "not_run_per_request",
+    "note": "This hotfix uses root IAB before/after plus targeted rendering and physics acceptance. No global native UI smoke is repeated."
+  },
+  "artifacts": [
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.1-mac-arm64.zip",
+      "bytes": 162589310,
+      "sha256": "6033714df60212cc5301f9f5aa8faffe66ebdd1d93a3ceed9013eaaa3568289c",
+      "renderer_sha256": "2d7777ffdda5ebaa0786ced389655efe5bda11b020423dd0856009054ce8b1fe",
+      "source_renderer_sha256": "e130df3bd37201a5255ea42fffb049eb390e284429712f7c241e3fba42097180",
+      "signing": "developer-id",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "2fd31005fce7689584cfff689b89839ea1fef522769141e3c82bd9f77c3ea3a4",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "dd352137ae6e0841dc76d181608d0779aac0a0a087ecac554f9b9abb3b9ccce0",
+      "signature": {
+        "mode": "developer-id",
+        "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+        "team": "K9RX3779MP",
+        "timestamp": "20 Sep 2026 at 03:50:46",
+        "appStapled": false,
+        "tunnel": {
+          "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+          "team": "K9RX3779MP",
+          "timestamp": "20 Sep 2026 at 03:50:40",
+          "binary_sha256": "2b1e751b2646433af81f53b254fec74a85ca4145337b2b2f093a7cc330bbfa61"
+        }
+      },
+      "mac_resources_report": "/tmp/friendslop-hotfix-0151-desktop-mac-arm64.zip.resources.json"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.1-mac-arm64.dmg",
+      "bytes": 167167538,
+      "sha256": "00d199877764c24166a6d7b66891e13a7ab92ba38a8f9ad4d4abc7cc4e2be51b",
+      "renderer_sha256": "2d7777ffdda5ebaa0786ced389655efe5bda11b020423dd0856009054ce8b1fe",
+      "source_renderer_sha256": "e130df3bd37201a5255ea42fffb049eb390e284429712f7c241e3fba42097180",
+      "signing": "developer-id",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "2fd31005fce7689584cfff689b89839ea1fef522769141e3c82bd9f77c3ea3a4",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "dd352137ae6e0841dc76d181608d0779aac0a0a087ecac554f9b9abb3b9ccce0",
+      "signature": {
+        "mode": "developer-id",
+        "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+        "team": "K9RX3779MP",
+        "timestamp": "20 Sep 2026 at 03:50:46",
+        "appStapled": false,
+        "tunnel": {
+          "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+          "team": "K9RX3779MP",
+          "timestamp": "20 Sep 2026 at 03:50:40",
+          "binary_sha256": "2b1e751b2646433af81f53b254fec74a85ca4145337b2b2f093a7cc330bbfa61"
+        }
+      },
+      "mac_resources_report": "/tmp/friendslop-hotfix-0151-desktop-mac-arm64.dmg.resources.json"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.1-mac-x64.zip",
+      "bytes": 171982807,
+      "sha256": "428c778e98ea2a7fff5226fea3bcdc8690886ddc9ff0e0116a7def176444eeef",
+      "renderer_sha256": "2d7777ffdda5ebaa0786ced389655efe5bda11b020423dd0856009054ce8b1fe",
+      "source_renderer_sha256": "e130df3bd37201a5255ea42fffb049eb390e284429712f7c241e3fba42097180",
+      "signing": "developer-id",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "2fd31005fce7689584cfff689b89839ea1fef522769141e3c82bd9f77c3ea3a4",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "dd352137ae6e0841dc76d181608d0779aac0a0a087ecac554f9b9abb3b9ccce0",
+      "signature": {
+        "mode": "developer-id",
+        "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+        "team": "K9RX3779MP",
+        "timestamp": "20 Sep 2026 at 03:50:18",
+        "appStapled": false,
+        "tunnel": {
+          "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+          "team": "K9RX3779MP",
+          "timestamp": "20 Sep 2026 at 03:50:13",
+          "binary_sha256": "0de282ce852f3fc47e5ea376c9583b781ccf48c86d7bf121e36355232a3c8114"
+        }
+      },
+      "mac_resources_report": "/tmp/friendslop-hotfix-0151-desktop-mac-x64.zip.resources.json"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.1-mac-x64.dmg",
+      "bytes": 176593203,
+      "sha256": "585f85acf1c30e4544549377a143427f0694cd08cbfefda72e6e07581cbe3fdc",
+      "renderer_sha256": "2d7777ffdda5ebaa0786ced389655efe5bda11b020423dd0856009054ce8b1fe",
+      "source_renderer_sha256": "e130df3bd37201a5255ea42fffb049eb390e284429712f7c241e3fba42097180",
+      "signing": "developer-id",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "2fd31005fce7689584cfff689b89839ea1fef522769141e3c82bd9f77c3ea3a4",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "dd352137ae6e0841dc76d181608d0779aac0a0a087ecac554f9b9abb3b9ccce0",
+      "signature": {
+        "mode": "developer-id",
+        "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+        "team": "K9RX3779MP",
+        "timestamp": "20 Sep 2026 at 03:50:18",
+        "appStapled": false,
+        "tunnel": {
+          "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+          "team": "K9RX3779MP",
+          "timestamp": "20 Sep 2026 at 03:50:13",
+          "binary_sha256": "0de282ce852f3fc47e5ea376c9583b781ccf48c86d7bf121e36355232a3c8114"
+        }
+      },
+      "mac_resources_report": "/tmp/friendslop-hotfix-0151-desktop-mac-x64.dmg.resources.json"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.1-windows-x64-portable.exe",
+      "bytes": 135290055,
+      "sha256": "e658d138a7c948691976284bd4092d3cd58c808dc4a9e0834386455e6a53f50b",
+      "renderer_sha256": "2d7777ffdda5ebaa0786ced389655efe5bda11b020423dd0856009054ce8b1fe",
+      "source_renderer_sha256": "e130df3bd37201a5255ea42fffb049eb390e284429712f7c241e3fba42097180",
+      "signing": "unsigned",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "2fd31005fce7689584cfff689b89839ea1fef522769141e3c82bd9f77c3ea3a4",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "dd352137ae6e0841dc76d181608d0779aac0a0a087ecac554f9b9abb3b9ccce0"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.1-windows-x64-setup.exe",
+      "bytes": 135519769,
+      "sha256": "f72db1d89c5513b8163b5fd18da0e6e7b0cb6c817e3820c180772707b570ebb8",
+      "renderer_sha256": "2d7777ffdda5ebaa0786ced389655efe5bda11b020423dd0856009054ce8b1fe",
+      "source_renderer_sha256": "e130df3bd37201a5255ea42fffb049eb390e284429712f7c241e3fba42097180",
+      "signing": "unsigned",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "2fd31005fce7689584cfff689b89839ea1fef522769141e3c82bd9f77c3ea3a4",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "dd352137ae6e0841dc76d181608d0779aac0a0a087ecac554f9b9abb3b9ccce0"
+    }
+  ],
+  "logs": {
+    "mac": "/tmp/friendslop-hotfix-0151-desktop-mac.log",
+    "windows": "/tmp/friendslop-hotfix-0151-desktop-win.log",
+    "verification": "/tmp/friendslop-hotfix-0151-desktop-verify.log"
+  },
+  "cleanup": {
+    "checked_at": "2026-09-19T20:55:09.632277+00:00",
+    "temporary_artifact_dirs_remaining": false,
+    "artifact_mounts_remaining": false,
+    "installed_apps_or_user_profiles_touched": false,
+    "native_ui_launched": false,
+    "own_build_processes_remaining": false,
+    "own_packaging_staging_dirs_remaining": false
+  },
+  "previous_release_payload_reused": false
+}
