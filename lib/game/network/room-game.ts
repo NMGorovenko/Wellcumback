@@ -1,4 +1,10 @@
 import {
+  freshRoma2,
+  roma2Action,
+  roma2Tick,
+  type Roma2State,
+} from '../roma2/engine.ts';
+import {
   vehiclePose,
   rememberVehicleStep,
   setVehicleRemainder,
@@ -93,7 +99,7 @@ let inputArmed = false;
 let localActionPulse = '';
 const pulseKey = (world: RoomWorld) =>
   `${roomSnapshot().code}:${world.scene}:${world.epoch}`;
-type RoomStory = 'screen' | 'clean' | 'moving';
+type RoomStory = 'screen' | 'clean' | 'moving' | 'roma2';
 function freshStoryWorld(
   scene: RoomStory,
   players: number,
@@ -105,7 +111,9 @@ function freshStoryWorld(
       ? freshGame(players)
       : scene === 'clean'
         ? freshClean(players)
-        : freshMoving(players);
+        : scene === 'roma2'
+          ? freshRoma2(players)
+          : freshMoving(players);
   state.paused = true;
   return {
     scene,
@@ -118,7 +126,7 @@ function freshStoryWorld(
   };
 }
 function includeStoryPlayers(world: RoomWorld) {
-  const state = world.state as unknown as CleanState | MovingState;
+  const state = world.state as unknown as CleanState | MovingState | Roma2State;
   const count = Math.min(
     3,
     Math.max(state.players, ...roomSnapshot().roster.map((p) => p.slot + 1)),
@@ -131,6 +139,11 @@ function includeStoryPlayers(world: RoomWorld) {
       s.previousAction.push(false);
       s.previousSecondary.push(false);
     }
+  }
+  if (world.scene === 'roma2') {
+    const s = state as Roma2State;
+    const seed = freshRoma2(count);
+    while (s.actors.length < count) s.actors.push(seed.actors[s.actors.length]);
   }
   state.players = count;
   state.actorCount =
@@ -274,7 +287,9 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
   } else if (
     (command.kind === 'start-screen' ||
       (command.kind === 'start-story' &&
-        ['screen', 'clean', 'moving'].includes(String(command.value)))) &&
+        ['screen', 'clean', 'moving', 'roma2'].includes(
+          String(command.value),
+        ))) &&
     isOwner &&
     world.scene === 'city'
   ) {
@@ -312,9 +327,13 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
       },
       slot,
     );
-  } else if (world.scene === 'clean' || world.scene === 'moving') {
+  } else if (
+    world.scene === 'clean' ||
+    world.scene === 'moving' ||
+    world.scene === 'roma2'
+  ) {
     includeStoryPlayers(world);
-    const s = world.state as unknown as CleanState | MovingState;
+    const s = world.state as unknown as CleanState | MovingState | Roma2State;
     if (
       command.kind === 'pause' ||
       (command.kind === 'resume' && isOwner && roomFresh())
@@ -331,6 +350,7 @@ export function roomCommand(command: RoomCommand, slot = roomSnapshot().slot) {
     ) {
       s.paused = false;
       if (world.scene === 'clean') cleanAction(s as CleanState);
+      else if (world.scene === 'roma2') roma2Action(s as Roma2State);
       else movingAction(s as MovingState);
       world.brief = false;
       inputArmed = false;
@@ -610,8 +630,8 @@ export function tickRoomScreen(
 }
 
 /** Story engines own their E edges. Unlike the screen, no extra action callback is executed. */
-function tickRoomStory<T extends CleanState | MovingState>(
-  scene: 'clean' | 'moving',
+function tickRoomStory<T extends CleanState | MovingState | Roma2State>(
+  scene: 'clean' | 'moving' | 'roma2',
   state: T,
   dt: number,
   keys: ReadonlySet<string>,
@@ -678,7 +698,14 @@ export const tickRoomMoving = (
   keys: ReadonlySet<string>,
 ) => tickRoomStory('moving', state, dt, keys, movingTick);
 
+export const tickRoomRoma2 = (
+  state: Roma2State,
+  dt: number,
+  keys: ReadonlySet<string>,
+) => tickRoomStory('roma2', state, dt, keys, roma2Tick);
+
 export function roomRoleName(world: RoomWorld | null, slot: number) {
+  if (world?.scene === 'roma2') return `Рядовой ${roomActor(world, slot) + 1}`;
   if (world?.scene === 'race') return 'Гонщик';
   if (
     world?.scene === 'clean' &&

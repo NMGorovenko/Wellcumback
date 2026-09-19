@@ -143,20 +143,24 @@ export function makeCourse(
     })),
   };
 }
+// Keep three laps below the ten-minute limit without enlarging the free-roam
+// route. The start/finish lies on Mira's straight, clear of the starting grid.
+// Return along Lenina to its actual intersection with Gorkogo, staying on road.
 export const krasnoyarskCourse = makeCourse(
   'krasnoyarsk',
   'Красноярск',
   [
-    [-80, -54],
-    [38, -54],
-    [38, 10.36],
-    [-48, 34.44],
-    [-48, -7.56],
-    [-92, 4.76],
-    [-92, -54],
-  ].map(([x, z]) => ({ x, z, y: 0 })),
-  5,
-  [0, 80, 134, 161.36, 201.053, 252.977, 307.883, 347.097, 393.363],
+    { x: 0, z: -60 - (40 * 380) / 710, y: 0, name: 'Мира' },
+    { x: 330, z: -100, y: 0, name: 'Вейнбаума' },
+    { x: 330, z: -150, y: 0, name: 'Стрелка' },
+    { x: 800, z: -250, y: 0, name: 'Стрелка' },
+    { x: 920, z: -400, y: 0, name: 'Ленина' },
+    { x: 600, z: -360, y: 0, name: 'Ленина' },
+    { x: 0, z: -260, y: 0, name: 'Ленина' },
+    { x: -380, z: -230 - (30 * 720) / 1100, y: 0, name: 'Горького' },
+    { x: -380, z: -60, y: 0, name: 'Мира' },
+  ],
+  6,
 );
 export function crossedGate(
   from: { x: number; z: number },

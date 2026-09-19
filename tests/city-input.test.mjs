@@ -16,7 +16,10 @@ import {
 } from '../lib/game/input/gamepads.ts';
 import { resolveDrive } from '../lib/game/input/drive.ts';
 import { freshCity, tickCity } from '../lib/game/city/engine.ts';
-import { readPeerPacket } from '../lib/game/network/protocol.ts';
+import {
+  NETWORK_VERSION,
+  readPeerPacket,
+} from '../lib/game/network/protocol.ts';
 const pad = (buttons = {}, axes = [0, 0], id = 'DualSense', index = 0) => ({
   id,
   index,
@@ -134,7 +137,7 @@ void test('neutral pad does not cancel keyboard axes and simultaneous opposite k
 void test('network accepts bounded analog axes and rejects malformed driving values', () => {
   const packet = {
     type: 'input',
-    version: 2,
+    version: NETWORK_VERSION,
     seq: 2,
     epoch: 1,
     keys: [],

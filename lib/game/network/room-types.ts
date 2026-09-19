@@ -1,8 +1,14 @@
 import type { RaceInput } from '../race/types.ts';
 import type { VehicleId, ColorId } from '../race/vehicles.ts';
 import type { DriveAxes } from '../input/drive.ts';
-export const ROOM_VERSION = 8;
-export type RoomScene = 'city' | 'screen' | 'clean' | 'moving' | 'race';
+export const ROOM_VERSION = 9;
+export type RoomScene =
+  | 'city'
+  | 'screen'
+  | 'clean'
+  | 'moving'
+  | 'roma2'
+  | 'race';
 export type RoomCommand = {
   kind:
     | 'action'

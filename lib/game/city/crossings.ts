@@ -8,21 +8,23 @@ export type CityCrossing = CityPoint & {
   tz: number;
 };
 
-const locations: (CityPoint & { roadId: string })[] = [
-  ...[-92, -48, -16, 38, 94].flatMap((x) =>
-    [-1, 1].flatMap((bank) =>
-      [-11, 11].map((offset) => ({
-        x,
-        z: bank * 54 + offset,
-        roadId: [-48, 38].includes(x)
-          ? `bridge-approach-${x}`
-          : `district-${x}-${bank}`,
-      })),
-    ),
-  ),
-  { x: -78, z: -54, roadId: 'left-districts' },
-  { x: 76, z: 54, roadId: 'right-districts' },
-];
+// Crosswalks on local incoming lanes, away from bridge mouths.
+const locations: (CityPoint & { roadId: string })[] = cityRoads
+  .filter((r) => !r.bridge && !r.id.includes('quay') && !r.id.includes('loop'))
+  .flatMap((r) => {
+    const dx = r.to.x - r.from.x,
+      dz = r.to.z - r.from.z,
+      l = Math.hypot(dx, dz);
+    return l < 40
+      ? []
+      : [
+          {
+            x: r.from.x + (dx / l) * 17,
+            z: r.from.z + (dz / l) * 17,
+            roadId: r.id,
+          },
+        ];
+  });
 
 /** Crossing the incoming road after the junction, with both ends at its curbs.
  * Omit approaches that end before the crossing or join the roundabout itself. */

@@ -1,4 +1,4 @@
-import { BRIDGES } from './layout.ts';
+import { BRIDGES, cityRoads, distanceToRoad } from './layout.ts';
 import type { CityState } from './engine.ts';
 
 export const BRIDGE_QUIP = 'Ярик: Хоть бы с моста в реку не слететь';
@@ -30,12 +30,17 @@ export function advanceCityConversation(s: CityState) {
   const previous = BRIDGES.find((b) => b.id === c.bridge);
   if (
     previous &&
-    (Math.abs(s.x - previous.x) > previous.w / 2 + 3 ||
-      Math.abs(s.z - previous.z) > previous.d / 2 + 3)
+    !cityRoads.some(
+      (r) =>
+        r.bridge === previous.id &&
+        distanceToRoad(s.x, s.z, r) < r.width / 2 + 3,
+    )
   )
     c.bridge = null;
-  const entered = BRIDGES.find(
-    (b) => Math.abs(s.x - b.x) < b.w / 2 && Math.abs(s.z - b.z) < b.d / 2,
+  const entered = BRIDGES.find((b) =>
+    cityRoads.some(
+      (r) => r.bridge === b.id && distanceToRoad(s.x, s.z, r) < r.width / 2,
+    ),
   );
   if (entered && c.bridge !== entered.id) {
     c.bridge = entered.id;

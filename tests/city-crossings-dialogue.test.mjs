@@ -42,16 +42,23 @@ void test('zebras cross actual road widths, clear the ring and suppress the cent
   }
 });
 
-void test('driving onto either bridge triggers Yarik once per entry, with hysteresis and saved cooldown', () => {
+void test('driving onto each bridge triggers Yarik once per entry, with hysteresis and saved cooldown', () => {
   for (const bridge of BRIDGES)
     for (const direction of [-1, 1]) {
+      const points =
+        direction === 1 ? bridge.points : [...bridge.points].reverse();
+      const [a, b] = points;
+      const length = Math.hypot(b.x - a.x, b.z - a.z),
+        fx = (b.x - a.x) / length,
+        fz = (b.z - a.z) / length;
+      const outside = bridge.w / 2 + 2;
       const s = freshCity();
       Object.assign(s, {
-        x: bridge.x,
-        z: bridge.z - direction * (bridge.d / 2 + 1),
-        heading: direction === 1 ? Math.PI : 0,
-        vx: 0,
-        vz: direction * 8,
+        x: a.x - fx * outside,
+        z: a.z - fz * outside,
+        heading: Math.atan2(fx, -fz),
+        vx: fx * 8,
+        vz: fz * 8,
         elapsed: 20,
       });
       for (let i = 0; i < 40; i++) tickCity(s, 1 / 60, new Set(['KeyW']));
@@ -68,10 +75,11 @@ void test('driving onto either bridge triggers Yarik once per entry, with hyster
         deadline,
         'being on the bridge cannot continually repeat the comic',
       );
-      s.x = bridge.x;
-      s.z = bridge.z + bridge.d / 2 + 1;
+      s.x = a.x - fx * (bridge.w / 2 + 1);
+      s.z = a.z - fz * (bridge.w / 2 + 1);
       advanceCityConversation(s);
-      s.z -= 2;
+      s.x += fx * 2;
+      s.z += fz * 2;
       advanceCityConversation(s);
       assert.equal(s.radioUntil, deadline, 'boundary jitter is not a new trip');
     }

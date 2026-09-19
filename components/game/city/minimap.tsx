@@ -3,20 +3,24 @@ import { memo } from 'react';
 import { Maximize2 } from 'lucide-react';
 import {
   BRIDGES,
+  CITY_PARKING,
   CITY_BOUNDS,
-  RIVER_HALF_WIDTH,
-  RIVER_SLOPE,
+  CITY_ISLANDS,
+  RIVER_SECTIONS,
   ROUNDABOUT,
   cityBuildings,
   cityRoads,
   cityStops,
-  riverZ,
 } from '@/lib/game/city/layout';
 import type { CityState } from '@/lib/game/city/engine';
 
 const { minX, maxX, minZ, maxZ } = CITY_BOUNDS;
-const waterWidth = RIVER_HALF_WIDTH * Math.hypot(1, RIVER_SLOPE);
-const river = `${minX},${riverZ(minX) - waterWidth} ${maxX},${riverZ(maxX) - waterWidth} ${maxX},${riverZ(maxX) + waterWidth} ${minX},${riverZ(minX) + waterWidth}`;
+const river = [
+  ...RIVER_SECTIONS.map((p) => `${p.x},${p.z - p.half}`),
+  ...RIVER_SECTIONS.slice()
+    .reverse()
+    .map((p) => `${p.x},${p.z + p.half}`),
+].join(' ');
 /** Shared world coordinates make both bridges and both banks reliable at any scale. */
 const MapStreets = memo(function MapStreets() {
   return (
@@ -29,6 +33,23 @@ const MapStreets = memo(function MapStreets() {
         fill="#263e36"
       />
       <polygon points={river} fill="#418399" />
+      {CITY_ISLANDS.map((i) => (
+        <polygon
+          key={i.id}
+          points={i.points.map((p) => `${p.x},${p.z}`).join(' ')}
+          fill="#708858"
+        />
+      ))}
+      {CITY_PARKING.map((p) => (
+        <rect
+          key={p.id}
+          x={p.x - p.w / 2}
+          y={p.z - p.d / 2}
+          width={p.w}
+          height={p.d}
+          fill="#68787a"
+        />
+      ))}
       {cityBuildings.map((b, i) => (
         <rect
           key={i}
@@ -53,13 +74,12 @@ const MapStreets = memo(function MapStreets() {
         />
       ))}
       {BRIDGES.map((b) => (
-        <rect
+        <polyline
           key={b.id}
-          x={b.x - b.w / 2}
-          y={b.z - b.d / 2}
-          width={b.w}
-          height={b.d}
-          fill="#d2c3a3"
+          points={b.points.map((p) => `${p.x},${p.z}`).join(' ')}
+          stroke="#d2c3a3"
+          strokeWidth={b.w}
+          fill="none"
         />
       ))}
       <circle
@@ -111,25 +131,25 @@ export default function CityMinimap({
               <circle
                 cx={s.x}
                 cy={s.z}
-                r="6"
+                r="120"
                 fill="none"
                 stroke={s.color}
-                strokeWidth="1.6"
+                strokeWidth="12"
                 className="city-minimap-target"
               />
             )}
             <circle
               cx={s.x}
               cy={s.z}
-              r={i === target ? 3.2 : 2.5}
+              r={i === target ? 50 : 35}
               fill={s.color}
               stroke="#182c27"
-              strokeWidth="1.2"
+              strokeWidth="10"
             />
           </g>
         ))}
         <g
-          transform={`translate(${state.x} ${state.z}) rotate(${(state.heading * 180) / Math.PI})`}
+          transform={`translate(${state.x} ${state.z}) rotate(${(state.heading * 180) / Math.PI}) scale(18)`}
         >
           <circle r="6.5" fill="#142922" fillOpacity=".8" />
           <path

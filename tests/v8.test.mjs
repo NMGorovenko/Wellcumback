@@ -1,3 +1,4 @@
+import { CITY_ROUTES } from '../lib/game/city/layout.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { advanceV8, freshV8, exhaustWave } from '../lib/game/audio/v8-model.ts';
@@ -37,8 +38,12 @@ void test('V8 idles, revs and shifts without affecting vehicle speed', () => {
 });
 for (const rate of [30, 60, 144])
   void test(`actual city acceleration has five audible automatic upshifts at ${rate} Hz`, () => {
-    // A real uninterrupted road across the north of the existing city.
-    const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 },
+    // The long final 9 Maya approach is a real unobstructed city road.
+    const city = {
+        ...freshCity(),
+        ...CITY_ROUTES.studPlaneta.at(-2),
+        heading: 0,
+      },
       motor = freshV8();
     const shifts = [];
     for (let i = 0; i < 6 * rate; i++) {
@@ -49,9 +54,9 @@ for (const rate of [30, 60, 144])
         {
           speed: city.speed,
           powertrain: city.powertrain,
-          forward: city.vx,
+          forward: -city.vz,
           throttle: city.throttle,
-          lateral: city.vz,
+          lateral: city.vx,
           horn: false,
         },
         1 / rate,
@@ -240,7 +245,11 @@ void test('V8 graph reuses sources, clears transients and disposes exactly once'
 });
 
 void test('authoritative gearbox freezes on pause and survives JSON reconnect without an audio-only restart', () => {
-  const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
+  const city = {
+    ...freshCity(),
+    ...CITY_ROUTES.studPlaneta.at(-2),
+    heading: 0,
+  };
   for (let i = 0; i < 150; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
   city.paused = true;
   const before = structuredClone(city);
@@ -268,7 +277,11 @@ void test('authoritative gearbox freezes on pause and survives JSON reconnect wi
   );
 });
 void test('each automatic shift unloads real wheel acceleration as well as exhaust volume', () => {
-  const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
+  const city = {
+    ...freshCity(),
+    ...CITY_ROUTES.studPlaneta.at(-2),
+    heading: 0,
+  };
   let priorAcceleration = 0,
     cuts = 0;
   for (let i = 0; i < 220; i++) {
@@ -300,7 +313,11 @@ void test('sideways sliding cannot over-rev the motor like faster driven wheels'
 });
 
 void test('restarting the car clears the old exhaust cooldown and a restored timeline cannot fake a pedal release', () => {
-  const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
+  const city = {
+    ...freshCity(),
+    ...CITY_ROUTES.studPlaneta.at(-2),
+    heading: 0,
+  };
   const motor = freshV8();
   city.powertrain.time = 100;
   const hear = (throttle) =>
@@ -324,7 +341,7 @@ void test('restarting the car clears the old exhaust cooldown and a restored tim
     0,
     'old deadline cannot suppress the new run',
   );
-  Object.assign(city, { x: -104, z: -63, heading: Math.PI / 2 });
+  Object.assign(city, { ...CITY_ROUTES.studPlaneta.at(-2), heading: 0 });
   for (let i = 0; i < 240; i++) {
     tickCity(city, 1 / 60, new Set(['KeyW']));
     hear(1);

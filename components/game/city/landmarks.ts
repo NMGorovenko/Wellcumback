@@ -1,16 +1,15 @@
 import * as THREE from 'three';
 import {
   BRIDGES,
+  CITY_PARKING,
   CITY_BOUNDS,
   ROUNDABOUT,
-  RIVER_HALF_WIDTH,
-  RIVER_SLOPE,
+  inCityWater,
+  riverBankZ,
   cityBuildings,
   cityRoads,
   cityStops,
   distanceToRoad,
-  riverDistance,
-  riverZ,
   type CityBuilding,
   type CityPoint,
 } from '../../../lib/game/city/layout.ts';
@@ -40,7 +39,7 @@ export function citySceneryFits(point: CityPoint, radius: number) {
     point.x + radius <= CITY_BOUNDS.maxX &&
     point.z - radius >= CITY_BOUNDS.minZ &&
     point.z + radius <= CITY_BOUNDS.maxZ &&
-    Math.abs(riverDistance(point.x, point.z)) >= RIVER_HALF_WIDTH + radius &&
+    !inCityWater(point.x, point.z, radius) &&
     cityRoads.every(
       (road) =>
         distanceToRoad(point.x, point.z, road) >=
@@ -50,6 +49,11 @@ export function citySceneryFits(point: CityPoint, radius: number) {
       ROUNDABOUT.outerRadius + radius &&
     cityStops.every(
       (stop) => Math.hypot(point.x - stop.x, point.z - stop.z) >= 3.4 + radius,
+    ) &&
+    CITY_PARKING.every(
+      (p) =>
+        Math.abs(point.x - p.x) > p.w / 2 + radius ||
+        Math.abs(point.z - p.z) > p.d / 2 + radius,
     ) &&
     cityBuildings.every(
       (building) =>
@@ -347,11 +351,11 @@ export function createCityLandmarks(
     for (const x of [-78, -28, 8, 70]) {
       if (BRIDGES.some((bridge) => Math.abs(x - bridge.x) < bridge.w / 2 + 4))
         continue;
-      const p = { x, z: riverZ(x) + side * 11.6 };
+      const p = { x, z: riverBankZ(x, side) + side * 2.2 };
       if (!citySceneryFits(p, 1.05)) continue;
       const group = new THREE.Group();
       group.position.set(p.x, 0, p.z);
-      group.rotation.y = Math.atan(RIVER_SLOPE) + (side < 0 ? Math.PI : 0);
+      group.rotation.y = 0 + (side < 0 ? Math.PI : 0);
       root.add(group);
       bench(kit, group, 0, 0);
       if (x === -78 || x === 70) {

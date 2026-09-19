@@ -12,6 +12,8 @@ import { placeSpeechBubble } from '../world/speech-position';
 import type { SpeechBubbleRef } from '../world/speech-bubble';
 import {
   cityDriveCamera,
+  cityCruiseCamera,
+  clearCityCruiseCamera,
   cityFaceCamera,
   cityOverviewCamera,
   followCityHeading,
@@ -70,7 +72,7 @@ export default function CityScene({
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.domElement.setAttribute(
       'aria-label',
-      'Красный Mustang с Никитой, Яриком и Ромой на вечерней карте Красноярска: Енисей, два моста и жилые кварталы.',
+      'Красный Mustang с Никитой, Яриком и Ромой на вечерней карте Красноярска: Енисей, три моста и жилые кварталы.',
     );
     element.appendChild(renderer.domElement);
     const overview = cityOverviewCamera(1),
@@ -83,6 +85,16 @@ export default function CityScene({
       0.1,
       overview.far,
     );
+    const cruiseFar = Math.max(500, Math.min(1600, overview.distance * 0.65));
+    const cruiseCamera = new THREE.PerspectiveCamera(58, 1, 0.12, cruiseFar);
+    const cruiseFog = new THREE.Fog(
+      scene.background,
+      cruiseFar * 0.48,
+      cruiseFar * 0.95,
+    );
+    const cruisePosition = new THREE.Vector3(),
+      cruiseLook = new THREE.Vector3();
+    let previousMode: CityCameraMode | null = null;
     const look = new THREE.Vector3(
         overview.look.x,
         overview.look.y,
@@ -107,6 +119,11 @@ export default function CityScene({
     sun.shadow.camera.far = 360;
     sun.shadow.normalBias = 0.05;
     sun.shadow.bias = -0.00008;
+    const shadowOutward = new THREE.Vector3(-55, 135, 45).normalize();
+    const shadowRight = new THREE.Vector3(45, 0, 55).normalize();
+    const shadowUp = new THREE.Vector3()
+      .crossVectors(shadowOutward, shadowRight)
+      .normalize();
     scene.add(sun.target);
     scene.add(sun, new THREE.HemisphereLight('#d4ecff', '#91a083', 2.1));
     const evening = new THREE.DirectionalLight('#a9c8ff', 1.25);
@@ -192,6 +209,8 @@ export default function CityScene({
       const width = Math.max(1, element.clientWidth),
         height = Math.max(1, element.clientHeight);
       aspect = width / height;
+      cruiseCamera.aspect = aspect;
+      cruiseCamera.updateProjectionMatrix();
       viewportHeight = height;
       overviewHalfHeight = cityOverviewCamera(aspect).halfHeight;
       if (!currentHalfHeight) {
@@ -263,12 +282,34 @@ export default function CityScene({
       camera.top = currentHalfHeight;
       camera.bottom = -currentHalfHeight;
       camera.updateProjectionMatrix();
+      let activeCamera: THREE.Camera = camera;
+      if (mode.current === 'cruise') {
+        const view = cityCruiseCamera({ ...s, heading: cameraHeading }, aspect);
+        const blend = previousMode === 'cruise' ? smoothCamera : 1;
+        cruisePosition.lerp(
+          projected.set(view.position.x, view.position.y, view.position.z),
+          blend,
+        );
+        cruiseLook.lerp(
+          projected.set(view.look.x, view.look.y, view.look.z),
+          blend,
+        );
+        const clear = clearCityCruiseCamera(cruisePosition, s);
+        cruisePosition.set(clear.x, clear.y, clear.z);
+        cruiseCamera.position.copy(cruisePosition);
+        cruiseCamera.lookAt(cruiseLook);
+        cruiseCamera.fov += (view.fov - cruiseCamera.fov) * blend;
+        cruiseCamera.updateProjectionMatrix();
+        activeCamera = cruiseCamera;
+        scene.fog = cruiseFog;
+      } else scene.fog = null;
+      previousMode = mode.current;
       car.update(s, dt, mode.current === 'faces');
       const line = citySpeech(s);
       placeSpeechBubble(
         speechRef,
         line ? car.passengers[line.passenger] : null,
-        camera,
+        activeCamera,
         element,
         !!line,
         car.passengers,
@@ -280,11 +321,26 @@ export default function CityScene({
         mode.current === 'map' && currentHalfHeight > overviewHalfHeight * 0.65,
         (currentHalfHeight * 2 * 150) / viewportHeight,
       );
-      // Spend the shadow map on the nearby street when driving; overview covers both banks.
-      const shadowSize = mode.current !== 'map' ? 27 : 160;
-      const shadowTarget = mode.current !== 'map' ? currentLook : look;
-      sun.target.position.copy(shadowTarget);
-      sun.position.copy(shadowTarget).add(projected.set(-55, 135, 45));
+      // A city-sized shadow frustum wastes resolution. Follow the presented car
+      // in every street view and turn shadows off for the multi-kilometre map.
+      // Snap in light space so asphalt shadows do not shimmer as the car moves.
+      const shadowSize = mode.current === 'cruise' ? 45 : 32;
+      sun.castShadow = mode.current !== 'map';
+      sun.shadow.autoUpdate = sun.castShadow;
+      const texel = (shadowSize * 2) / sun.shadow.mapSize.x;
+      projected.set(s.x, 0, s.z);
+      const shadowX = projected.dot(shadowRight),
+        shadowY = projected.dot(shadowUp);
+      projected.addScaledVector(
+        shadowRight,
+        Math.round(shadowX / texel) * texel - shadowX,
+      );
+      projected.addScaledVector(
+        shadowUp,
+        Math.round(shadowY / texel) * texel - shadowY,
+      );
+      sun.target.position.copy(projected);
+      sun.position.copy(sun.target.position).add(projected.set(-55, 135, 45));
       sun.shadow.camera.left = -shadowSize;
       sun.shadow.camera.right = shadowSize;
       sun.shadow.camera.top = shadowSize;
@@ -345,7 +401,7 @@ export default function CityScene({
         puff.sprite.scale.setScalar(0.35 + puff.age * 0.7);
         puff.sprite.material.opacity = (1 - puff.age / 1.55) * 0.43;
       });
-      renderer.render(scene, camera);
+      renderer.render(scene, activeCamera);
       countRenderedFrame(performance.now());
       raf = requestAnimationFrame(render);
     };

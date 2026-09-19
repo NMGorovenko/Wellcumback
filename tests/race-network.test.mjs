@@ -1,3 +1,4 @@
+import { CITY_ROUTES } from '../lib/game/city/layout.ts';
 import { presentedVehicle } from '../lib/game/city/vehicle-presentation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -1234,11 +1235,10 @@ void test('host city presentation follows the outer fixed clock at144Hz without 
     await drain();
     const car = freshCity();
     Object.assign(car, {
-      x: -80,
-      z: -54,
-      heading: Math.PI / 2,
-      vx: 32,
-      vz: 0,
+      ...CITY_ROUTES.studPlaneta.at(-2),
+      heading: 0,
+      vx: 0,
+      vz: -32,
       speed: 32,
     });
     Object.assign(car.powertrain, { gear: 6, rpm: 4300, shiftReadyAt: 1e6 });
@@ -1259,16 +1259,16 @@ void test('host city presentation follows the outer fixed clock at144Hz without 
       assert.equal(JSON.stringify(client.roomWorld()), saved);
       if (frame > 8)
         assert.ok(
-          visual.x > previous,
+          visual.z < previous,
           'healthy host must not repeat its city pose between outer steps',
         );
-      previous = visual.x;
+      previous = visual.z;
     }
     assert.equal(view.bumps, 0);
     view.paused = true;
     assert.equal(
-      presentedVehicle(view).car.x,
-      view.x,
+      presentedVehicle(view).car.z,
+      view.z,
       'pause immediately shows the saved point',
     );
   } finally {
@@ -1282,11 +1282,10 @@ void test('host race presentation interpolates whole60Hz batches, not only their
     const s = state(),
       car = s.racers[0].car;
     Object.assign(car, {
-      x: -80,
-      z: -54,
-      heading: Math.PI / 2,
-      vx: 32,
-      vz: 0,
+      ...CITY_ROUTES.studPlaneta.at(-2),
+      heading: 0,
+      vx: 0,
+      vz: -32,
       speed: 32,
     });
     Object.assign(car.powertrain, { gear: 6, rpm: 4300, shiftReadyAt: 1e6 });
@@ -1304,11 +1303,11 @@ void test('host race presentation interpolates whole60Hz batches, not only their
       ).car;
       assert.equal(JSON.stringify(state()), saved);
       if (frame > 8) {
-        const delta = visual.x - previous;
+        const delta = previous - visual.z;
         assert.ok(delta > 0, 'no repeated outer-batch pose');
         deltas.push(delta);
       }
-      previous = visual.x;
+      previous = visual.z;
     }
     for (let i = 1; i < deltas.length; i++)
       assert.ok(

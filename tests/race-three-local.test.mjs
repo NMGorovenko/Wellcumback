@@ -246,5 +246,5 @@ await test('third-player drift banking and a remote crash never change another r
 });
 
 await test('three-input rooms use protocol 8 rather than silently changing protocol 7', () => {
-  assert.equal(ROOM_VERSION, 8);
+  assert.ok(ROOM_VERSION >= 8);
 });

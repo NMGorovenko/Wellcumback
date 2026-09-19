@@ -513,3 +513,21 @@
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
+
+/* A large route list must never widen the full-screen game canvas. */
+.play-viewport .city-hub,
+.play-viewport .city-world {
+  min-width: 0;
+  width: 100%;
+}
+.play-viewport .city-bottom nav {
+  min-width: 0;
+  flex: 1 1 0;
+  scrollbar-width: thin;
+}
+.play-viewport .city-bottom {
+  max-width: calc(100% - 2 * var(--hud-edge));
+}
+.play-viewport .city-players {
+  flex: 0 0 auto;
+}

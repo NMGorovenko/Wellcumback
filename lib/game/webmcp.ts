@@ -28,7 +28,7 @@ export function registerGameTools(
     inputSchema: {
       type: 'object',
       properties: {
-        story: { type: 'string', enum: ['screen', 'clean', 'moving'] },
+        story: { type: 'string', enum: ['screen', 'clean', 'moving', 'roma2'] },
         players: { type: 'integer', minimum: 1, maximum: 3 },
       },
       required: ['story', 'players'],
@@ -40,13 +40,18 @@ export function registerGameTools(
         throw new Error('Expected story and players.');
       const { story, players } = input as Record<string, unknown>;
       if (
-        (story !== 'screen' && story !== 'clean' && story !== 'moving') ||
+        (story !== 'screen' &&
+          story !== 'clean' &&
+          story !== 'moving' &&
+          story !== 'roma2') ||
         typeof players !== 'number' ||
         !Number.isInteger(players) ||
         players < 1 ||
         players > 3
       )
-        throw new Error('Choose screen, clean or moving and 1–3 players.');
+        throw new Error(
+          'Choose screen, clean, moving or roma2 and 1–3 players.',
+        );
       start(story, players);
       return { started: true, story, players };
     },

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { appendResult } from '../lib/game/results.ts';
 
 void test('restoring an online result does not award it again; replaying gets a new run', () => {
-  for (const story of ['screen', 'clean', 'moving']) {
+  for (const story of ['screen', 'clean', 'moving', 'roma2']) {
     const first = {
       story,
       score: 400,

@@ -1,5 +1,10 @@
 import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
-import { CITY_SPAWN, BRIDGES } from '../lib/game/city/layout.ts';
+import {
+  CITY_ROUTES,
+  BRIDGES,
+  cityBuildings,
+  riverBankZ,
+} from '../lib/game/city/layout.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -9,6 +14,8 @@ import {
   tickCity,
 } from '../lib/game/city/engine.ts';
 
+const straightStart = CITY_ROUTES.studPlaneta.at(-2);
+const streetCity = () => ({ ...freshCity(), ...straightStart, heading: 0 });
 const advance = (s, seconds, keys = []) => {
   for (let i = 0; i < Math.round(seconds * 60); i++)
     tickCity(s, 1 / 60, new Set(keys));
@@ -17,21 +24,21 @@ const slip = (s) =>
   Math.abs(s.vx * Math.cos(s.heading) + s.vz * Math.sin(s.heading));
 
 void test('Mustang accelerates promptly, coasts naturally, and brakes before reversing', () => {
-  const accelerating = freshCity();
+  const accelerating = streetCity();
   advance(accelerating, 1, ['KeyW']);
   assert.ok(accelerating.speed > 11 && accelerating.speed <= 18);
   assert.equal(accelerating.bumps, 0);
-  const coast = { ...freshCity(), vz: -10, speed: 10 };
+  const coast = { ...streetCity(), vz: -10, speed: 10 };
   advance(coast, 1);
   assert.ok(
     coast.speed > 7.5 && coast.speed < 10,
     'lifting the throttle retains useful momentum',
   );
   assert.ok(
-    CITY_SPAWN.z - coast.z > 8,
+    straightStart.z - coast.z > 8,
     'the retained velocity actually moves the car',
   );
-  const braking = { ...freshCity(), vz: -10, speed: 10 };
+  const braking = { ...streetCity(), vz: -10, speed: 10 };
   let frames = 0;
   while (braking.vz < 0 && frames < 60) {
     tickCity(braking, 1 / 60, new Set(['KeyS']));
@@ -42,17 +49,17 @@ void test('Mustang accelerates promptly, coasts naturally, and brakes before rev
     'braking is progressive but stops within 0.6 seconds',
   );
   assert.ok(
-    CITY_SPAWN.z - braking.z < 3,
+    straightStart.z - braking.z < 3,
     'brakes remain useful near a story stop',
   );
   assert.ok(braking.speed < 0.5, 'reverse begins from near zero');
-  const reverse = { ...freshCity(), z: 0 };
+  const reverse = { ...streetCity() };
   advance(reverse, 1.5, ['KeyS']);
   assert.ok(
     reverse.vz > 5 && reverse.speed <= 6,
     'faster forwards does not increase reverse speed',
   );
-  const rolling = { ...freshCity(), z: 0, vz: -0.25, speed: 0.25 };
+  const rolling = { ...streetCity(), vz: -0.25, speed: 0.25 };
   advance(rolling, 4);
   assert.equal(
     rolling.speed,
@@ -62,7 +69,7 @@ void test('Mustang accelerates promptly, coasts naturally, and brakes before rev
 });
 
 void test('a moderate-speed handbrake turn builds real lateral slip and releases smoothly', () => {
-  const drifting = { ...freshCity(), vz: -4, speed: 4 };
+  const drifting = { ...streetCity(), vz: -4, speed: 4 };
   const gripping = structuredClone(drifting);
   advance(drifting, 0.4, ['KeyW', 'KeyD', 'ShiftLeft']);
   advance(gripping, 0.4, ['KeyW', 'KeyD']);
@@ -97,22 +104,40 @@ void test('a moderate-speed handbrake turn builds real lateral slip and releases
 });
 
 void test('the higher forward limit cannot tunnel through buildings, banks, or bridge rails', () => {
-  const straight = freshCity();
+  const straight = streetCity();
   advance(straight, 1.7, ['KeyW']);
   assert.ok(straight.speed > 19 && straight.speed <= CITY_TOP_SPEED);
   assert.equal(straight.bumps, 0);
+  const building = cityBuildings.find((b) => b.kind === 'borisova');
+  const bankX = CITY_ROUTES.western.at(-1).x;
+  const [a, b] = BRIDGES[0].points;
+  const length = Math.hypot(b.x - a.x, b.z - a.z);
+  const nx = (b.z - a.z) / length,
+    nz = -(b.x - a.x) / length;
   for (const state of [
-    { x: -92, z: -16, heading: -Math.PI / 2, vx: -CITY_TOP_SPEED, vz: 0 },
-    { x: 0, z: 25, heading: 0, vx: 0, vz: -CITY_TOP_SPEED },
     {
-      x: BRIDGES[0].x,
-      z: BRIDGES[0].z,
-      heading: Math.PI / 2,
-      vx: CITY_TOP_SPEED,
+      x: building.x + building.w / 2 + 8,
+      z: building.z,
+      heading: -Math.PI / 2,
+      vx: -CITY_TOP_SPEED,
       vz: 0,
     },
+    {
+      x: bankX,
+      z: riverBankZ(bankX, -1) - 12,
+      heading: Math.PI,
+      vx: 0,
+      vz: CITY_TOP_SPEED,
+    },
+    {
+      x: (a.x + b.x) / 2,
+      z: (a.z + b.z) / 2,
+      heading: Math.atan2(nx, -nz),
+      vx: nx * CITY_TOP_SPEED,
+      vz: nz * CITY_TOP_SPEED,
+    },
   ]) {
-    const s = { ...freshCity(), ...state, speed: CITY_TOP_SPEED };
+    const s = { ...streetCity(), ...state, speed: CITY_TOP_SPEED };
     for (let i = 0; i < 120; i++) {
       tickCity(s, 1 / 60, new Set(['KeyW']));
       assert.equal(
@@ -127,7 +152,7 @@ void test('the higher forward limit cannot tunnel through buildings, banks, or b
 });
 
 void test('every confident forward turn enters a real automatic drift; Space amplifies it', () => {
-  const make = () => ({ ...freshCity(), z: 0, vz: -7, speed: 7 });
+  const make = () => ({ ...streetCity(), vz: -7, speed: 7 });
   const auto = make(),
     stronger = make(),
     straight = make();
@@ -158,8 +183,7 @@ void test('parking, reverse and small analog corrections retain precision', () =
     { forward: 7, throttle: 1, steer: 0.1 },
   ]) {
     const s = {
-      ...freshCity(),
-      z: 0,
+      ...streetCity(),
       vz: -config.forward,
       speed: Math.abs(config.forward),
     };
@@ -171,7 +195,7 @@ void test('parking, reverse and small analog corrections retain precision', () =
 });
 void test('automatic drift trajectories match on 30, 60 and 144Hz displays', () => {
   const states = [30, 60, 144].map((hz) => {
-    const s = { ...freshCity(), z: 0, vz: -7, speed: 7 };
+    const s = { ...streetCity(), vz: -7, speed: 7 };
     for (let i = 0; i < hz; i++) tickCity(s, 1 / hz, new Set(['KeyW', 'KeyD']));
     return s;
   });
@@ -183,8 +207,12 @@ void test('automatic drift trajectories match on 30, 60 and 144Hz displays', () 
 });
 
 void test('six-speed full throttle keeps pulling beyond the old ceiling while partial triggers stay gentle', () => {
-  const full = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 },
-    partial = freshCity();
+  const full = {
+      ...streetCity(),
+      ...CITY_ROUTES.studPlaneta.at(-2),
+      heading: 0,
+    },
+    partial = streetCity();
   const marks = new Map();
   for (let i = 0; i < 360; i++) {
     tickCity(full, 1 / 60, new Set(['KeyW']));
@@ -215,7 +243,7 @@ void test('six-speed full throttle keeps pulling beyond the old ceiling while pa
 });
 void test('fractional refresh periods cannot silently lose a city simulation tick', () => {
   const states = [30, 60, 144].map((hz) => {
-    const s = freshCity();
+    const s = streetCity();
     for (let i = 0; i < hz * 2; i++) tickCity(s, 1 / hz, new Set(['KeyW']));
     return s;
   });
@@ -230,18 +258,15 @@ void test('higher speed power limiting never makes a partial trigger stronger th
   for (const speed of [24, 30]) {
     const accelerations = [0.25, 0.5, 0.75, 0.9, 1].map((throttle) => {
       const s = {
-        ...freshCity(),
-        x: -104,
-        z: -63,
-        heading: Math.PI / 2,
-        vx: speed,
-        vz: 0,
+        ...streetCity(),
+        vx: 0,
+        vz: -speed,
         speed,
       };
       s.powertrain.gear = 6;
       s.powertrain.shiftReadyAt = 100;
       tickCity(s, 1 / 60, new Set(), { throttle, steer: 0 });
-      return (s.vx - speed) * 60;
+      return (-s.vz - speed) * 60;
     });
     for (let i = 1; i < accelerations.length; i++)
       assert.ok(accelerations[i] >= accelerations[i - 1]);

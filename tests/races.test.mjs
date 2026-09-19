@@ -104,10 +104,15 @@ await test('respawn uses earned gates, never shortcuts ahead and finds space beh
   pass(s, r, 0);
   const occupied = city.sample(5);
   Object.assign(s.racers[1].car, occupied);
-  r.car.x = -30;
-  r.car.z = -54;
+  Object.assign(r.car, city.sample(city.gates[1].distance + 50));
   respawnRacer(s, r, city);
-  assert(r.car.x < -74);
+  const returned = city.closest(r.car.x, r.car.z).distance;
+  const earnedProgress =
+    returned > city.length - 60 ? returned - city.length : returned;
+  assert(
+    earnedProgress <= 5 && earnedProgress >= -55,
+    'respawn backs up from the earned first gate, never the unearned second gate',
+  );
   assert.equal(r.nextGate, 1);
   assert.equal(r.passedGates, 1);
   assert(
@@ -117,20 +122,30 @@ await test('respawn uses earned gates, never shortcuts ahead and finds space beh
 await test('head-on cars cannot tunnel through one another; separation cannot push through world walls', () => {
   const s = ready(2),
     [a, b] = s.racers;
-  Object.assign(a.car, { x: -70, z: -54, heading: Math.PI / 2, vx: 80, vz: 0 });
+  const line = city.sample(100),
+    start = { x: line.x, z: line.z };
+  const heading = Math.atan2(line.dx, -line.dz);
+  Object.assign(a.car, {
+    ...start,
+    heading,
+    vx: line.dx * 80,
+    vz: line.dz * 80,
+  });
   Object.assign(b.car, {
-    x: -65,
-    z: -54,
-    heading: -Math.PI / 2,
-    vx: -80,
-    vz: 0,
+    x: start.x + line.dx * 5,
+    z: start.z + line.dz * 5,
+    heading: heading + Math.PI,
+    vx: -line.dx * 80,
+    vz: -line.dz * 80,
   });
   const prev = s.racers.map((r) => ({ ...r.car }));
-  a.car.x = -64;
-  b.car.x = -71;
+  a.car.x += line.dx * 6;
+  a.car.z += line.dz * 6;
+  b.car.x -= line.dx * 6;
+  b.car.z -= line.dz * 6;
   const contacts = resolveCarContacts(s, city, prev);
   assert.equal(contacts.size, 2);
-  assert(a.car.x < b.car.x);
+  assert((b.car.x - a.car.x) * line.dx + (b.car.z - a.car.z) * line.dz > 0);
   assert(
     s.racers.every((r) => !carBlocked(city, r.car.x, r.car.z, r.car.heading)),
   );

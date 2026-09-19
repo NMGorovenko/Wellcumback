@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import {
   BRIDGES,
   cityRoads,
-  riverZ,
-  RIVER_SLOPE,
+  riverBankZ,
+  CITY_BOUNDS,
 } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { citySceneryFits, type CitySceneryPlacement } from './landmarks.ts';
@@ -36,9 +36,9 @@ export function createStreetDetails(
     spots.push({ x, z, radius: 0.45 });
   }
   for (const side of [-1, 1])
-    for (let x = -106; x <= 106; x += 16) {
+    for (let x = CITY_BOUNDS.minX + 10; x <= CITY_BOUNDS.maxX - 10; x += 110) {
       if (BRIDGES.some((b) => Math.abs(x - b.x) < b.w / 2 + 4)) continue;
-      lamp(x, riverZ(x) + side * 12.2, Math.atan(RIVER_SLOPE));
+      lamp(x, riverBankZ(x, side) + side * 2.5, 0);
     }
   for (const road of cityRoads) {
     const dx = road.to.x - road.from.x,
@@ -46,7 +46,7 @@ export function createStreetDetails(
       len = Math.hypot(dx, dz),
       nx = -dz / len,
       nz = dx / len;
-    for (let t = 12; t < len - 5; t += 32)
+    for (let t = 12; t < len - 5; t += 110)
       for (const side of [-1, 1]) {
         const x =
             road.from.x + (dx * t) / len + nx * side * (road.width / 2 + 1.5),

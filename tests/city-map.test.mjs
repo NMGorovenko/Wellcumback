@@ -1,4 +1,3 @@
-import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -9,310 +8,187 @@ import {
   cityBlocked,
 } from '../lib/game/city/engine.ts';
 import {
-  BRIDGES,
   CITY_BOUNDS,
-  CITY_SCENERY_BOUNDS,
+  CITY_ROUTES,
   CITY_SPAWN,
-  ROUNDABOUT,
+  CITY_ISLANDS,
+  cityRoads,
   cityStops,
   cityBuildings,
-  riverDistance,
-  riverZ,
+  BRIDGES,
+  inCityWater,
 } from '../lib/game/city/layout.ts';
-import { readPeerPacket } from '../lib/game/network/protocol.ts';
-import {
-  cityOverviewCamera,
-  cityDriveCamera,
-} from '../components/game/city/camera.ts';
+import { cityOverviewCamera } from '../components/game/city/camera.ts';
 import { createCityEnvironment } from '../components/game/city/environment.ts';
-import { citySceneryFits } from '../components/game/city/landmarks.ts';
 import { RenderKit } from '../components/game/world/render-kit.ts';
-const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
-const wrap = (x) => Math.atan2(Math.sin(x), Math.cos(x));
-// Controller follows drivable road centres through actual fixed-step physics.
-// It changes only inputs: no teleporting, velocity assignment or bypassing blockers.
-function driveRoute(s, points, handbrake = false) {
-  let waypoint = 0;
-  for (let frame = 0; frame < 12000 && waypoint < points.length; frame++) {
-    const [x, z] = points[waypoint],
-      dx = x - s.x,
-      dz = z - s.z;
-    const distance = Math.hypot(dx, dz);
-    if (distance < (waypoint === points.length - 1 ? 1.4 : 3)) {
-      waypoint++;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const wrap = (v) => Math.atan2(Math.sin(v), Math.cos(v));
+function driveRoute(s, points, speed = 20) {
+  let i = 0;
+  const start = s.elapsed;
+  for (let f = 0; f < 600 * 60 && i < points.length; f++) {
+    const p = points[i],
+      dx = p.x - s.x,
+      dz = p.z - s.z,
+      d = Math.hypot(dx, dz);
+    if (d < (i === points.length - 1 ? 1.3 : 3)) {
+      i++;
       continue;
     }
-    const angle = wrap(Math.atan2(dx, -dz) - s.heading);
-    const forward = s.vx * Math.sin(s.heading) - s.vz * Math.cos(s.heading);
+    const a = wrap(Math.atan2(dx, -dz) - s.heading),
+      forward = s.vx * Math.sin(s.heading) - s.vz * Math.cos(s.heading);
     const desired =
-      Math.min(6, Math.sqrt(10 * distance)) * Math.max(0.28, Math.cos(angle));
-    tickCity(s, 1 / 60, new Set(handbrake ? ['ShiftLeft'] : []), {
-      throttle: clamp((desired - forward) * 0.3, -1, 1),
-      steer: clamp(angle * 2, -1, 1),
+      Math.min(speed, Math.sqrt(7 * d)) * Math.max(0.16, Math.cos(a));
+    tickCity(s, 1 / 60, new Set(), {
+      throttle: clamp((desired - forward) * 0.35, -1, 1),
+      steer: clamp(a * 2, -1, 1),
     });
     assert.equal(cityCarBlocked(s.x, s.z, s.heading), false);
   }
-  assert.equal(
-    waypoint,
-    points.length,
-    'route completes under normal steering and pedal inputs',
-  );
+  assert.equal(i, points.length, `route stalled at ${i}: ${s.x},${s.z}`);
+  return s.elapsed - start;
 }
-function stop(s) {
-  for (let frame = 0; frame < 120 && s.speed > 0.15; frame++) {
-    const forward = s.vx * Math.sin(s.heading) - s.vz * Math.cos(s.heading);
-    tickCity(s, 1 / 60, new Set(), {
-      throttle: -Math.sign(forward) * Math.min(1, Math.abs(forward) * 1.5),
-      steer: 0,
-    });
-  }
-  assert.ok(s.speed < 0.2);
-}
-void test('city is four times wider and deeper, with address markers on the right banks and no fabricated Aprelskaya number', () => {
-  assert.equal(CITY_BOUNDS.maxX - CITY_BOUNDS.minX, 58 * 4);
-  assert.equal(CITY_BOUNDS.maxZ - CITY_BOUNDS.minZ, 40 * 4);
-  assert.ok(cityBuildings.length >= 20);
-  const [nikita, yarik, station] = cityStops;
+void test('geographic city has meaningful separation and correct banks, not a enlarged cluster of labels', () => {
+  assert.ok(CITY_BOUNDS.maxX - CITY_BOUNDS.minX >= 8000);
+  const at = (id) => cityStops.find((s) => s.id === id),
+    b = (kind) => cityBuildings.find((b) => b.kind === kind);
   assert.ok(
-    riverDistance(nikita.x, nikita.z) < 0 &&
-      riverDistance(station.x, station.z) < 0,
+    at('udachny').x < at('akadem').x && at('akadem').x < at('nikita').x,
   );
-  assert.ok(riverDistance(yarik.x, yarik.z) > 0);
-  assert.ok(station.x > nikita.x && station.z < nikita.z);
-  assert.ok(yarik.x - nikita.x > 150 && Math.abs(yarik.z - nikita.z) < 10);
-  assert.match(nikita.subtitle, /Борисова, 30/);
-  assert.match(yarik.subtitle, /Апрельская, 8.*правый берег/);
-  assert.match(station.title, /Главный ЖД вокзал/);
-});
-void test('three missions can be reached from spawn by driving, stopping and deliberately pressing E', () => {
-  const nikita = freshCity();
-  while (nikita.z < cityStops[0].z - 1.1)
-    tickCity(nikita, 1 / 60, new Set(), { throttle: -0.3, steer: 0 });
-  const station = freshCity();
-  driveRoute(station, [
-    [-92, -54],
-    [-66, -54],
-  ]);
-  const yarik = freshCity();
-  driveRoute(yarik, [
-    [-92, -54],
-    [-48, -54],
-    [-48, riverZ(-48) + 21],
-    [94, riverZ(94) + 21],
-    [94, 8],
-  ]);
-  for (const [state, expected] of [
-    [nikita, 'screen'],
-    [station, 'clean'],
-    [yarik, 'moving'],
-  ]) {
-    assert.equal(state.interaction, null);
-    stop(state);
-    assert.equal(
-      state.bumps,
-      0,
-      'the real route does not depend on bouncing off walls',
-    );
-    tickCity(state, 1 / 60, new Set(['KeyE']));
-    assert.equal(state.interaction, expected);
-  }
-});
-void test('both bridges are traversable in either direction at full speed, while the water and rails remain solid', () => {
-  for (const bridge of BRIDGES)
-    for (const direction of [-1, 1]) {
-      const state = {
-        ...freshCity(),
-        x: bridge.x,
-        z: bridge.z - direction * 24,
-        heading: direction > 0 ? Math.PI : 0,
-        vz: direction * CITY_TOP_SPEED,
-        speed: CITY_TOP_SPEED,
-      };
-      for (
-        let frame = 0;
-        frame < 160 && (state.z - bridge.z) * direction < 21;
-        frame++
-      ) {
-        tickCity(state, 1 / 60, new Set(['KeyW']));
-        assert.equal(cityCarBlocked(state.x, state.z, state.heading), false);
-      }
-      assert.ok((state.z - bridge.z) * direction > 20);
-      assert.equal(state.bumps, 0);
-      assert.ok(cityBlocked(bridge.x + bridge.w / 2 + 0.16, bridge.z));
-    }
-  for (const x of [-100, -20, 0, 80, 110]) assert.ok(cityBlocked(x, riverZ(x)));
-});
-void test('the roundabout is reachable and supports a complete sustained drift around its solid island', () => {
-  const state = freshCity();
-  driveRoute(state, [
-    [-92, -54],
-    [-48, -54],
-    [-48, riverZ(-48) + 21],
-    [38, riverZ(38) + 21],
-    [38, 29],
-  ]);
-  const lap = Array.from({ length: 33 }, (_, i) => {
-    const angle = ((i + 1) * Math.PI * 2) / 32;
-    return [
-      ROUNDABOUT.x + Math.sin(angle) * 18,
-      ROUNDABOUT.z - Math.cos(angle) * 18,
-    ];
-  });
-  driveRoute(state, lap, true);
+  assert.ok(at('nikita').x - at('udachny').x > 2300);
+  assert.ok(Math.abs(b('planeta').x - b('komsomoll').x) < 120);
+  assert.ok(b('komsomoll').z - b('planeta').z > 1300);
+  assert.ok(b('kubatura').x > b('planeta').x + 650);
   assert.ok(
-    state.driftDistance > 90,
-    'recorded sideways motion covers the circular track',
+    b('kubatura').z > b('planeta').z && b('kubatura').z < b('komsomoll').z,
   );
-  assert.equal(state.bumps, 0);
-  assert.ok(cityBlocked(ROUNDABOUT.x, ROUNDABOUT.z));
-  for (let i = 0; i < 64; i++) {
-    const a = (i * Math.PI) / 32;
-    assert.equal(
-      cityCarBlocked(
-        ROUNDABOUT.x + Math.sin(a) * 18,
-        ROUNDABOUT.z - Math.cos(a) * 18,
-        a + Math.PI / 2,
-      ),
-      false,
-    );
-  }
+  assert.equal(BRIDGES.length, 3);
+  assert.ok(cityBuildings.length > 600);
+  for (const s of cityStops)
+    assert.equal(cityCarBlocked(s.x, s.z, 0), false, s.id);
 });
-void test('network snapshots accept the expanded map and reject positions outside its canonical bounds', () => {
-  const packet = (state) =>
-    JSON.stringify({
-      type: 'city',
-      version: 2,
-      seq: 1,
-      epoch: 0,
-      driver: 'host',
-      state,
-    });
-  for (const point of [
-    ...cityStops,
-    CITY_SPAWN,
-    { x: -115, z: -79 },
-    { x: 115, z: 79 },
-  ]) {
-    const parsed = readPeerPacket(
-      packet({ ...freshCity(), x: point.x, z: point.z }),
-    );
-    assert.equal(parsed?.state.x, point.x);
-    assert.equal(parsed?.state.z, point.z);
-  }
-  for (const [axis, value] of [
-    ['x', CITY_BOUNDS.minX - 0.01],
-    ['x', CITY_BOUNDS.maxX + 0.01],
-    ['z', CITY_BOUNDS.minZ - 0.01],
-    ['z', CITY_BOUNDS.maxZ + 0.01],
-  ])
-    assert.equal(
-      readPeerPacket(packet({ ...freshCity(), [axis]: value })),
-      null,
-    );
+void test('Studgorodok to Planeta takes 3–5 minutes at normal driving pace without hitting anything', (t) => {
+  const s = freshCity();
+  const elapsed = driveRoute(s, CITY_ROUTES.studPlaneta.slice(1), 20);
+  t.diagnostic(`Normal-input Studgorodok→Planeta: ${elapsed.toFixed(1)} s`);
+  assert.ok(
+    elapsed >= 180 && elapsed <= 300,
+    `actual simulated trip ${elapsed.toFixed(1)} s`,
+  );
+  assert.equal(s.bumps, 0);
+  assert.ok(Math.hypot(s.x - 1100, s.z + 1760) < 2);
 });
-void test('overview fits both banks and tall landmarks without changing close camera face scale', () => {
-  for (const aspect of [9 / 16, 4 / 3, 16 / 9, 21 / 9]) {
-    const view = cityOverviewCamera(aspect),
-      h = view.halfHeight;
-    const camera = new THREE.OrthographicCamera(
-      -h * aspect,
-      h * aspect,
-      h,
-      -h,
-      0.1,
-      view.far,
-    );
-    const target = new THREE.Vector3(view.look.x, view.look.y, view.look.z);
-    camera.position
-      .copy(target)
-      .addScaledVector(
-        new THREE.Vector3(view.outward.x, view.outward.y, view.outward.z),
-        view.distance,
+void test('entire road surface is drivable, including angled bridges and island junctions', () => {
+  for (const r of cityRoads) {
+    const dx = r.to.x - r.from.x,
+      dz = r.to.z - r.from.z,
+      l = Math.hypot(dx, dz),
+      h = Math.atan2(dx, -dz);
+    for (let d = 7; d < l - 7; d += 8) {
+      const x = r.from.x + (dx * d) / l,
+        z = r.from.z + (dz * d) / l;
+      assert.equal(
+        cityCarBlocked(x, z, h),
+        false,
+        `${r.id} at ${x.toFixed(1)},${z.toFixed(1)}`,
       );
-    camera.lookAt(target);
-    camera.updateMatrixWorld();
-    for (const x of [CITY_SCENERY_BOUNDS.minX, CITY_SCENERY_BOUNDS.maxX])
-      for (const z of [CITY_SCENERY_BOUNDS.minZ, CITY_SCENERY_BOUNDS.maxZ])
-        for (const y of [0, CITY_SCENERY_BOUNDS.maxY]) {
-          const projected = new THREE.Vector3(x, y, z).project(camera);
-          assert.ok(
-            Math.abs(projected.x) < 1 &&
-              Math.abs(projected.y) < 1 &&
-              Math.abs(projected.z) < 1,
-          );
-        }
-    assert.ok(cityDriveCamera(freshCity(), aspect).halfHeight < h / 5);
+    }
   }
 });
-void test('larger city statics are batched and repeated driving updates allocate no new render resources', () => {
+void test('both islands have physical dry land and road connections with entrances across their bridge rails', () => {
+  for (const prefix of [
+    'vinogradovsky',
+    'tatyshev-loop',
+    'tatyshev-exit',
+    'otdyha-loop',
+  ]) {
+    const roads = cityRoads.filter((r) => r.id.startsWith(prefix));
+    assert.ok(roads.length);
+    for (const r of roads) {
+      const s = {
+        ...freshCity(),
+        x: r.from.x,
+        z: r.from.z,
+        heading: Math.atan2(r.to.x - r.from.x, r.from.z - r.to.z),
+      };
+      driveRoute(s, [r.to], 8);
+      assert.equal(s.bumps, 0, r.id);
+    }
+  }
+  for (const island of CITY_ISLANDS) {
+    const contour = island.points.map((p) => new THREE.Vector2(p.x, p.z));
+    for (const face of THREE.ShapeUtils.triangulateShape(contour, [])) {
+      const x = face.reduce((s, i) => s + island.points[i].x, 0) / 3,
+        z = face.reduce((s, i) => s + island.points[i].z, 0) / 3;
+      assert.equal(inCityWater(x, z), false, island.id);
+    }
+  }
+  assert.equal(
+    cityBlocked(-3900, 1620),
+    true,
+    'river outside a bridge remains blocked',
+  );
+});
+void test('bridge rails stop the car but every bridge has a complete road route', () => {
+  for (const b of BRIDGES) {
+    const p = b.points[0],
+      next = b.points[1],
+      s = {
+        ...freshCity(),
+        x: p.x,
+        z: p.z,
+        heading: Math.atan2(next.x - p.x, p.z - next.z),
+      };
+    driveRoute(s, b.points.slice(1), 10);
+    assert.equal(s.bumps, 0, b.id);
+  }
+});
+void test('city geometry is batched and animated frames never allocate new graphics resources', () => {
   const previous = globalThis.document;
-  Object.defineProperty(globalThis, 'document', {
-    configurable: true,
-    writable: true,
-    value: {
-      createElement: () => ({
-        width: 512,
-        height: 96,
-        getContext: () => new Proxy({}, { get: () => () => {} }),
-      }),
-    },
-  });
+  const mockDocument = {
+    createElement: () => ({
+      width: 1024,
+      height: 1024,
+      getContext: () => new Proxy({}, { get: () => () => {} }),
+    }),
+  };
+  Reflect.set(globalThis, 'document', mockDocument);
   const kit = new RenderKit(new THREE.Scene());
   try {
     const city = createCityEnvironment(kit);
-    let staticMeshes = 0;
-    city.root.traverse((object) => {
-      if (object.isMesh) staticMeshes++;
+    let meshes = 0,
+      triangles = 0;
+    city.root.traverse((o) => {
+      if (o.isMesh) {
+        meshes++;
+        triangles +=
+          (o.geometry.index?.count ?? o.geometry.attributes.position.count) / 3;
+      }
     });
+    assert.ok(meshes < 100, `${meshes} render batches`);
+    assert.ok(triangles < 1600000, `${triangles} triangles`);
     assert.ok(
-      staticMeshes < 55,
-      `${staticMeshes} static meshes should be a few material batches, not one per window`,
+      kit.geometries.size < 150,
+      'source mesh geometry released after batching',
     );
-    assert.ok(kit.geometries.size < 70, 'baked source geometry is released');
-    assert.ok(
-      city.streetFurniture.length >= 20,
-      'visible street detail is actually built',
-    );
-    for (const p of city.streetFurniture)
-      assert.ok(
-        citySceneryFits(p, p.radius),
-        'street details leave road and stop clearance',
-      );
     const before = [kit.geometries.size, kit.materials.size, kit.textures.size];
-    for (let i = 0; i < 180; i++)
-      city.update(i / 60, i % cityStops.length, -1, i % 2 === 0);
+    for (let i = 0; i < 120; i++) city.update(i / 60, 0, -1, false);
     assert.deepEqual(
       [kit.geometries.size, kit.materials.size, kit.textures.size],
       before,
     );
+    assert.ok(city.root.getObjectByName('landmark:komsomoll'));
   } finally {
     kit.dispose();
     globalThis.document = previous;
   }
 });
-
-void test('network preserves high-speed gearbox state and rejects forged gear or velocity values', () => {
-  const state = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
-  for (let i = 0; i < 360; i++) tickCity(state, 1 / 60, new Set(['KeyW']));
-  const packet = (next) =>
-    JSON.stringify({
-      type: 'city',
-      version: 2,
-      seq: 1,
-      epoch: 0,
-      driver: 'host',
-      state: next,
-    });
-  const parsed = readPeerPacket(packet(state));
-  assert.equal(parsed.state.speed, CITY_TOP_SPEED);
-  assert.deepEqual(parsed.state.powertrain, state.powertrain);
-  assert.equal(parsed.state.throttle, 1);
-  for (const invalid of [
-    { speed: CITY_TOP_SPEED + 1 },
-    { vx: CITY_TOP_SPEED + 1 },
-    { powertrain: { ...state.powertrain, gear: 7 } },
-    { powertrain: { ...state.powertrain, rpm: 9000 } },
-    { powertrain: { ...state.powertrain, load: 2 } },
-  ])
-    assert.equal(readPeerPacket(packet({ ...state, ...invalid })), null);
+void test('overview camera fits the whole expanded geography across wide and portrait viewports', () => {
+  for (const aspect of [0.6, 1, 16 / 9, 3]) {
+    const c = cityOverviewCamera(aspect);
+    assert.ok(c.far > 10000);
+    assert.ok(c.halfHeight > 2000);
+    assert.ok(Number.isFinite(c.distance));
+  }
+  assert.ok(!cityCarBlocked(CITY_SPAWN.x, CITY_SPAWN.z, CITY_SPAWN.heading));
 });

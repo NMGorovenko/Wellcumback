@@ -175,7 +175,7 @@ export function createApartmentDetails(
   const { x, z, w, d, h } = b;
   kit.box(w + 0.1, 0.35, d + 0.1, '#6e7e82', x, 0.19, z, root, 0);
   kit.box(w + 0.12, 0.16, d + 0.12, C.trim, x, h - 0.38, z, root, 0);
-  const oldTown = z < 0 && index % 3 === 0;
+  const oldTown = b.style === 'heritage' || b.style === 'cottage';
   if (oldTown) {
     const shape = new THREE.Shape();
     shape.moveTo(-w / 2, 0);
@@ -364,9 +364,23 @@ export function createNorthernChapel(kit: RenderKit, root: THREE.Group) {
 }
 export function createSiberianRidges(kit: RenderKit, root: THREE.Group) {
   const z = CITY_BOUNDS.maxZ + 15;
-  for (let i = 0; i < 14; i++) {
-    const x = CITY_BOUNDS.minX + i * 18;
-    kit.sphere(14, 6 + (i % 3), 9, '#60816f', x, 1, z + (i % 3), root, 12);
+  for (
+    let i = 0;
+    i < Math.ceil((CITY_BOUNDS.maxX - CITY_BOUNDS.minX) / 150);
+    i++
+  ) {
+    const x = CITY_BOUNDS.minX + i * 150;
+    kit.sphere(
+      100,
+      40 + (i % 3) * 10,
+      70,
+      '#60816f',
+      x,
+      1,
+      z + (i % 3) * 12,
+      root,
+      10,
+    );
     for (let t = 0; t < 5; t++)
       fir(
         kit,

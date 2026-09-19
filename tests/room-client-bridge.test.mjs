@@ -1,3 +1,4 @@
+import { freshRoma2 } from '../lib/game/roma2/engine.ts';
 import test from 'node:test';
 import { ROOM_VERSION } from '../lib/game/network/room-types.ts';
 import assert from 'node:assert/strict';
@@ -188,6 +189,7 @@ for (const [scene, fresh] of Object.entries({
   screen: freshGame,
   clean: freshClean,
   moving: freshMoving,
+  roma2: freshRoma2,
 }))
   void test(`${scene}: updated invitation restores the same guest and progress, without joining or replaying old input`, async () => {
     setup();
@@ -1008,7 +1010,7 @@ void test('screen resume discards held controls delivered during pause and requi
   }
 });
 
-for (const scene of ['clean', 'moving'])
+for (const scene of ['clean', 'moving', 'roma2'])
   void test(`${scene}: begin, late third slot, shared pause and restart preserve host authority`, async () => {
     setup();
     try {
@@ -1025,13 +1027,20 @@ for (const scene of ['clean', 'moving'])
       bridge.roomCommand({ kind: 'begin' }, 0);
       await nextPoll();
       const tick =
-        scene === 'clean' ? bridge.tickRoomClean : bridge.tickRoomMoving;
+        scene === 'clean'
+          ? bridge.tickRoomClean
+          : scene === 'roma2'
+            ? bridge.tickRoomRoma2
+            : bridge.tickRoomMoving;
       const state = structuredClone(client.roomWorld().state);
       tick(state, 1 / 60, new Set());
       assert.equal(state.players, 3);
       assert.equal(state.actorCount, scene === 'clean' ? 1 : 3);
       if (scene === 'moving') assert.equal(state.actors.length, 3);
-      assert.equal(state.phase, scene === 'clean' ? 'duty' : 'moving');
+      assert.equal(
+        state.phase,
+        scene === 'clean' ? 'duty' : scene === 'roma2' ? 'playing' : 'moving',
+      );
       bridge.roomCommand({ kind: 'pause' }, 2);
       tick(state, 1 / 60, new Set());
       assert.equal(state.paused, true);
@@ -1301,7 +1310,7 @@ void test('transfer invalidates remaining old-epoch commands and new leader can 
   }
 });
 
-for (const scene of ['city', 'screen', 'clean', 'moving'])
+for (const scene of ['city', 'screen', 'clean', 'moving', 'roma2'])
   void test(`${scene}: reconnect between host polls keeps progress, roles and score identity on a manual pause`, async () => {
     setup();
     try {

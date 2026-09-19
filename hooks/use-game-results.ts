@@ -20,7 +20,8 @@ function read(): Result[] {
         return (
           (r.story === 'screen' ||
             r.story === 'clean' ||
-            r.story === 'moving') &&
+            r.story === 'moving' ||
+            r.story === 'roma2') &&
           typeof r.score === 'number' &&
           Number.isFinite(r.score) &&
           r.score >= 0 &&

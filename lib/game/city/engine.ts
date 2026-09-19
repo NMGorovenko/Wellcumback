@@ -13,13 +13,13 @@ import {
   type CityConversation,
 } from './dialogue.ts';
 import {
-  BRIDGES,
+  cityRoads,
+  distanceToRoad,
+  inCityWater,
   CITY_BOUNDS,
   CITY_SPAWN,
   ROUNDABOUT,
   cityBarriers,
-  riverDistance,
-  RIVER_HALF_WIDTH,
   cityBuildings,
   cityStops,
 } from './layout.ts';
@@ -81,6 +81,30 @@ export const freshCity = (): CityState => ({
   conversation: freshCityConversation(),
 });
 const blockers = [...cityBuildings, ...cityBarriers];
+// Static spatial index keeps a city drive independent of the number of distant houses.
+const BLOCK_CELL = 64,
+  blockerGrid = new Map<string, typeof blockers>();
+for (const b of blockers) {
+  const a = b.angle ?? 0,
+    rx = (Math.abs(Math.cos(a)) * b.w + Math.abs(Math.sin(a)) * b.d) / 2 + 2,
+    rz = (Math.abs(Math.sin(a)) * b.w + Math.abs(Math.cos(a)) * b.d) / 2 + 2;
+  for (
+    let x = Math.floor((b.x - rx) / BLOCK_CELL);
+    x <= Math.floor((b.x + rx) / BLOCK_CELL);
+    x++
+  )
+    for (
+      let z = Math.floor((b.z - rz) / BLOCK_CELL);
+      z <= Math.floor((b.z + rz) / BLOCK_CELL);
+      z++
+    ) {
+      const key = `${x}:${z}`,
+        cell = blockerGrid.get(key) ?? [];
+      cell.push(b);
+      blockerGrid.set(key, cell);
+    }
+}
+
 const RADIUS = 0.85,
   STEP = 1 / 60;
 export function cityBlocked(x: number, z: number) {
@@ -92,11 +116,9 @@ export function cityBlocked(x: number, z: number) {
   )
     return true;
   if (
-    Math.abs(riverDistance(x, z)) < RIVER_HALF_WIDTH + RADIUS &&
-    !BRIDGES.some(
-      (bridge) =>
-        Math.abs(x - bridge.x) < bridge.w / 2 - RADIUS &&
-        Math.abs(z - bridge.z) < bridge.d / 2 - RADIUS,
+    inCityWater(x, z, RADIUS) &&
+    !cityRoads.some(
+      (r) => r.bridge && distanceToRoad(x, z, r) < r.width / 2 - RADIUS,
     )
   )
     return true;
@@ -105,11 +127,20 @@ export function cityBlocked(x: number, z: number) {
     ROUNDABOUT.innerRadius + RADIUS
   )
     return true;
-  return blockers.some(
-    (b) =>
-      Math.abs(x - b.x) < b.w / 2 + RADIUS &&
-      Math.abs(z - b.z) < b.d / 2 + RADIUS,
-  );
+  return (
+    blockerGrid.get(
+      `${Math.floor(x / BLOCK_CELL)}:${Math.floor(z / BLOCK_CELL)}`,
+    ) ?? []
+  ).some((b) => {
+    const angle = b.angle ?? 0,
+      dx = x - b.x,
+      dz = z - b.z;
+    const localX = dx * Math.cos(angle) - dz * Math.sin(angle),
+      localZ = dx * Math.sin(angle) + dz * Math.cos(angle);
+    return (
+      Math.abs(localX) < b.w / 2 + RADIUS && Math.abs(localZ) < b.d / 2 + RADIUS
+    );
+  });
 }
 /** Three circles approximate the coupe body, including its long bonnet. */
 export function cityCarBlocked(x: number, z: number, heading: number) {

@@ -4,14 +4,17 @@ export const eveningStories: { id: StoryId; title: string }[] = [
   { id: 'screen', title: 'Экран на полстены' },
   { id: 'clean', title: 'Чистый проход' },
   { id: 'moving', title: 'Переезд Ярика' },
+  { id: 'roma2', title: 'Байки Ромы 2' },
 ];
 export type EveningAward = { story: StoryId; title: string; evidence: string };
 const awardTitles: Record<StoryId, string> = {
+  roma2: 'Стратегический запас',
   screen: 'Отвёрточная магия',
   clean: 'Операция «Было чисто»',
   moving: 'Пакет с пакетами',
 };
 const counters: Record<StoryId, { pattern: RegExp; label: string }> = {
+  roma2: { pattern: /^(\d+) криков о помощи/u, label: 'Звали на помощь' },
   screen: {
     pattern: /Поймано отвёрток:\s*(\d+)(?:\.(?!\d)|\s|$)/u,
     label: 'Поймано отвёрток',

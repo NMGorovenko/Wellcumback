@@ -71,7 +71,7 @@ export type RoomInput = {
   command?: RoomCommand;
 };
 export type RoomSnapshot = {
-  scene: 'city' | 'screen' | 'clean' | 'moving' | 'race';
+  scene: 'city' | 'screen' | 'clean' | 'moving' | 'roma2' | 'race';
   epoch: number;
   state: Record<string, unknown>;
   brief: boolean;
@@ -179,7 +179,7 @@ function jsonBytes(value: unknown): number {
 function readSnapshot(value: unknown): RoomSnapshot {
   if (
     !object(value) ||
-    !['city', 'screen', 'clean', 'moving', 'race'].includes(
+    !['city', 'screen', 'clean', 'moving', 'roma2', 'race'].includes(
       String(value.scene),
     ) ||
     !safeInt(value.epoch) ||

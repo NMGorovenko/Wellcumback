@@ -7,36 +7,96 @@ import {
   tickCity,
   resetCityCar,
 } from '../lib/game/city/engine.ts';
-import { cityStops, CITY_SPAWN, BRIDGES } from '../lib/game/city/layout.ts';
+import {
+  cityStops,
+  CITY_SPAWN,
+  BRIDGES,
+  CITY_ROUTES,
+  cityRoads,
+  CITY_PARKING,
+  cityBuildings,
+  riverBankZ,
+  riverZ,
+  distanceToRoad,
+} from '../lib/game/city/layout.ts';
 const advance = (s, seconds, keys, rate = 60) => {
   for (let n = 0; n < seconds * rate; n++) tickCity(s, 1 / rate, new Set(keys));
 };
-void test('all stops are reachable over the bridges without crossing water or buildings', () => {
-  const start = [CITY_SPAWN.x, CITY_SPAWN.z];
-  const visited = new Set([start.join(',')]),
-    queue = [start];
-  for (let i = 0; i < queue.length; i++)
+void test('all stops are connected by drivable streets, parking and bridges', () => {
+  // A bounded search on the road corridors replaces the old 1 m flood-fill of
+  // the entire landscape. Every edge still checks the complete physical car.
+  const spacing = 6,
+    start = [CITY_SPAWN.x, CITY_SPAWN.z];
+  const segmentClear = (ax, az, bx, bz) => {
+    const length = Math.hypot(bx - ax, bz - az),
+      steps = Math.max(1, Math.ceil(length / 2));
+    const heading = Math.atan2(bx - ax, az - bz);
+    for (let i = 0; i <= steps; i++)
+      if (
+        cityCarBlocked(
+          ax + ((bx - ax) * i) / steps,
+          az + ((bz - az) * i) / steps,
+          heading,
+        )
+      )
+        return false;
+    return true;
+  };
+  const corridor = (x, z) =>
+    cityRoads.some((r) => distanceToRoad(x, z, r) < r.width / 2 + 3) ||
+    CITY_PARKING.some(
+      (p) => Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2,
+    ) ||
+    cityStops.some((p) => Math.hypot(x - p.x, z - p.z) < 8);
+  const visited = new Set(['0,0']),
+    queue = [[0, 0]],
+    reached = new Set();
+  for (let i = 0; i < queue.length && reached.size < cityStops.length; i++) {
+    assert.ok(
+      queue.length < 150000,
+      'route search remains bounded to street corridors',
+    );
+    const [gx, gz] = queue[i],
+      cx = start[0] + gx * spacing,
+      cz = start[1] + gz * spacing;
+    for (const stop of cityStops)
+      if (
+        !reached.has(stop.id) &&
+        Math.hypot(cx - stop.x, cz - stop.z) < 12 &&
+        segmentClear(cx, cz, stop.x, stop.z)
+      )
+        reached.add(stop.id);
     for (const [dx, dz] of [
       [1, 0],
       [-1, 0],
       [0, 1],
       [0, -1],
+      [1, 1],
+      [-1, 1],
+      [1, -1],
+      [-1, -1],
     ]) {
-      const [cx, cz] = queue[i],
-        x = cx + dx,
-        z = cz + dz,
-        key = `${x},${z}`;
-      if (visited.has(key) || cityCarBlocked(x, z, dx ? Math.PI / 2 : 0))
+      const nx = gx + dx,
+        nz = gz + dz,
+        key = `${nx},${nz}`;
+      if (visited.has(key)) continue;
+      const x = start[0] + nx * spacing,
+        z = start[1] + nz * spacing;
+      if (!corridor(x, z)) {
+        visited.add(key);
         continue;
+      }
+      if (!segmentClear(cx, cz, x, z)) continue;
       visited.add(key);
-      queue.push([x, z]);
+      queue.push([nx, nz]);
     }
-  for (const stop of cityStops)
-    assert.ok(
-      queue.some(([x, z]) => Math.hypot(x - stop.x, z - stop.z) < 2),
-      stop.id,
-    );
-  assert.ok(cityBlocked(0, 0));
+  }
+  assert.deepEqual(
+    cityStops.filter((stop) => !reached.has(stop.id)).map((stop) => stop.id),
+    [],
+  );
+  const bankX = CITY_ROUTES.western.at(-1).x;
+  assert.ok(cityBlocked(bankX, riverZ(bankX)));
   assert.ok(!cityBlocked(BRIDGES[0].x, BRIDGES[0].z));
 });
 void test('driving is fixed-step; handbrake gives real lateral slip and recorded drift distance', () => {
@@ -61,22 +121,24 @@ void test('driving is fixed-step; handbrake gives real lateral slip and recorded
 });
 void test('high speed cannot tunnel a bonnet into walls or drive into the river', () => {
   const s = freshCity();
-  s.x = -92;
-  s.z = -16;
+  const building = cityBuildings.find((b) => b.kind === 'borisova');
+  s.x = building.x + building.w / 2 + 8;
+  s.z = building.z;
   s.heading = -Math.PI / 2;
   s.vx = -12;
   advance(s, 2, ['KeyW']);
   assert.ok(!cityCarBlocked(s.x, s.z, s.heading));
-  assert.ok(s.x > -99);
+  assert.ok(s.x > building.x + building.w / 2);
   assert.ok(s.bumps > 0);
-  s.x = 0;
-  s.z = 25;
-  s.heading = 0;
-  s.vz = -12;
+  const bankX = CITY_ROUTES.western.at(-1).x;
+  s.x = bankX;
+  s.z = riverBankZ(bankX, -1) - 12;
+  s.heading = Math.PI;
+  s.vz = 12;
   s.vx = 0;
   advance(s, 2, ['KeyW']);
   assert.ok(!cityCarBlocked(s.x, s.z, s.heading));
-  assert.ok(s.z > 11);
+  assert.ok(s.z < riverBankZ(bankX, -1));
   resetCityCar(s);
   assert.ok(!cityCarBlocked(s.x, s.z, s.heading));
 });

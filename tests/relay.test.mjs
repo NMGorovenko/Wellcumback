@@ -79,7 +79,7 @@ void test('real WebSocket clients create, join, exchange all scene snapshots and
     const gp = (extra = {}) =>
       request(guest, { op: 'poll', code: h.code, token: g.token, ...extra });
     let epoch = 0;
-    for (const scene of ['city', 'screen', 'clean', 'moving']) {
+    for (const scene of ['city', 'screen', 'clean', 'moving', 'roma2']) {
       epoch++;
       const snapshot = {
         scene,

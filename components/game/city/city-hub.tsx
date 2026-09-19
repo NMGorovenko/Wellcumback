@@ -14,6 +14,8 @@ import { useGameLoop } from '@/hooks/use-game-loop';
 import {
   gamepadPrompt,
   keyboardPrompt,
+  padButtonLabel,
+  readGamepads,
   type PadFrame,
 } from '@/lib/game/input/gamepads';
 import {
@@ -42,6 +44,11 @@ const disconnectNetwork = () => {
 const isNetworkDrive = roomActive;
 const passNetworkWheel = () => roomCommand({ kind: 'wheel' });
 import { useControlSettings } from '@/hooks/use-control-settings';
+import {
+  canonicalKeyForPhysical,
+  resolvePadGlyphBrand,
+} from '@/lib/game/input/settings';
+import { isControlInputBlocked } from '@/lib/game/input/settings-store';
 
 export default function CityHub({
   game: savedGame,
@@ -93,12 +100,55 @@ export default function CityHub({
   useCityAudio(sound, view);
   const [target, setTarget] = useState(0);
   const [cameraMode, setCameraMode] = useState<CityCameraMode>('drive');
-  const cameraNames = { drive: 'За машиной', map: 'Весь город', faces: 'Лица' };
+  const cameraNames = {
+    drive: 'За машиной',
+    cruise: 'Низкая камера',
+    map: 'Весь город',
+    faces: 'Лица',
+  };
   const nextCamera =
     CITY_CAMERA_MODES[
       (CITY_CAMERA_MODES.indexOf(cameraMode) + 1) % CITY_CAMERA_MODES.length
     ];
-  const cycleCamera = () => setCameraMode(nextCamera);
+  const cycleCamera = () =>
+    setCameraMode(
+      (current) =>
+        CITY_CAMERA_MODES[
+          (CITY_CAMERA_MODES.indexOf(current) + 1) % CITY_CAMERA_MODES.length
+        ],
+    );
+  const cameraPad = useRef({ id: '', held: false, ready: false });
+  const cameraKeyboard = !canonicalKeyForPhysical(settings, 'KeyC', 'city');
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (
+        event.code !== 'KeyC' ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        !cameraKeyboard ||
+        isControlInputBlocked()
+      )
+        return;
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest(
+          'input, textarea, select, [contenteditable="true"]',
+        )
+      )
+        return;
+      event.preventDefault();
+      setCameraMode(
+        (current) =>
+          CITY_CAMERA_MODES[
+            (CITY_CAMERA_MODES.indexOf(current) + 1) % CITY_CAMERA_MODES.length
+          ],
+      );
+    };
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
+  }, [cameraKeyboard]);
   const [pauseSelected, setPauseSelected] = useState(0);
   const pauseButtons = useRef<(HTMLButtonElement | null)[]>([]);
   useEffect(() => {
@@ -244,6 +294,25 @@ export default function CityHub({
     game,
     keys,
     tick: (s, dt, input, axes) => {
+      // The unused top face button changes only this client's camera, including
+      // when another online player owns the wheel. Hotplug requires a release.
+      const pad =
+        !s.paused &&
+        !document.hidden &&
+        document.hasFocus() &&
+        !isControlInputBlocked()
+          ? readGamepads().find((p) => p?.connected && p.mapping === 'standard')
+          : null;
+      const memory = cameraPad.current;
+      const padId = pad ? `${pad.index}:${pad.id}` : '';
+      if (memory.id !== padId)
+        Object.assign(memory, { id: padId, ready: false, held: false });
+      const held =
+        !!pad &&
+        (!!pad.buttons[3]?.pressed || (pad.buttons[3]?.value ?? 0) > 0.5);
+      if (!held) memory.ready = true;
+      if (pad && memory.ready && held && !memory.held) cycleCamera();
+      memory.held = held;
       if (shared) tickRoomCity(s, dt, input, axes);
       else tickCity(s, dt, input, axes);
       if (s.interaction) {
@@ -279,6 +348,15 @@ export default function CityHub({
   const speech = citySpeech(view);
   const control = (key: Parameters<typeof keyboardPrompt>[1]) =>
     gamepadPrompt(pads, 0, key, 'city') || keyboardPrompt(0, key, 'city');
+  const cameraAssignment = pads.assignments.find((pad) => pad.player === 0);
+  const cameraShortcut = cameraAssignment
+    ? padButtonLabel(
+        resolvePadGlyphBrand(settings.padGlyphs[0], cameraAssignment.brand),
+        3,
+      )
+    : cameraKeyboard
+      ? 'C'
+      : '';
   return (
     <section
       className={`city-hub city-view-${cameraMode}`}
@@ -320,11 +398,13 @@ export default function CityHub({
         <div className="city-actions">
           <button
             aria-label={`Камера: ${cameraNames[cameraMode]}. Показать: ${cameraNames[nextCamera]}`}
-            title={`Следующий вид: ${cameraNames[nextCamera]}`}
+            title={`Следующий вид: ${cameraNames[nextCamera]}${cameraShortcut ? ` · ${cameraShortcut}` : ''}`}
+            aria-keyshortcuts={cameraKeyboard ? 'C' : undefined}
             onClick={cycleCamera}
           >
             <Camera size={16} />
             {cameraNames[cameraMode]}
+            {cameraShortcut && <kbd>{cameraShortcut}</kbd>}
           </button>
           <button disabled={!canManage} onClick={onRaces}>
             Гонки

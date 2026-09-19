@@ -39,6 +39,9 @@ import { RoomStatus } from '@/components/game/network/room-status';
 import { useRoom } from '@/hooks/use-room';
 import { initializeRoomCity, roomCommand } from '@/lib/game/network/room-game';
 import ScreenGame from '@/components/game/screen/screen-game';
+import Roma2Game from '@/components/game/roma2/roma2-game';
+import Roma2Scene from '@/components/game/roma2/scene';
+import { freshRoma2 } from '@/lib/game/roma2/engine';
 import CleanGame from '@/components/game/clean/clean-game';
 import { useGameFullscreen } from '@/hooks/use-game-fullscreen';
 import { useDialogInput } from '@/hooks/use-dialog-input';
@@ -49,7 +52,7 @@ import { type PadFrame } from '@/lib/game/input/gamepads';
 import { freshClean } from '@/lib/game/clean/engine';
 import { people } from '@/lib/game/presets';
 
-type Story = 'screen' | 'clean' | 'moving';
+type Story = 'screen' | 'clean' | 'moving' | 'roma2';
 const episodes = [
   {
     id: 'screen' as const,
@@ -78,11 +81,23 @@ const episodes = [
     line: 'Ярик, Настя, жёлтые сумки и ещё одна последняя вещь.',
     duration: 'Упаковать и вынести · 1–3 игрока',
   },
+  {
+    id: 'roma2' as const,
+    number: '04',
+    tabTitle: 'Байки Ромы 2',
+    kicker: 'БАЙКИ РОМЫ 2',
+    title: 'Пять минут тишины.',
+    line: 'После отбоя санузел наконец-то свободен.',
+    duration: 'Ещё один наряд · 1–3 игрока',
+  },
 ];
 function Preview({ story }: { story: Story }) {
   const barracks = useRef(freshClean(3));
   const moving = useRef(freshMoving(3));
-  return story === 'moving' ? (
+  const roma2 = useRef(freshRoma2(3));
+  return story === 'roma2' ? (
+    <Roma2Scene game={roma2} />
+  ) : story === 'moving' ? (
     <MovingScene game={moving} />
   ) : story === 'screen' ? (
     <Scene preview />
@@ -367,6 +382,19 @@ export default function Home() {
           onExit={exit}
           onFinish={finish}
           onNext={exit}
+        />
+      ) : active === 'roma2' ? (
+        <Roma2Game
+          key={
+            online
+              ? `${room.code}:roma2:${room.world?.epoch}`
+              : `roma2-${players}`
+          }
+          players={storyPlayers}
+          online={online}
+          externalMenuOpen={networkOpen}
+          onExit={exit}
+          onFinish={finish}
         />
       ) : hubMode === 'city' ? (
         <CityHub

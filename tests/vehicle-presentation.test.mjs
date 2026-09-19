@@ -1,3 +1,4 @@
+import { CITY_ROUTES } from '../lib/game/city/layout.ts';
 import * as THREE from 'three';
 import {
   cityDriveCamera,
@@ -20,13 +21,13 @@ const close = (actual, expected, message) =>
     Math.abs(actual - expected) < 1e-8,
     `${message}: ${actual} != ${expected}`,
   );
+const straightStart = CITY_ROUTES.studPlaneta.at(-2);
 function straight(car = freshCity()) {
   Object.assign(car, {
-    x: -80,
-    z: -54,
-    heading: Math.PI / 2,
-    vx: 32,
-    vz: 0,
+    ...straightStart,
+    heading: 0,
+    vx: 0,
+    vz: -32,
     speed: 32,
     paused: false,
   });
@@ -48,19 +49,19 @@ for (const hz of [60, 120, 144, 240]) {
       );
       if (frame / hz > 1 / 60)
         close(
-          visual.x,
-          -80 + 32 * (frame / hz - 1 / 60),
+          visual.z,
+          straightStart.z - 32 * (frame / hz - 1 / 60),
           'bounded one-step interpolation delay',
         );
       if (previous !== undefined && frame / hz > 3 / 60)
         close(
-          visual.x - previous,
-          32 / hz,
+          visual.z - previous,
+          -32 / hz,
           'every rendered frame advances evenly',
         );
-      previous = visual.x;
+      previous = visual.z;
     }
-    close(car.x, -48, 'authoritative final distance');
+    close(car.z, straightStart.z - 32, 'authoritative final distance');
     assert.equal(
       car.bumps,
       0,
@@ -81,10 +82,10 @@ for (const hz of [60, 120, 144, 240]) {
     const course = raceCourse('krasnoyarsk'),
       inputs = new Map([['0:0', { ...neutralRaceInput(), throttle: 1 }]]);
     const reference = raceFixture();
-    const samples = [reference.racers[0].car.x];
+    const samples = [reference.racers[0].car.z];
     for (let i = 0; i < 120; i++) {
       tickRace(reference, RACE_STEP, inputs, course);
-      samples.push(reference.racers[0].car.x);
+      samples.push(reference.racers[0].car.z);
     }
     const s = raceFixture();
     let last;
@@ -99,20 +100,20 @@ for (const hz of [60, 120, 144, 240]) {
         alpha = Math.max(0, (elapsed - ticks * RACE_STEP) / RACE_STEP);
       if (ticks > 0)
         close(
-          visual.car.x,
+          visual.car.z,
           samples[ticks - 1] + (samples[ticks] - samples[ticks - 1]) * alpha,
           'render must use actual adjacent substeps',
         );
       if (last !== undefined && frame / hz > 3 * RACE_STEP)
         assert(
-          visual.car.x > last,
+          visual.car.z < last,
           'no repeated pose while driving, even at240Hz',
         );
-      last = visual.car.x;
+      last = visual.car.z;
     }
     close(
-      s.racers[0].car.x,
-      reference.racers[0].car.x,
+      s.racers[0].car.z,
+      reference.racers[0].car.z,
       'render cadence cannot change physics',
     );
   });
@@ -121,28 +122,28 @@ void test('pause, short external teleport, reset and JSON restore snap without s
   const car = straight();
   tickCity(car, 1 / 60, new Set(['KeyW']));
   tickCity(car, 1 / 120, new Set(['KeyW']));
-  assert(presentedVehicle(car).car.x < car.x);
+  assert(presentedVehicle(car).car.z > car.z);
   car.paused = true;
-  const frozen = presentedVehicle(car).car.x;
-  close(frozen, car.x, 'pause shows the saved authoritative point immediately');
+  const frozen = presentedVehicle(car).car.z;
+  close(frozen, car.z, 'pause shows the saved authoritative point immediately');
   close(
-    presentedVehicle(car).car.x,
+    presentedVehicle(car).car.z,
     frozen,
     'repeated paused frames remain fixed',
   );
   car.paused = false;
   tickCity(car, 1 / 60, new Set(['KeyW']));
-  car.x += 0.3;
+  car.z += 0.3;
   close(
-    presentedVehicle(car).car.x,
-    car.x,
+    presentedVehicle(car).car.z,
+    car.z,
     'sub-metre direct authoritative correction invalidates history',
   );
   tickCity(car, 1 / 60, new Set(['KeyW']));
   resetCityCar(car);
   close(
-    presentedVehicle(car).car.x,
-    car.x,
+    presentedVehicle(car).car.z,
+    car.z,
     'reset never interpolates back toward old road',
   );
   tickCity(car, 1 / 60, new Set(['KeyW']));

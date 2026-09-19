@@ -240,8 +240,8 @@ void test('saved v6 AMG ONE and old Mustang Nordschleife survive migration but n
   }
 });
 
-void test('persisted v7 two-local race remains byte-for-byte intact when a v8 client tries to restore it', async () => {
-  assert.equal(ROOM_VERSION, 8);
+void test('persisted v7 two-local race remains byte-for-byte intact when a current client tries to restore it', async () => {
+  assert.ok(ROOM_VERSION > 7);
   const directory = mkdtempSync(join(tmpdir(), 'friendslop-room-v7-'));
   const filename = join(directory, 'rooms.sqlite');
   let store;
@@ -333,7 +333,7 @@ void test('persisted v7 two-local race remains byte-for-byte intact when a v8 cl
     ]) {
       const response = await handleRoomRequest(
         store.db,
-        { version: 8, code: host.code, ...request },
+        { version: ROOM_VERSION, code: host.code, ...request },
         now + 10,
       );
       assert.equal(response.status, 409);
@@ -347,7 +347,7 @@ void test('persisted v7 two-local race remains byte-for-byte intact when a v8 cl
     );
     const newRoom = await handleRoomRequest(
       store.db,
-      { op: 'create', version: 8, name: 'Новая комната' },
+      { op: 'create', version: ROOM_VERSION, name: 'Новая комната' },
       now + 20,
     );
     assert.equal(newRoom.status, 201);
@@ -355,7 +355,7 @@ void test('persisted v7 two-local race remains byte-for-byte intact when a v8 cl
       store.sqlite
         .prepare('SELECT protocol_version FROM rooms WHERE code=?')
         .get(newRoom.body.code).protocol_version,
-      8,
+      ROOM_VERSION,
     );
     assert.equal(
       store.sqlite

@@ -1,3 +1,4 @@
+import { CITY_ROUTES } from '../lib/game/city/layout.ts';
 import test from 'node:test';
 import { ROOM_VERSION } from '../lib/game/network/room-types.ts';
 import assert from 'node:assert/strict';
@@ -588,7 +589,11 @@ void test('concurrent host epoch cannot keep a returning guest offline', async (
 void test('room protocol carries the six-speed city at 115 km/h and preserves it through the reconnect pause', async () => {
   const { freshCity, tickCity } = await import('../lib/game/city/engine.ts');
   const { hostPoll, guestPoll } = await party(2);
-  const city = { ...freshCity(), x: -104, z: -63, heading: Math.PI / 2 };
+  const city = {
+    ...freshCity(),
+    ...CITY_ROUTES.studPlaneta.at(-2),
+    heading: 0,
+  };
   for (let i = 0; i < 360; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
   const world = { ...snapshot(3), state: city };
   const published = await hostPoll({ snapshot: world, snapshotSeq: 1 });

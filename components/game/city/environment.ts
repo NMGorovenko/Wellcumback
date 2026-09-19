@@ -1,10 +1,19 @@
+import {
+  createNeighbourhoodBuilding,
+  createNeighbourhoodGreenery,
+} from './neighbourhoods.ts';
+import { createCentreLandmark, createCityParking } from './centre-landmarks.ts';
+import { createDistrictLandmark } from './district-landmarks.ts';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   BRIDGES,
   CITY_BOUNDS,
-  RIVER_HALF_WIDTH,
-  RIVER_SLOPE,
+  CITY_DISTRICTS,
+  CITY_ISLANDS,
+  RIVER_SECTIONS,
+  riverBankZ,
+  cityBarriers,
   ROUNDABOUT,
   cityBuildings,
   cityRoads,
@@ -32,7 +41,11 @@ function batchCity(kit: RenderKit, root: THREE.Group) {
   root.updateMatrixWorld(true);
   const groups = new Map<THREE.Material, THREE.Mesh[]>();
   root.traverse((object) => {
-    if (!(object instanceof THREE.Mesh) || Array.isArray(object.material))
+    if (
+      !(object instanceof THREE.Mesh) ||
+      object instanceof THREE.InstancedMesh ||
+      Array.isArray(object.material)
+    )
       return;
     const meshes = groups.get(object.material) ?? [];
     meshes.push(object);
@@ -108,78 +121,69 @@ export function createCityEnvironment(kit: RenderKit) {
   root.name = 'krasnoyarsk-city';
   kit.scene.add(root);
   const { minX, maxX, minZ, maxZ } = CITY_BOUNDS;
-  const width = maxX - minX,
-    depth = maxZ - minZ;
-  kit.box(width, 0.6, depth, '#708776', 0, -0.36, 0, root, 0);
-  kit.box(width, 0.06, depth, '#a5b397', 0, -0.045, 0, root, 0);
-  // Diagonal Yenisei: west/southwest upstream, east/northeast downstream.
-  const riverWidthZ = RIVER_HALF_WIDTH * Math.hypot(1, RIVER_SLOPE);
-  const waterGeometry = new THREE.BufferGeometry();
-  waterGeometry.setAttribute(
-    'position',
-    new THREE.Float32BufferAttribute(
-      [
-        minX,
-        0.008,
-        riverZ(minX) - riverWidthZ,
-        maxX,
-        0.008,
-        riverZ(maxX) - riverWidthZ,
-        maxX,
-        0.008,
-        riverZ(maxX) + riverWidthZ,
-        minX,
-        0.008,
-        riverZ(minX) + riverWidthZ,
-      ],
-      3,
-    ),
-  );
-  waterGeometry.setIndex([0, 3, 2, 0, 2, 1]);
-  waterGeometry.computeVertexNormals();
-  const water = kit.mesh(
-    waterGeometry,
-    new THREE.MeshStandardMaterial({
-      color: '#367f9e',
-      emissive: '#173d50',
-      emissiveIntensity: 0.28,
-      roughness: 0.32,
-      metalness: 0.2,
-    }),
-    root,
-  );
-  water.castShadow = false;
-  for (const side of [-1, 1]) {
-    ribbon(
-      kit,
-      root,
-      { x: minX, z: riverZ(minX) + side * 14 },
-      { x: maxX, z: riverZ(maxX) + side * 14 },
-      3.5,
-      0.035,
-      '#d4d2b7',
+  const width = maxX - minX;
+  function polygon(points: CityPoint[], y: number, color: string) {
+    const shape = new THREE.Shape();
+    points.forEach((p, i) =>
+      i ? shape.lineTo(p.x, -p.z) : shape.moveTo(p.x, -p.z),
     );
-    // Rail segments stop at bridge mouths. Water collision uses this same river line.
-    for (let x = minX + 2; x < maxX - 2; x += 4) {
-      if (BRIDGES.some((bridge) => Math.abs(x - bridge.x) < bridge.w / 2 + 3))
-        continue;
-      const a = {
-        x: x - 1.6,
-        z: riverZ(x - 1.6) + side * (riverWidthZ + 0.25),
-      };
-      const b = {
-        x: x + 1.6,
-        z: riverZ(x + 1.6) + side * (riverWidthZ + 0.25),
-      };
-      kit.rod(
-        new THREE.Vector3(a.x, 0.34, a.z),
-        new THREE.Vector3(b.x, 0.34, b.z),
-        0.07,
-        '#d8d5bb',
-        root,
-      );
-    }
+    shape.closePath();
+    const mesh = kit.mesh(
+      new THREE.ShapeGeometry(shape),
+      kit.material(color),
+      root,
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = y;
+    mesh.castShadow = false;
+    return mesh;
   }
+  const north = RIVER_SECTIONS.map((p) => ({ x: p.x, z: p.z - p.half }));
+  const south = RIVER_SECTIONS.map((p) => ({ x: p.x, z: p.z + p.half }));
+  polygon(
+    [{ x: minX, z: minZ }, { x: maxX, z: minZ }, ...north.slice().reverse()],
+    0,
+    '#a5b397',
+  );
+  polygon([...south, { x: maxX, z: maxZ }, { x: minX, z: maxZ }], 0, '#a5b397');
+  polygon([...north, ...south.slice().reverse()], -3, '#367f9e');
+  for (const side of [-1, 1])
+    for (let i = 0; i < RIVER_SECTIONS.length - 1; i++) {
+      const a = RIVER_SECTIONS[i],
+        b = RIVER_SECTIONS[i + 1];
+      const from = { x: a.x, z: a.z + side * (a.half + 3) },
+        to = { x: b.x, z: b.z + side * (b.half + 3) };
+      ribbon(kit, root, from, to, 5, 0.025, '#d4d2b7');
+      const edge = new THREE.BufferGeometry();
+      edge.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(
+          [
+            from.x,
+            0,
+            from.z,
+            to.x,
+            0,
+            to.z,
+            to.x,
+            -3,
+            to.z,
+            from.x,
+            -3,
+            from.z,
+          ],
+          3,
+        ),
+      );
+      edge.setAttribute(
+        'uv',
+        new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2),
+      );
+      edge.setIndex(side < 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2]);
+      edge.computeVertexNormals();
+      kit.mesh(edge, kit.material('#8f8c82'), root);
+    }
+  for (const island of CITY_ISLANDS) polygon(island.points, 0.027, '#708858');
   for (const road of cityRoads) {
     ribbon(kit, root, road.from, road.to, road.width + 1.2, 0.045, '#d0cdbc');
     ribbon(kit, root, road.from, road.to, road.width, 0.058, '#536671');
@@ -210,83 +214,47 @@ export function createCityEnvironment(kit: RenderKit) {
       );
     }
   }
-  for (const [index, bridge] of BRIDGES.entries()) {
-    kit.box(
-      bridge.w + 0.7,
-      0.4,
-      bridge.d,
-      '#869596',
-      bridge.x,
-      -0.12,
-      bridge.z,
-      root,
-      0,
-    );
-    kit.box(
-      bridge.w,
-      0.06,
-      bridge.d,
-      '#536671',
-      bridge.x,
-      0.056,
-      bridge.z,
-      root,
-      0,
-    );
-    for (const side of [-1, 1]) {
-      const x = bridge.x + side * (bridge.w / 2 + 0.16),
-        color = index ? '#c7b48c' : '#b76b55';
-      for (let j = -3; j <= 3; j++)
-        kit.box(0.2, 1.05, 0.2, color, x, 0.55, bridge.z + j * 4.5, root, 0);
-      kit.rod(
-        new THREE.Vector3(x, 1.05, bridge.z - 14.5),
-        new THREE.Vector3(x, 1.05, bridge.z + 14.5),
-        0.1,
-        color,
-        root,
-      );
-      if (index) {
-        for (let span = 0; span < 3; span++)
-          for (let j = 0; j < 10; j++) {
-            const centre = -9.4 + span * 9.4;
-            const z1 = -4.7 + j * 0.94,
-              z2 = z1 + 0.94;
-            const arch = (z: number) => 1.05 + 2.5 * (1 - (z / 4.7) ** 2);
+  for (const r of cityRoads.filter((r) => r.bridge)) {
+    const dx = r.to.x - r.from.x,
+      dz = r.to.z - r.from.z,
+      length = Math.hypot(dx, dz);
+    ribbon(kit, root, r.from, r.to, r.width + 0.6, -0.14, '#869596');
+    for (let t = 20; t < length - 10; t += 40)
+      for (const side of [-1, 1]) {
+        const x =
+            r.from.x +
+            (dx * t) / length -
+            ((side * dz) / length) * (r.width / 2 + 0.2),
+          z =
+            r.from.z +
+            (dz * t) / length +
+            ((side * dx) / length) * (r.width / 2 + 0.2);
+        kit.box(1.5, 3, 2, '#8f8c82', x, -1.6, z, root, 0);
+        kit.cylinder(0.09, 0.14, 4.5, '#40545a', x, 2.25, z, root);
+        if (r.bridge === 'kommunalny')
+          for (let j = 0; j < 12; j++) {
+            const f = (q: number) => -2.7 + 2.3 * (1 - ((q - 6) / 6) ** 2);
             kit.rod(
-              new THREE.Vector3(x, arch(z1), bridge.z + centre + z1),
-              new THREE.Vector3(x, arch(z2), bridge.z + centre + z2),
-              0.2,
+              new THREE.Vector3(
+                x + (dx / length) * (j - 6) * 2,
+                f(j),
+                z + (dz / length) * (j - 6) * 2,
+              ),
+              new THREE.Vector3(
+                x + (dx / length) * (j - 5) * 2,
+                f(j + 1),
+                z + (dz / length) * (j - 5) * 2,
+              ),
+              0.32,
               '#d4d2b7',
               root,
             );
           }
-      } else {
-        kit.box(0.25, 0.6, bridge.d - 1, '#b76b55', x, 0.3, bridge.z, root, 0);
       }
-      for (let j = -2; j <= 2; j++) {
-        kit.cylinder(
-          0.07,
-          0.09,
-          3.5,
-          '#40545a',
-          x,
-          1.8,
-          bridge.z + j * 6,
-          root,
-        );
-        kit.box(
-          0.55,
-          0.1,
-          0.35,
-          '#f3d5a3',
-          x - side * 0.2,
-          3.56,
-          bridge.z + j * 6,
-          root,
-          0,
-        );
-      }
-    }
+  }
+  for (const b of cityBarriers) {
+    const rail = kit.box(b.w, 1.1, b.d, '#b4b8a5', b.x, 0.5, b.z, root, 0);
+    rail.rotation.y = b.angle ?? 0;
   }
   // The round island is a real circular collider; its surrounding 16 m lane is drivable.
   const roundRoad = kit.mesh(
@@ -325,7 +293,7 @@ export function createCityEnvironment(kit: RenderKit) {
   );
   for (let j = 0; j < 32; j++) {
     const dash = kit.mesh(
-      new THREE.RingGeometry(17.9, 18.05, 4, 1, (j * Math.PI) / 16, 0.1),
+      new THREE.RingGeometry(36.9, 37.05, 4, 1, (j * Math.PI) / 16, 0.1),
       kit.material('#e8dca7'),
       root,
     );
@@ -347,7 +315,10 @@ export function createCityEnvironment(kit: RenderKit) {
   kit.materials.add(lit);
   for (const [index, building] of cityBuildings.entries()) {
     const { x, z, w, d, h, color } = building;
+    if (createCentreLandmark(kit, root, building)) continue;
+    if (createDistrictLandmark(kit, root, building)) continue;
     if (createCivicBuilding(kit, root, building, lit)) continue;
+    if (createNeighbourhoodBuilding(kit, root, building, index)) continue;
     createApartmentDetails(kit, root, building, index);
     kit.box(w, h, d, color, x, h / 2, z, root, 0);
     kit.box(w + 0.16, 0.16, d + 0.16, '#6e7e82', x, h + 0.08, z, root, 0);
@@ -424,6 +395,8 @@ export function createCityEnvironment(kit: RenderKit) {
       );
     }
   }
+  createCityParking(kit, root);
+  createNeighbourhoodGreenery(kit, root);
   createSiberianRidges(kit, root);
   createNorthernChapel(kit, root);
   createEuropeMonument(kit, root);
@@ -439,19 +412,11 @@ export function createCityEnvironment(kit: RenderKit) {
     labels.push(sprite);
     return sprite;
   };
-  label('КАРАУЛЬНАЯ ГОРА', -12, minZ - 14, 15, 14);
-  label('ТЕАТРАЛЬНАЯ ПЛОЩАДЬ', 14, -40, 17, 7);
-  label('ТАКМАК · СТОЛБЫ', -72, maxZ + 15, 17, 16);
-  label('КРАСНОЯРСК · ЛЕВЫЙ БЕРЕГ', -18, -77, 21);
-  label('ПРАВЫЙ БЕРЕГ · АПРЕЛЬСКАЯ', 80, 73, 16);
-  label('СТУДГОРОДОК', -101, -18, 11, 6.7);
-  label('КРАСНОЯРСК-ПАССАЖИРСКИЙ', -70, -69, 20, 8.2);
-  label('Е Н И С Е Й', -8, riverZ(-8), 14, 0.3);
-  label('КОЛЬЦО · ДРИФТ', ROUNDABOUT.x, ROUNDABOUT.z, 10, 4.8);
-  BRIDGES.forEach((bridge) =>
-    label(bridge.title, bridge.x - 10, bridge.z, 12, 3.7),
-  );
-  const overviewNames = ['НИКИТА', 'ЯРИК', 'БАЙКИ РОМЫ', 'НОВЫЙ ДОМ'];
+  label('КАРАУЛЬНАЯ ГОРА', -12, minZ - 14, 160, 14);
+  CITY_DISTRICTS.forEach((d) => label(d.name, d.x, d.z, 220, 1));
+  CITY_ISLANDS.forEach((d) => label(d.name, d.x, d.z, 170, 1));
+  BRIDGES.forEach((b) => label(b.title, b.x, b.z, 150, 3));
+  const overviewNames = cityStops.map((s) => s.title.split(' · ')[0]);
   const stops = cityStops.map((stop, index) => {
     const ring = kit.mesh(
       new THREE.RingGeometry(2.5, 2.75, 48),
@@ -502,7 +467,7 @@ export function createCityEnvironment(kit: RenderKit) {
   flow.frustumCulled = false;
   kit.scene.add(flow);
   const dummy = new THREE.Object3D();
-  dummy.rotation.set(-Math.PI / 2, 0, -Math.atan(RIVER_SLOPE));
+  dummy.rotation.set(-Math.PI / 2, 0, 0);
   return {
     root,
     scenery,
@@ -521,23 +486,34 @@ export function createCityEnvironment(kit: RenderKit) {
       });
       stops.forEach(({ ring, label: sign, overviewLabel }, index) => {
         const selected = index === targetStop || index === nearStop;
-        ring.scale.setScalar(selected ? 1.04 + Math.sin(time * 3) * 0.045 : 1);
+        ring.scale.setScalar(
+          overview
+            ? selected
+              ? 24
+              : 16
+            : selected
+              ? 1.04 + Math.sin(time * 3) * 0.045
+              : 1,
+        );
         (ring.material as THREE.MeshBasicMaterial).opacity = selected
           ? 0.92
           : 0.42;
         sign.visible = !overview && selected;
-        overviewLabel.visible = overview;
+        // Only the selected destination gets a large label; neighbouring story
+        // entrances would overlap at the scale of the whole city.
+        overviewLabel.visible = overview && selected;
         const width = selected ? 6.4 : 5.6;
         sign.scale.set(width, (width * 96) / 512, 1);
-        const mapWidth = THREE.MathUtils.clamp(overviewLabelWidth, 18, 64);
+        const mapWidth = THREE.MathUtils.clamp(overviewLabelWidth, 180, 1800);
         overviewLabel.scale.set(mapWidth, (mapWidth * 96) / 512, 1);
+        overviewLabel.position.y = overview ? mapWidth * 0.14 : 3;
       });
       for (let i = 0; i < 64; i++) {
         const x = minX + ((i * 7.73 + time * 0.65) % width);
         dummy.position.set(
           x,
-          0.016,
-          riverZ(x) + Math.sin(i * 13.3) * (riverWidthZ - 1.1),
+          -2.78,
+          riverZ(x) + Math.sin(i * 13.3) * (riverBankZ(x, 1) - riverZ(x) - 2),
         );
         dummy.scale.set(0.7 + (i % 4) * 0.24, 1, 1);
         dummy.updateMatrix();
