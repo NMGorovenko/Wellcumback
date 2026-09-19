@@ -1,9 +1,24 @@
 /* oxlint-disable typescript/no-require-imports -- Native test harness, excluded from packages. */
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { readFileSync } = require('node:fs');
 const { fork } = require('node:child_process');
 
 module.exports = async function inspectNetwork(contents) {
+  // Keep this CJS-only Electron harness aligned with the typed Node guest. A
+  // stale prepared relay will still reject this current source protocol.
+  const roomVersion = Number(
+    /export const ROOM_VERSION\s*=\s*(\d+)\s*;/.exec(
+      readFileSync(
+        path.join(__dirname, '../lib/game/network/room-types.ts'),
+        'utf8',
+      ),
+    )?.[1],
+  );
+  assert.ok(
+    Number.isSafeInteger(roomVersion) && roomVersion > 0,
+    'Current room protocol is available',
+  );
   const peer = fork(path.join(__dirname, '../tests/helpers/room-peer.mjs'), {
     execPath: process.env.WELLCUM_SMOKE_NODE,
     execArgv: ['--experimental-strip-types'],
@@ -80,7 +95,7 @@ module.exports = async function inspectNetwork(contents) {
     assert.equal(status.state, 'ready', status.message);
     const connection = status.connection;
     const request = (payload) =>
-      invoke('request', connection, { version: 6, ...payload });
+      invoke('request', connection, { version: roomVersion, ...payload });
     const created = await request({
       op: 'create',
       name: 'Native host',

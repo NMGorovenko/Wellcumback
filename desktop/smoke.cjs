@@ -126,8 +126,7 @@ async function selectCityPauseItem(contents, label) {
   );
 }
 
-async function inspectCityInput(window) {
-  const contents = window.webContents;
+async function resumeCity(contents) {
   await ensureNativeFocus(contents);
   for (const keyCode of ['S', 'W'])
     contents.sendInputEvent({ type: 'keyUp', keyCode });
@@ -142,6 +141,11 @@ async function inspectCityInput(window) {
     `!document.querySelector('.city-pause-menu')`,
     'continuing after focus pause',
   );
+}
+
+async function inspectCityInput(window) {
+  const contents = window.webContents;
+  await resumeCity(contents);
   // Native Electron key events, not DOM-dispatched KeyboardEvent objects.
   await contents.executeJavaScript(`window.__desktopSmokeSpace = false; window.addEventListener('keydown', (event) => {
     if (event.code === 'Space' && event.isTrusted) window.__desktopSmokeSpace = true;
@@ -340,6 +344,9 @@ async function inspect(window) {
   if (phase === 'lan') await require('./smoke-network.cjs')(contents);
 
   if (phase === 'write') {
+    // Initial scene construction can outlast the foreground check above. A
+    // genuine blur pauses the city and now intentionally hides its minimap.
+    await resumeCity(contents);
     await waitFor(
       contents,
       `Boolean(document.querySelector('.city-minimap > svg'))`,
@@ -351,27 +358,24 @@ async function inspect(window) {
     );
     await waitFor(
       contents,
-      `Boolean(document.querySelector('.city-view-map')) && !document.querySelector('.city-minimap')`,
+      `Boolean(document.querySelector('.city-map-overlay svg')) && !document.querySelector('.city-minimap')`,
       'minimap opens the full city',
     );
-    await contents.executeJavaScript(
-      `document.querySelector('.city-actions button').click()`,
-      true,
-    );
+    await tapKey(contents, 'Escape');
     await waitFor(
       contents,
-      `Boolean(document.querySelector('.city-view-faces'))`,
-      'face inspection retained',
+      `!document.querySelector('.city-map-overlay') && Boolean(document.querySelector('.city-minimap'))`,
+      'Escape closes the city map and restores the minimap',
     );
-    await contents.executeJavaScript(
-      `document.querySelector('.city-actions button').click()`,
-      true,
-    );
-    await waitFor(
-      contents,
-      `Boolean(document.querySelector('.city-view-drive .city-minimap'))`,
-      'minimap returns with the driving camera',
-    );
+    // Map navigation is independent from the four retained camera modes.
+    for (const mode of ['cruise', 'map', 'faces', 'drive']) {
+      await tapKey(contents, 'C');
+      await waitFor(
+        contents,
+        `Boolean(document.querySelector('.city-view-${mode} .city-minimap'))`,
+        `${mode} camera retains the driving minimap`,
+      );
+    }
     await inspectCityInput(window);
     await contents.executeJavaScript(
       `document.querySelector('[aria-label="Клавиатура и геймпады"]').click()`,
@@ -429,6 +433,7 @@ async function inspect(window) {
       `localStorage.removeItem('__wellcum_desktop_smoke')`,
     );
   } else if (phase === 'moving') {
+    await resumeCity(contents);
     await contents.executeJavaScript(
       `Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Все истории')).click()`,
       true,
