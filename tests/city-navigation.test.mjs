@@ -52,7 +52,7 @@ void test('GPS reaches every destination along connected roads, including both i
     start,
     cityStops.find((s) => s.id === 'planeta'),
   );
-  assert.ok(cityRouteLength(route) > 4000 && cityRouteLength(route) < 5200);
+  assert.ok(cityRouteLength(route) > 2200 && cityRouteLength(route) < 2800);
 });
 void test('fast travel resolves every place to a clear road and erases motion without resetting progress', () => {
   for (const stop of cityStops) {
@@ -176,4 +176,58 @@ void test('minimap keeps distant destinations on its edge and zoom remains ancho
     (anchor.z - next.z) / next.width,
   );
   assert.ok(zoomCityMap(view, 0).width >= 400);
+});
+
+void test('arriving at a stop clears the GPS line and parking departures never detour around the road graph', () => {
+  for (const stop of cityStops) {
+    const arrival = cityTravelArrival(stop.id);
+    const route = cityNavigationRoute(arrival, stop);
+    if (Math.hypot(arrival.x - stop.x, arrival.z - stop.z) < 2.8) {
+      assert.equal(route.length, 1, stop.id);
+      assert.equal(cityRouteLength(route), 0, stop.id);
+    }
+  }
+  for (const id of ['kubatura', 'komsomoll']) {
+    const stop = cityStops.find((s) => s.id === id),
+      arrival = cityTravelArrival(id);
+    for (const metres of [0, 1, 2.7, 3, 5, 12, 25]) {
+      const start = {
+        x: arrival.x + Math.sin(arrival.heading) * metres,
+        z: arrival.z - Math.cos(arrival.heading) * metres,
+      };
+      const route = cityNavigationRoute(start, stop);
+      assert.ok(
+        cityRouteLength(route) <= metres + 0.01,
+        `${id} ${metres}m must not make a GPS loop`,
+      );
+      assert.deepEqual(
+        route[0],
+        start,
+        'route starts at the real car position',
+      );
+    }
+    // Reproduce the former 25m/full-map and 35m/minimap grid points too.
+    for (const cell of [25, 35]) {
+      const start = {
+        x: Math.round(arrival.x / cell) * cell,
+        z: Math.round(arrival.z / cell) * cell,
+      };
+      const route = cityNavigationRoute(start, stop);
+      assert.ok(
+        cityRouteLength(route) <=
+          Math.hypot(start.x - stop.x, start.z - stop.z) + 0.01,
+      );
+    }
+  }
+});
+void test('moving origins follow the cached destination graph without snapping the first point', () => {
+  const target = cityStops.find((s) => s.id === 'planeta');
+  const start = cityStops.find((s) => s.id === 'nikita');
+  const first = cityRouteLength(cityNavigationRoute(start, target));
+  for (let i = 1; i <= 20; i++) {
+    const moving = { x: start.x + i * 0.1, z: start.z - i * 0.15 };
+    const route = cityNavigationRoute(moving, target);
+    assert.deepEqual(route[0], moving);
+    assert.ok(Math.abs(cityRouteLength(route) - first) < 10);
+  }
 });

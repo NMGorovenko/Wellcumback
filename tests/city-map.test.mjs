@@ -1,3 +1,4 @@
+import { citySurfacePose, cityRoadHeight } from '../lib/game/city/surface.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -20,6 +21,10 @@ import {
   cityBuildings,
   BRIDGES,
   inCityWater,
+  compactCityPoint,
+  CITY_SCENERY_BOUNDS,
+  ROUNDABOUT,
+  CITY_PARKING,
 } from '../lib/game/city/layout.ts';
 import { cityOverviewCamera } from '../components/game/city/camera.ts';
 import { createCityEnvironment } from '../components/game/city/environment.ts';
@@ -51,35 +56,43 @@ function driveRoute(s, points, speed = 20) {
   assert.equal(i, points.length, `route stalled at ${i}: ${s.x},${s.z}`);
   return s.elapsed - start;
 }
-void test('geographic city has meaningful separation and correct banks, not a enlarged cluster of labels', () => {
-  assert.ok(CITY_BOUNDS.maxX - CITY_BOUNDS.minX >= 8000);
+void test('geographic city has meaningful separation and correct banks, not a cluster of labels', () => {
+  assert.ok(
+    CITY_BOUNDS.maxX - CITY_BOUNDS.minX >= 4000 &&
+      CITY_BOUNDS.maxX - CITY_BOUNDS.minX <= 4500,
+  );
   const at = (id) => cityStops.find((s) => s.id === id),
     b = (kind) => cityBuildings.find((b) => b.kind === kind);
   assert.ok(
     at('udachny').x < at('akadem').x && at('akadem').x < at('nikita').x,
   );
-  assert.ok(at('nikita').x - at('udachny').x > 2300);
+  assert.ok(at('nikita').x - at('udachny').x > 1100);
   assert.ok(Math.abs(b('planeta').x - b('komsomoll').x) < 120);
-  assert.ok(b('komsomoll').z - b('planeta').z > 1300);
-  assert.ok(b('kubatura').x > b('planeta').x + 650);
+  assert.ok(b('komsomoll').z - b('planeta').z > 650);
+  assert.ok(b('kubatura').x > b('planeta').x + 300);
   assert.ok(
     b('kubatura').z > b('planeta').z && b('kubatura').z < b('komsomoll').z,
   );
   assert.equal(BRIDGES.length, 3);
-  assert.ok(cityBuildings.length > 600);
+  assert.ok(cityBuildings.length > 350);
   for (const s of cityStops)
     assert.equal(cityCarBlocked(s.x, s.z, 0), false, s.id);
 });
-void test('Studgorodok to Planeta takes 3–5 minutes at normal driving pace without hitting anything', (t) => {
+void test('Studgorodok to Planeta takes 2–3 minutes at normal driving pace without hitting anything', (t) => {
   const s = freshCity();
   const elapsed = driveRoute(s, CITY_ROUTES.studPlaneta.slice(1), 20);
   t.diagnostic(`Normal-input Studgorodok→Planeta: ${elapsed.toFixed(1)} s`);
   assert.ok(
-    elapsed >= 180 && elapsed <= 300,
+    elapsed >= 120 && elapsed <= 180,
     `actual simulated trip ${elapsed.toFixed(1)} s`,
   );
   assert.equal(s.bumps, 0);
-  assert.ok(Math.hypot(s.x - 1100, s.z + 1760) < 2);
+  assert.ok(
+    Math.hypot(
+      s.x - CITY_ROUTES.studPlaneta.at(-1).x,
+      s.z - CITY_ROUTES.studPlaneta.at(-1).z,
+    ) < 2,
+  );
 });
 void test('entire road surface is drivable, including angled bridges and island junctions', () => {
   for (const r of cityRoads) {
@@ -114,6 +127,16 @@ void test('both islands have physical dry land and road connections with entranc
         z: r.from.z,
         heading: Math.atan2(r.to.x - r.from.x, r.from.z - r.to.z),
       };
+      Object.assign(
+        s,
+        citySurfacePose(
+          s.x,
+          s.z,
+          s.heading,
+          cityRoadHeight(r, s.x, s.z),
+          `road:${r.id}`,
+        ),
+      );
       driveRoute(s, [r.to], 8);
       assert.equal(s.bumps, 0, r.id);
     }
@@ -127,7 +150,7 @@ void test('both islands have physical dry land and road connections with entranc
     }
   }
   assert.equal(
-    cityBlocked(-3900, 1620),
+    cityBlocked(...Object.values(compactCityPoint({ x: -3900, z: 1620 }))),
     true,
     'river outside a bridge remains blocked',
   );
@@ -142,6 +165,17 @@ void test('bridge rails stop the car but every bridge has a complete road route'
         z: p.z,
         heading: Math.atan2(next.x - p.x, p.z - next.z),
       };
+    const road = cityRoads.find((r) => r.bridge === b.id);
+    Object.assign(
+      s,
+      citySurfacePose(
+        s.x,
+        s.z,
+        s.heading,
+        cityRoadHeight(road, s.x, s.z),
+        `road:${road.id}`,
+      ),
+    );
     driveRoute(s, b.points.slice(1), 10);
     assert.equal(s.bumps, 0, b.id);
   }
@@ -172,7 +206,8 @@ void test('city geometry is batched and animated frames never allocate new graph
     });
     assert.ok(meshes < 150, `${meshes} render batches`);
     assert.ok(
-      triangles < 2000000,
+      // Includes the drivable relief and tessellated street network, not only buildings.
+      triangles < 2300000,
       `${triangles} triangles including instances`,
     );
     assert.ok(
@@ -191,11 +226,17 @@ void test('city geometry is batched and animated frames never allocate new graph
     globalThis.document = previous;
   }
 });
-void test('overview camera fits the whole expanded geography across wide and portrait viewports', () => {
+void test('overview camera fits the whole schematic geography across wide and portrait viewports', () => {
   for (const aspect of [0.6, 1, 16 / 9, 3]) {
     const c = cityOverviewCamera(aspect);
-    assert.ok(c.far > 10000);
-    assert.ok(c.halfHeight > 2000);
+    assert.ok(
+      c.far >
+        Math.hypot(
+          CITY_SCENERY_BOUNDS.maxX - CITY_SCENERY_BOUNDS.minX,
+          CITY_SCENERY_BOUNDS.maxZ - CITY_SCENERY_BOUNDS.minZ,
+        ),
+    );
+    assert.ok(c.halfHeight > 1000);
     assert.ok(Number.isFinite(c.distance));
   }
   assert.ok(!cityCarBlocked(CITY_SPAWN.x, CITY_SPAWN.z, CITY_SPAWN.heading));
@@ -223,7 +264,7 @@ void test('compact districts have deep residential blocks, varied heights and op
       `${district.id} is a developed compact neighbourhood (${coverage})`,
     );
     assert.ok(
-      houses.length >= 18,
+      houses.length >= 10,
       `${district.id} must be more than one landmark`,
     );
     assert.ok(
@@ -270,5 +311,32 @@ void test('compact districts have deep residential blocks, varied heights and op
       ),
       'courtyard never fills a road',
     );
+  }
+});
+
+void test('compact bridge spans take 10–15 seconds at normal pace while lanes and ring retain full size', () => {
+  for (const bridge of BRIDGES) {
+    assert.ok(bridge.d >= 200 && bridge.d <= 300, `${bridge.id}: ${bridge.d}m`);
+    assert.equal(bridge.w, 22);
+    assert.ok(bridge.d / 20 >= 10 && bridge.d / 20 <= 15);
+  }
+  const ring = cityRoads.filter((r) => r.id.startsWith('predmostnaya-ring:'));
+  assert.equal(ring.length, 32);
+  for (const r of ring) {
+    assert.equal(r.width, 16);
+    assert.ok(
+      Math.abs(
+        Math.hypot(r.from.x - ROUNDABOUT.x, r.from.z - ROUNDABOUT.z) - 37,
+      ) < 1e-8,
+    );
+  }
+  for (const lot of CITY_PARKING) {
+    const mall = cityBuildings.find((b) => b.kind === lot.id);
+    assert.ok(
+      lot.z - lot.d / 2 > mall.z + mall.d / 2,
+      `${lot.id} keeps its open front forecourt`,
+    );
+    assert.ok(lot.w >= mall.w);
+    assert.equal(cityCarBlocked(lot.x, lot.z, 0), false);
   }
 });

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { RaceState } from '../../../lib/game/race/types';
 import type { RenderKit } from '../world/render-kit';
+import { citySurfacePose } from '../../../lib/game/city/surface.ts';
 
 /** Fixed pools: no scene objects or materials allocated while drifting. */
 export function createRaceEffects(kit: RenderKit) {
@@ -69,15 +70,27 @@ export function createRaceEffects(kit: RenderKit) {
       for (const side of [-0.82, 0.82]) {
         const x = c.x - Math.sin(c.heading) * 1.25 + Math.cos(c.heading) * side;
         const z = c.z + Math.cos(c.heading) * 1.25 + Math.sin(c.heading) * side;
-        dummy.position.set(x, r.elevation + 0.05, z);
-        dummy.rotation.set(0, -c.heading, 0);
+        const contact =
+          s.trackId === 'krasnoyarsk'
+            ? citySurfacePose(x, z, c.heading, r.elevation, c.surfaceId)
+            : {
+                elevation: r.elevation - Math.tan(r.pitch) * 1.25,
+                pitch: r.pitch,
+              };
+        dummy.position.set(
+          x,
+          contact.elevation + (s.trackId === 'krasnoyarsk' ? 0.105 : 0.05),
+          z,
+        );
+        dummy.rotation.order = 'YXZ';
+        dummy.rotation.set(contact.pitch, -c.heading, 0);
         dummy.scale.setScalar(1);
         dummy.updateMatrix();
         marks.setMatrixAt(markIndex++ % 1600, dummy.matrix);
         Object.assign(particles[smokeIndex++ % 160], {
           x,
           z,
-          y: r.elevation + 0.28,
+          y: contact.elevation + 0.28,
           age: 0,
         });
       }
@@ -85,6 +98,7 @@ export function createRaceEffects(kit: RenderKit) {
     particles.forEach((p, i) => {
       p.age += dt;
       dummy.position.set(p.x + p.age * 0.25, p.y + p.age * 0.65, p.z);
+      dummy.rotation.set(0, 0, 0);
       dummy.scale.setScalar(
         p.age < 1.2 ? (0.4 + p.age) * Math.min(1, (1.2 - p.age) * 5) : 0,
       );

@@ -3,7 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { advanceV8, freshV8, exhaustWave } from '../lib/game/audio/v8-model.ts';
 import { freshCity, tickCity, resetCityCar } from '../lib/game/city/engine.ts';
+import { stepCar } from '../lib/game/city/car-physics.ts';
 import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
+import { citySurfacePose } from '../lib/game/city/surface.ts';
 const input = (speed, throttle = 1) => ({
   speed,
   throttle,
@@ -11,17 +13,30 @@ const input = (speed, throttle = 1) => ({
   lateral: 0,
   horn: false,
 });
-const fullSpeedRun = () => {
+const roadRun = () => {
   const road = cityRoads.find((r) => r.id === 'left-quay:1');
   const dx = road.to.x - road.from.x,
     dz = road.to.z - road.from.z,
     length = Math.hypot(dx, dz);
-  return {
+  const city = {
     ...freshCity(),
     x: road.from.x + (dx / length) * 15,
     z: road.from.z + (dz / length) * 15,
     heading: Math.atan2(dx, -dz),
   };
+  return Object.assign(city, citySurfacePose(city.x, city.z, city.heading));
+};
+const advanceStraightCar = (city, dt) => {
+  city.accumulator += dt;
+  while (city.accumulator + 1e-9 >= 1 / 60) {
+    stepCar(
+      city,
+      { throttle: 1, steer: 0, handbrake: false },
+      1 / 60,
+      () => false,
+    );
+    city.accumulator = Math.max(0, city.accumulator - 1 / 60);
+  }
 };
 void test('V8 idles, revs and shifts without affecting vehicle speed', () => {
   const s = freshV8();
@@ -50,13 +65,14 @@ void test('V8 idles, revs and shifts without affecting vehicle speed', () => {
   assert.equal(s.crackle, false);
 });
 for (const rate of [30, 60, 144])
-  void test(`actual city acceleration has five audible automatic upshifts at ${rate} Hz`, () => {
-    // The 1.45 km quay straight gives the complete 300 km/h run real road space.
-    const city = fullSpeedRun(),
+  void test(`shared car physics has five audible automatic upshifts at ${rate} Hz`, () => {
+    // The compact city has no straight long enough for the entire 0–300 run.
+    // Use its real drivetrain with the same fixed timestep, on an open flat run.
+    const city = freshCity(),
       motor = freshV8();
     const shifts = [];
     for (let i = 0; i < 25 * rate; i++) {
-      tickCity(city, 1 / rate, new Set(['KeyW']));
+      advanceStraightCar(city, 1 / rate);
       const previousGear = motor.gear;
       advanceV8(
         motor,
@@ -85,7 +101,7 @@ for (const rate of [30, 60, 144])
         shift.minLoad = Math.min(shift.minLoad, motor.load);
       }
     }
-    assert.equal(city.bumps, 0);
+    assert.ok(Math.abs(city.speed - CITY_TOP_SPEED) < 1e-8);
     assert.equal(shifts.length, 5);
     assert.ok(
       shifts[0].time > 1.5 && shifts[0].time < 2.3,
@@ -263,7 +279,7 @@ void test('V8 graph reuses sources, clears transients and disposes exactly once'
 });
 
 void test('authoritative gearbox freezes on pause and survives JSON reconnect without an audio-only restart', () => {
-  const city = fullSpeedRun();
+  const city = roadRun();
   for (let i = 0; i < 150; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
   city.paused = true;
   const before = structuredClone(city);
@@ -291,13 +307,13 @@ void test('authoritative gearbox freezes on pause and survives JSON reconnect wi
   );
 });
 void test('each automatic shift unloads real wheel acceleration as well as exhaust volume', () => {
-  const city = fullSpeedRun();
+  const city = freshCity();
   let priorAcceleration = 0,
     cuts = 0;
   for (let i = 0; i < 1200; i++) {
     const speed = city.speed,
       gear = city.powertrain.gear;
-    tickCity(city, 1 / 60, new Set(['KeyW']));
+    advanceStraightCar(city, 1 / 60);
     const acceleration = (city.speed - speed) * 60;
     if (city.powertrain.gear > gear) {
       assert.ok(

@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import type { CityBuilding } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { makeLabel } from '../world/labels.ts';
+import { createMallLandmark } from './mall-landmarks.ts';
+import { facadeText } from './facade-text.ts';
+import { createOrbitaLandmark } from './orbita-landmark.ts';
+import { createDonerLandmark } from './doner-landmark.ts';
 
 /** Landmark masses use the same parcels as collision, with details kept inside. */
 export function createDistrictLandmark(
@@ -9,10 +13,10 @@ export function createDistrictLandmark(
   root: THREE.Group,
   b: CityBuilding,
 ) {
-  if (
-    !['borisova', 'ikit', 'planeta', 'udachny', 'arena'].includes(b.kind ?? '')
-  )
-    return false;
+  if (createMallLandmark(kit, root, b)) return true;
+  if (createOrbitaLandmark(kit, root, b)) return true;
+  if (createDonerLandmark(kit, root, b)) return true;
+  if (!['ikit', 'udachny', 'arena'].includes(b.kind ?? '')) return false;
   const g = new THREE.Group();
   g.name = `landmark:${b.kind}`;
   g.position.set(b.x, 0, b.z);
@@ -32,113 +36,166 @@ export function createDistrictLandmark(
     g.add(label);
   };
   box(b.w, 0.35, b.d, '#d4d2b7', 0, 0.18, 0);
-  if (b.kind === 'borisova') {
-    // Орбита: two pale towers, orange strips and glazed rounded balcony bays.
-    for (const side of [-1, 1]) {
-      box(
-        b.w * 0.37,
-        b.h,
-        b.d - 2,
-        '#d7d9d0',
-        side * b.w * 0.27,
-        b.h / 2,
-        -0.5,
-      );
-      box(
-        b.w * 0.38,
-        0.22,
-        b.d - 1.7,
-        '#6e7e82',
-        side * b.w * 0.27,
-        b.h + 0.1,
-        -0.5,
-      );
-      box(
-        0.55,
-        b.h - 0.4,
-        0.12,
-        '#b76b55',
-        side * b.w * 0.42,
-        b.h / 2,
-        b.d / 2 - 1.44,
-      );
-      const bay = kit.cylinder(
-        1.35,
-        1.35,
-        b.h - 0.6,
-        '#8baca6',
-        side * b.w * 0.26,
-        b.h / 2,
-        b.d / 2 - 1.55,
-        g,
-      );
-      bay.scale.z = 0.75;
-      for (let floor = 1; floor < 18; floor++) {
-        const y = floor * (b.h / 18);
-        box(b.w * 0.375, 0.1, b.d - 1.9, '#e4dfc0', side * b.w * 0.27, y, -0.5);
-        for (const dx of [-1.7, 0, 1.7]) {
-          box(
-            0.9,
-            0.9,
-            0.08,
-            '#536671',
-            side * b.w * 0.27 + dx,
-            y - 0.6,
-            -b.d / 2 + 0.46,
-          );
-          box(
-            0.09,
-            0.95,
-            0.62,
-            '#40545a',
-            side * b.w * 0.26 + dx * 0.55,
-            y - 0.48,
-            b.d / 2 - 1,
-          );
+  if (b.kind === 'ikit') {
+    const cream = '#d2c7aa',
+      burgundy = '#805e51',
+      glass = '#386078';
+    const clad = (
+      w: number,
+      h: number,
+      d: number,
+      x: number,
+      z: number,
+      base = 0,
+    ) => {
+      const body = box(w, h, d, cream, x, base + h / 2, z);
+      const front = z + d / 2;
+      // Fine panel seams sit outside the wall, not coplanar with it.
+      for (let y = base + 0.7; y < base + h; y += 0.8)
+        box(w, 0.018, 0.025, '#c3b8a4', x, y, front + 0.018);
+      for (let dx = -w / 2 + 0.8; dx < w / 2; dx += 0.8)
+        box(0.018, h, 0.025, '#c3b8a4', x + dx, base + h / 2, front + 0.018);
+      return body;
+    };
+    const windows = (
+      x: number,
+      width: number,
+      front: number,
+      rows: number,
+      bottom: number,
+      step: number,
+    ) => {
+      for (let floor = 0; floor < rows; floor++) {
+        const y = bottom + floor * step;
+        box(width, 0.3, 0.08, burgundy, x, y + 0.82, front + 0.06);
+        for (let dx = -width / 2 + 1.25; dx < width / 2 - 0.6; dx += 2.45) {
+          box(1.5, 1.38, 0.07, '#e4dfd3', x + dx, y, front + 0.06);
+          box(1.26, 1.17, 0.055, glass, x + dx, y, front + 0.12);
+          box(0.055, 1.17, 0.05, '#e4dfd3', x + dx, y, front + 0.17);
         }
       }
-    }
-    box(3.2, 1.2, b.d - 3, '#aebec1', 0, 0.6, 0);
-    for (let n = 0; n < 4; n++)
+    };
+    const leftFront = b.d * 0.09,
+      rightFront = b.d * 0.15;
+    clad(b.w * 0.49, b.h * 0.83, b.d * 0.56, -b.w * 0.245, -b.d * 0.19);
+    windows(-b.w * 0.245, b.w * 0.48, leftFront, 5, 1.15, b.h * 0.16);
+    box(
+      b.w * 0.49,
+      0.2,
+      b.d * 0.56,
+      burgundy,
+      -b.w * 0.245,
+      b.h * 0.83 + 0.1,
+      -b.d * 0.19,
+    );
+    // The upper right teaching wing spans a dark, genuinely recessed ground entrance.
+    clad(
+      b.w * 0.32,
+      b.h * 0.67,
+      b.d * 0.65,
+      b.w * 0.28,
+      -b.d * 0.175,
+      b.h * 0.2,
+    );
+    windows(b.w * 0.28, b.w * 0.31, rightFront, 4, b.h * 0.28, b.h * 0.16);
+    const entry = box(
+      b.w * 0.22,
+      b.h * 0.2,
+      0.12,
+      '#29383b',
+      b.w * 0.28,
+      b.h * 0.1,
+      -b.d * 0.15,
+    );
+    entry.name = 'ikit:recessed-entry';
+    box(
+      b.w * 0.24,
+      0.16,
+      0.65,
+      burgundy,
+      b.w * 0.28,
+      b.h * 0.205,
+      rightFront + 0.2,
+    );
+    facadeText(
+      kit,
+      g,
+      'ИКИТ · СФУ',
+      '#dfbd99',
+      b.w * 0.21,
+      b.w * 0.28,
+      b.h * 0.235,
+      rightFront + 0.18,
+    );
+    for (let step = 0; step < 4; step++)
       box(
-        2.5,
-        0.14,
-        0.35,
-        '#e4dfc0',
-        0,
-        n * 0.14 + 0.07,
-        b.d / 2 - 0.3 - n * 0.35,
+        b.w * 0.23,
+        0.1,
+        0.75,
+        '#8f8c82',
+        b.w * 0.28,
+        0.05 + step * 0.1,
+        b.d * 0.445 - step * 0.75,
       );
-    sign('БОРИСОВА, 30', 9, 3.2, b.d / 2);
-  } else if (b.kind === 'ikit') {
-    box(b.w - 0.4, b.h, b.d - 1, '#d4d2b7', 0, b.h / 2, -0.3);
-    for (let floor = 0; floor < 5; floor++) {
-      const y = 1.25 + floor * (b.h / 5);
-      box(b.w - 0.2, 0.18, 0.12, '#805e51', 0, y + 0.52, b.d / 2 - 0.75);
-      for (let x = -b.w / 2 + 1; x < b.w / 2 - 0.5; x += 1.4)
-        box(1.05, 1.55, 0.07, '#536671', x, y, b.d / 2 - 0.77);
-    }
-    box(2.2, b.h + 0.7, 0.34, '#ccb79a', 1.5, (b.h + 0.7) / 2, b.d / 2 - 0.5);
-    box(2.4, 1.5, 0.12, '#40545a', 5.6, 0.85, b.d / 2 - 0.62);
-    sign('ИКИТ · СФУ', 8, b.h + 1.5, 1);
-  } else if (b.kind === 'planeta') {
-    box(b.w - 0.4, b.h, b.d - 0.5, '#ad806b', 0, b.h / 2, 0);
-    box(b.w - 0.1, 0.4, b.d - 0.2, '#e4dfc0', 0, b.h, 0);
-    box(b.w * 0.66, b.h * 0.64, 0.08, '#8baca6', 0, b.h * 0.42, b.d / 2 - 0.2);
-    for (let x = -11; x <= 11; x += 2)
-      box(0.1, 3.6, 0.12, '#e4dfc0', x, 2, b.d / 2 - 0.1);
-    box(9, 1.3, 0.24, '#805e51', 0, b.h - 0.5, b.d / 2 - 0.03);
-    sign('ПЛАНЕТА', 13, b.h + 1.4, b.d / 2);
-    for (const side of [-1, 1])
+    // The wide almost-blank tower and low forward wing define the actual silhouette.
+    const tower = clad(
+      b.w * 0.16,
+      b.h * 0.97,
+      b.d * 0.79,
+      b.w * 0.07,
+      b.d * 0.01,
+    );
+    tower.name = 'ikit:blank-tower';
+    box(
+      b.w * 0.16,
+      0.28,
+      b.d * 0.79,
+      burgundy,
+      b.w * 0.07,
+      b.h * 0.97 + 0.14,
+      b.d * 0.01,
+    );
+    for (const dx of [-0.035, 0.035])
       box(
-        1,
-        b.h + 1.5,
-        1,
-        '#cbb98d',
-        side * (b.w / 2 - 0.8),
-        (b.h + 1.5) / 2,
-        b.d / 2 - 0.8,
+        b.w * 0.015,
+        b.h * 0.1,
+        0.07,
+        burgundy,
+        b.w * (0.07 + dx),
+        b.h * 0.8,
+        b.d * 0.405 + 0.06,
       );
+    box(
+      b.w * 0.06,
+      0.3,
+      0.07,
+      burgundy,
+      b.w * 0.07,
+      b.h * 0.72,
+      b.d * 0.405 + 0.06,
+    );
+    clad(b.w * 0.105, b.h * 0.87, b.d * 0.68, b.w * 0.44, -b.d * 0.08);
+    box(
+      b.w * 0.105,
+      0.18,
+      b.d * 0.68,
+      burgundy,
+      b.w * 0.44,
+      b.h * 0.87 + 0.09,
+      -b.d * 0.08,
+    );
+    clad(b.w * 0.34, b.h * 0.45, b.d * 0.4, -b.w * 0.28, b.d * 0.24);
+    box(
+      b.w * 0.34,
+      0.16,
+      b.d * 0.4,
+      burgundy,
+      -b.w * 0.28,
+      b.h * 0.45 + 0.08,
+      b.d * 0.24,
+    );
+    for (const x of [-0.4, -0.36, -0.16])
+      box(0.9, 1.2, 0.07, glass, b.w * x, b.h * 0.33, b.d * 0.44 + 0.06);
   } else if (b.kind === 'arena') {
     const arena = kit.cylinder(1, 1, b.h, '#aebec1', 0, b.h / 2, 0, g);
     arena.scale.set(b.w * 0.48, 1, b.d * 0.48);

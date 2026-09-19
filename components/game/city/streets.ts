@@ -4,10 +4,24 @@ import {
   cityRoads,
   riverBankZ,
   CITY_BOUNDS,
+  compactCityPoint,
 } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { citySceneryFits, type CitySceneryPlacement } from './landmarks.ts';
 import { cityCrossings } from '../../../lib/game/city/crossings.ts';
+
+/** One shared lens material keeps all scenic signals in caution mode. Scene
+ * time drives the blink, so pausing/rejoining never waits on a hidden timer. */
+export function createStreetSignalLight(kit: RenderKit) {
+  const material = kit.material('#6a5229', 0.66);
+  material.name = 'city-caution-signals';
+  material.emissive.set('#ffb83f');
+  const update = (time: number) => {
+    material.emissiveIntensity = ((time % 1.2) + 1.2) % 1.2 < 0.6 ? 1.8 : 0;
+  };
+  update(0);
+  return { material, update };
+}
 
 /** Small street furniture uses the same placement clearance as the older quays.
  * Roads stay open, with no new invisible collision boxes. */
@@ -16,6 +30,7 @@ export function createStreetDetails(
   root: THREE.Group,
   lit: THREE.Material,
   existing: CitySceneryPlacement[],
+  signalLight: THREE.Material = createStreetSignalLight(kit).material,
 ) {
   const spots: { x: number; z: number; radius: number }[] = [];
   const clear = (x: number, z: number, radius: number) =>
@@ -51,7 +66,7 @@ export function createStreetDetails(
         const x =
             road.from.x + (dx * t) / len + nx * side * (road.width / 2 + 1.5),
           z = road.from.z + (dz * t) / len + nz * side * (road.width / 2 + 1.5);
-        lamp(x, z, Math.atan2(nx, -nz));
+        lamp(x, z, Math.atan2(side * nz, -side * nx));
       }
   }
   // Painted zebra crossings are flush with the tarmac and cannot block a car.
@@ -61,12 +76,64 @@ export function createStreetDetails(
     g.position.set(c.x, 0, c.z);
     g.rotation.y = Math.atan2(c.tx, c.tz);
     root.add(g);
-    for (let strip = -c.width / 2 + 0.5; strip < c.width / 2; strip++)
-      kit.box(0.5, 0.012, c.depth, '#e4dfc0', strip, 0.082, 0, g, 0);
+    function paint(width: number, depth: number, x: number, z: number) {
+      const mesh = kit.mesh(
+        new THREE.PlaneGeometry(width, depth),
+        kit.material('#e7e6dc'),
+        g,
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(x, 0.103, z);
+      mesh.castShadow = false;
+    }
+    for (let strip = -c.width / 2 + 0.65; strip < c.width / 2 - 0.3; strip++)
+      paint(0.5, c.depth, strip, 0);
+    if (c.signal)
+      paint(
+        c.width / 2 - 0.5,
+        0.3,
+        (c.direction * c.width) / 4,
+        c.direction * (c.depth / 2 + 2),
+      );
     for (const side of [-1, 1]) {
-      const x = side * (c.width / 2 + 0.85);
-      kit.cylinder(0.055, 0.075, 2.5, '#68787a', x, 1.25, -side * 1.6, g);
-      kit.box(0.8, 0.8, 0.08, '#327398', x, 2.5, -side * 1.6, g, 0);
+      const x = side * (c.width / 2 + 1.7),
+        z = -side * 1.6;
+      const worldX = c.x + x * c.tz + z * c.tx,
+        worldZ = c.z - x * c.tx + z * c.tz;
+      // Check the whole sign footprint against every road, parking area and
+      // building. A safe distance from its own lane alone is not sufficient.
+      if (!clear(worldX, worldZ, 0.65)) continue;
+      spots.push({ x: worldX, z: worldZ, radius: 0.65 });
+      const signal = c.signal && side === c.direction;
+      kit.cylinder(
+        0.055,
+        0.075,
+        signal ? 3.95 : 2.7,
+        '#68787a',
+        x,
+        signal ? 1.975 : 1.35,
+        z,
+        g,
+      );
+      kit.box(0.96, 0.96, 0.08, '#bfc15d', x, 2.5, z, g, 0);
+      kit.box(0.8, 0.8, 0.1, '#327398', x, 2.5, z, g, 0);
+      if (signal) {
+        kit.box(0.46, 1.15, 0.35, '#263b42', x, 3.52, z, g, 0);
+        for (const [index, color] of [
+          '#563e39',
+          '#6a5229',
+          '#344e44',
+        ].entries()) {
+          const light = kit.mesh(
+            new THREE.CircleGeometry(0.12, 10),
+            index === 1 ? signalLight : kit.material(color),
+            g,
+          );
+          light.castShadow = false;
+          light.position.set(x, 3.87 - index * 0.35, z + c.direction * 0.18);
+          light.rotation.y = c.direction < 0 ? Math.PI : 0;
+        }
+      }
       for (const facing of [-1, 1]) {
         const triangle = new THREE.Shape();
         triangle.moveTo(-0.33, -0.29);
@@ -78,7 +145,7 @@ export function createStreetDetails(
           kit.material('#f1edcd'),
           g,
         );
-        face.position.set(x, 2.5, -side * 1.6 + facing * 0.05);
+        face.position.set(x, 2.5, z + facing * 0.06);
         face.rotation.y = facing < 0 ? Math.PI : 0;
         // The walking person is ink on the sign, not a collection of tiny
         // cylinders and spheres. Flat geometry keeps its silhouette readable
@@ -124,7 +191,7 @@ export function createStreetDetails(
     { x: -80, z: -37 },
     { x: -28, z: 35 },
     { x: 22, z: -38 },
-  ]) {
+  ].map(compactCityPoint)) {
     if (!clear(p.x, p.z, 1.35)) continue;
     kit.cylinder(0.1, 0.17, 2.5, '#6c6650', p.x, 1.25, p.z, root);
     kit.sphere(1.25, 1.65, 1.25, '#708858', p.x, 3.1, p.z, root, 10);

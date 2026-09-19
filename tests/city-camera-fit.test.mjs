@@ -32,6 +32,8 @@ void test('face inspection keeps the actual convertible and all heads in frame t
         ]) {
           const state = {
             ...freshCity(),
+            elevation: 0,
+            pitch: 0,
             x: 0,
             z: 0,
             heading,

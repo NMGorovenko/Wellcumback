@@ -13,6 +13,8 @@ import { raceCourse } from '../../../lib/game/race/course';
 import { CAR_COLORS } from '../../../lib/game/race/vehicles';
 import type { RaceState } from '../../../lib/game/race/types';
 import { followCityHeading } from '../city/camera';
+import { clearCityCruiseCamera, cityCameraFocus } from '../city/camera';
+import { citySurfacePose } from '../../../lib/game/city/surface';
 import { renderedFrameCounter } from '../../../lib/game/performance';
 import {
   clearRaceCamera,
@@ -77,8 +79,10 @@ export default function RaceScene({
     sun.shadow.normalBias = 0.08;
     scene.add(sun, sun.target);
     let terrainHeight: ((x: number, z: number) => number) | undefined;
-    if (course.id === 'krasnoyarsk') createCityEnvironment(kit);
-    else terrainHeight = createNordschleife(kit, course).heightAt;
+    const cityEnvironment =
+      course.id === 'krasnoyarsk' ? createCityEnvironment(kit) : null;
+    if (!cityEnvironment)
+      terrainHeight = createNordschleife(kit, course).heightAt;
     const updateEffects = createRaceEffects(kit);
     const models = game.current.racers.map((r, i) => {
       const color = CAR_COLORS.find((c) => c.id === r.colorId)!.hex,
@@ -182,12 +186,14 @@ export default function RaceScene({
           };
         }),
       };
+      cityEnvironment?.update(state.elapsed);
       // Animate wheels/heads exactly once. The viewport passes only read models.
       for (const item of models) {
         const r = state.racers.find((r) => r.id === item.id);
         if (!r) continue;
         let car = r.car,
-          elevation = r.elevation;
+          elevation = r.elevation,
+          pitch = r.pitch;
         if (state.phase === 'lobby') {
           const i = state.racers.indexOf(r),
             p = course.sample(-6 - Math.floor(i / 2) * 6),
@@ -199,11 +205,16 @@ export default function RaceScene({
             heading: Math.atan2(p.dx, -p.dz),
           };
           elevation = p.y;
+          if (course.id === 'krasnoyarsk') {
+            const pose = citySurfacePose(car.x, car.z, car.heading, elevation);
+            elevation = pose.elevation;
+            pitch = pose.pitch;
+          }
         }
         item.model.root.rotation.order = 'YXZ';
         item.model.update(car, state.paused ? 0 : dt);
         item.model.root.position.y = elevation + 0.04;
-        item.model.root.rotation.x = r.pitch;
+        item.model.root.rotation.x = pitch;
       }
       updateEffects(state, dt);
       const ids = views.current.length ? views.current : [state.racers[0]?.id],
@@ -236,10 +247,11 @@ export default function RaceScene({
         const framing = raceCameraFraming(speed, aspect),
           lead = framing.lead,
           px = model.root.position.x,
-          pz = model.root.position.z;
+          pz = model.root.position.z,
+          elevation = model.root.position.y - 0.04;
         const target = new THREE.Vector3(
           px + fx * lead,
-          r.elevation + 0.8,
+          elevation + 0.8,
           pz + fz * lead,
         );
         if (preview)
@@ -272,18 +284,40 @@ export default function RaceScene({
             terrainHeight,
           );
           camera.position.set(clear.x, clear.y, clear.z);
+          camera.lookAt(look[i]);
+        } else {
+          const displayedCar = {
+            ...r.car,
+            x: px,
+            z: pz,
+            elevation,
+          };
+          const clear = clearCityCruiseCamera(
+            camera.position,
+            displayedCar,
+            undefined,
+            undefined,
+            cityEnvironment?.cameraOccluders,
+          );
+          const focus = cityCameraFocus(
+            look[i],
+            camera.position,
+            clear,
+            displayedCar,
+          );
+          camera.position.set(clear.x, clear.y, clear.z);
+          camera.lookAt(focus.x, focus.y, focus.z);
         }
         camera.aspect = aspect;
         camera.fov = preview ? 48 : 57;
-        camera.lookAt(look[i]);
         if (preview && count === 1 && width > 850)
           camera.setViewOffset(width, height, width * 0.22, 0, width, height);
         else if (preview && count > 1)
           camera.setViewOffset(w, height, 0, height * 0.035, w, height);
         else camera.clearViewOffset();
         camera.updateProjectionMatrix();
-        sun.position.set(px - 35, r.elevation + 70, pz + 25);
-        sun.target.position.set(px, r.elevation, pz);
+        sun.position.set(px - 35, elevation + 70, pz + 25);
+        sun.target.position.set(px, elevation, pz);
         sun.target.updateMatrixWorld();
         gates.forEach((g) => {
           const active = g.index === r.nextGate;

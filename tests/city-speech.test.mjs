@@ -55,96 +55,110 @@ void test('comic tail follows each actual animated passenger in drive, face and 
     ])
       for (const mode of ['drive', 'faces', 'map'])
         for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2])
-          for (const speed of [0, 32]) {
-            const s = {
-              ...freshCity(),
-              x: 0,
-              z: 0,
-              heading,
-              speed,
-              vx: speed * Math.sin(heading),
-              vz: -speed * Math.cos(heading),
-              elapsed: 2.6,
-              steering: 0.7,
-            };
-            car.update(s, 0.025, mode === 'faces');
-            const aspect = width / height;
-            const overview = cityOverviewCamera(aspect);
-            const view =
-              mode === 'map'
-                ? overview
-                : mode === 'faces'
-                  ? cityFaceCamera(s, aspect)
-                  : cityDriveCamera(s, aspect);
-            const half = view.halfHeight;
-            const camera = new THREE.OrthographicCamera(
-              -half * aspect,
-              half * aspect,
-              half,
-              -half,
-              0.1,
-              overview.far,
-            );
-            camera.position
-              .set(view.look.x, view.look.y, view.look.z)
-              .addScaledVector(
-                new THREE.Vector3(
-                  view.outward.x,
-                  view.outward.y,
-                  view.outward.z,
-                ),
-                overview.distance,
-              );
-            camera.lookAt(view.look.x, view.look.y, view.look.z);
-            camera.updateMatrixWorld();
-            for (const name of ['Никита', 'Ярик', 'Рома']) {
-              const line = citySpeech({ ...s, radio: `${name}: Поехали!` });
-              const head = car.passengers[line.passenger];
-              let path = '';
-              const bubble = {
-                hidden: false,
-                offsetWidth: width < 640 ? 245 : 292,
-                offsetHeight: 80,
-                style: {},
-                querySelector: () => ({
-                  setAttribute: (_name, value) => {
-                    path = value;
-                  },
-                }),
+          for (const speed of [0, 32])
+            for (const elevation of [0, 60]) {
+              const s = {
+                ...freshCity(),
+                x: 0,
+                z: 0,
+                elevation,
+                pitch: elevation ? 0.14 : 0,
+                heading,
+                speed,
+                vx: speed * Math.sin(heading),
+                vz: -speed * Math.cos(heading),
+                elapsed: 2.6,
+                steering: 0.7,
               };
-              const host = { clientWidth: width, clientHeight: height };
-              const rect = placeSpeechBubble(
-                { current: bubble },
-                head,
-                camera,
-                host,
-                true,
-                car.passengers,
+              car.update(s, 0.025, mode === 'faces');
+              // CityScene applies the authoritative surface pose after the car's
+              // local wheel/body animation; passenger anchors inherit this pose.
+              car.root.rotation.order = 'YXZ';
+              car.root.position.y = s.elevation + 0.04;
+              car.root.rotation.x = s.pitch;
+              const aspect = width / height;
+              const overview = cityOverviewCamera(aspect);
+              const view =
+                mode === 'map'
+                  ? overview
+                  : mode === 'faces'
+                    ? cityFaceCamera(s, aspect)
+                    : cityDriveCamera(s, aspect);
+              const half = view.halfHeight;
+              const camera = new THREE.OrthographicCamera(
+                -half * aspect,
+                half * aspect,
+                half,
+                -half,
+                0.1,
+                overview.far,
               );
-              assert.ok(
-                rect,
-                `${mode} ${width} ${heading} ${speed}: balloon stays in frame`,
-              );
-              assert.equal(bubble.style.visibility, 'visible');
-              assert.ok(rect.x >= 10 && rect.x + rect.w <= width - 10);
-              assert.ok(rect.y >= 82 && rect.y + 80 <= height - 20);
-              const projected = head.getWorldPosition(new THREE.Vector3());
-              projected.y += 0.16;
-              projected.project(camera);
-              const ax = ((projected.x + 1) * width) / 2,
-                ay = ((1 - projected.y) * height) / 2;
-              // First quadratic ends exactly at the speaker, regardless of bubble displacement.
-              const coords = path.split(/\s+/).map(Number);
-              assert.ok(Math.abs(coords[6] + rect.x - ax) < 0.001);
-              assert.ok(
-                Math.abs(
-                  coords[7] + rect.y + 80 + (ay < rect.y ? -8 : 8) - ay,
-                ) < 0.001,
-              );
-              placeSpeechBubble({ current: bubble }, head, camera, host, false);
-              assert.equal(bubble.style.visibility, 'hidden');
+              camera.position
+                .set(view.look.x, view.look.y, view.look.z)
+                .addScaledVector(
+                  new THREE.Vector3(
+                    view.outward.x,
+                    view.outward.y,
+                    view.outward.z,
+                  ),
+                  overview.distance,
+                );
+              camera.lookAt(view.look.x, view.look.y, view.look.z);
+              camera.updateMatrixWorld();
+              for (const name of ['Никита', 'Ярик', 'Рома']) {
+                const line = citySpeech({ ...s, radio: `${name}: Поехали!` });
+                const head = car.passengers[line.passenger];
+                let path = '';
+                const bubble = {
+                  hidden: false,
+                  offsetWidth: width < 640 ? 245 : 292,
+                  offsetHeight: 80,
+                  style: {},
+                  querySelector: () => ({
+                    setAttribute: (_name, value) => {
+                      path = value;
+                    },
+                  }),
+                };
+                const host = { clientWidth: width, clientHeight: height };
+                const rect = placeSpeechBubble(
+                  { current: bubble },
+                  head,
+                  camera,
+                  host,
+                  true,
+                  car.passengers,
+                );
+                assert.ok(
+                  rect,
+                  `${mode} ${width} ${heading} ${speed} at ${elevation}m: balloon stays in frame`,
+                );
+                assert.equal(bubble.style.visibility, 'visible');
+                assert.ok(rect.x >= 10 && rect.x + rect.w <= width - 10);
+                assert.ok(rect.y >= 82 && rect.y + 80 <= height - 20);
+                const projected = head.getWorldPosition(new THREE.Vector3());
+                projected.y += 0.16;
+                projected.project(camera);
+                const ax = ((projected.x + 1) * width) / 2,
+                  ay = ((1 - projected.y) * height) / 2;
+                // First quadratic ends exactly at the speaker, regardless of bubble displacement.
+                const coords = path.split(/\s+/).map(Number);
+                assert.ok(Math.abs(coords[6] + rect.x - ax) < 0.001);
+                assert.ok(
+                  Math.abs(
+                    coords[7] + rect.y + 80 + (ay < rect.y ? -8 : 8) - ay,
+                  ) < 0.001,
+                );
+                placeSpeechBubble(
+                  { current: bubble },
+                  head,
+                  camera,
+                  host,
+                  false,
+                );
+                assert.equal(bubble.style.visibility, 'hidden');
+              }
             }
-          }
   } finally {
     kit.dispose();
   }

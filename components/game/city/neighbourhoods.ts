@@ -19,9 +19,9 @@ const SOLID = 12;
 // Ochre masonry, weathered concrete and muted painted panels from the city refs.
 // Vertex colours keep these neighbourhood variations on the same atlas/material.
 const facadePalette: Record<HousingStyle, readonly string[]> = {
-  heritage: ['#bc955d', '#b77c67', '#b6ac8f', '#c8ad77', '#ad917a', '#a88c85'],
-  panel: ['#a79c80', '#b88470', '#95a392', '#a7a69c', '#b79a6b', '#9aabb1'],
-  tower: ['#a77d66', '#9eaaa5', '#b69d76', '#a88876', '#98a3aa', '#b7ab93'],
+  heritage: ['#d9b8b3', '#e2d2ad', '#cebc96', '#d9ccad', '#c59b7a', '#bcbac0'],
+  panel: ['#d0d0c5', '#c4c7c6', '#cbd0c3', '#c5c3ba', '#d2cec0', '#aebdc4'],
+  tower: ['#d8d9ce', '#becbd0', '#c9cbd1', '#cfa080', '#b7cbd4', '#d6c2a8'],
   cottage: ['#a78c68', '#8e9c7d', '#aa8265', '#9b9485', '#b39870', '#8d9e98'],
 };
 
@@ -69,6 +69,12 @@ function housingMaterial(kit: RenderKit) {
         rect('#b6b4aa', 0, 0, 256, 4);
         rect('#c8c6bc', 0, 0, 3, 256);
         rect('#e2dfd5', 5, 5, 246, 8);
+        if (variant === 2)
+          for (let row = 0; row < 24; row++) {
+            rect('#c1b7a4', 0, row * 11, 256, 1);
+            for (let col = 0; col < 8; col++)
+              rect('#c1b7a4', col * 36 + (row % 2) * 18, row * 11, 1, 11);
+          }
       } else if (
         style === 'cottage' ||
         (style === 'heritage' && variant === 2)
@@ -82,8 +88,8 @@ function housingMaterial(kit: RenderKit) {
       }
       const tall = style === 'heritage',
         glazed = style === 'tower' && variant === 1;
-      const wx = glazed ? 28 : 63,
-        ww = glazed ? 200 : 130;
+      const wx = glazed ? 28 : style === 'panel' && variant === 1 ? 42 : 63,
+        ww = glazed ? 200 : style === 'panel' && variant === 1 ? 172 : 130;
       const wy = tall ? 40 : 53,
         wh = tall ? 168 : 143;
       rect(tall ? '#f8f2df' : '#e8e8df', wx - 9, wy - 8, ww + 18, wh + 16);
@@ -100,6 +106,10 @@ function housingMaterial(kit: RenderKit) {
       if (tall) {
         rect('#f2e9d2', wx - 15, wy - 16, ww + 30, 10);
         rect('#bab5a9', wx - 12, wy + wh + 9, ww + 24, 5);
+        if (variant === 0) {
+          rect('#f6eee1', wx - 21, wy - 18, 12, wh + 33);
+          rect('#f6eee1', wx + ww + 9, wy - 18, 12, wh + 33);
+        }
       }
       if (style === 'cottage') {
         rect('#729399', wx - 25, wy - 8, 14, wh + 16);
@@ -218,6 +228,7 @@ function houseGeometry() {
     explicitFloors?: number,
     leftCoveredHeight = 0,
     rightCoveredHeight = 0,
+    endTile = tile,
   ) {
     const left = x - w / 2,
       right = x + w / 2,
@@ -228,7 +239,7 @@ function houseGeometry() {
     const columns = (span: number) =>
       tile === SOLID
         ? 1
-        : Math.max(1, Math.min(detail ? 22 : 7, Math.round(span / 2.65)));
+        : Math.max(1, Math.min(detail ? 22 : 14, Math.round(span / 2.65)));
     const floorHeight = [2.8, 2.7, 2.7, 2.6][Math.floor(tile / 3)] || 2.95;
     const floors =
       tile === SOLID
@@ -274,9 +285,11 @@ function houseGeometry() {
         d,
         h - covered,
         endColor,
-        tile,
-        columns(d),
-        Math.max(1, Math.round((floors * (h - covered)) / h)),
+        endTile,
+        endTile === SOLID ? 1 : columns(d),
+        endTile === SOLID
+          ? 1
+          : Math.max(1, Math.round((floors * (h - covered)) / h)),
       );
     }
     face(
@@ -350,10 +363,16 @@ export function createNeighbourhoodBuilding(
     { box } = g;
   // Recess the walls so that balconies and entrance canopies remain in the parcel.
   const turned = b.orientation === 'north-south';
+  // The Mira balcony slabs project 0.36m beyond their wall. A 0.40m inset
+  // leaves their rails inside collision bounds, including rotated parcels.
+  const depthInset = b.style === 'heritage' && low ? 0.8 : 0.6;
   const w = Math.max(1, (turned ? b.d : b.w) - 0.5),
-    d = Math.max(1, (turned ? b.w : b.d) - 0.6),
+    d = Math.max(1, (turned ? b.w : b.d) - depthInset),
     h = b.h;
-  const facade = facadePalette[b.style][seed % facadePalette[b.style].length],
+  const facade =
+      b.style === 'panel' && variant === 2
+        ? '#b28b73'
+        : facadePalette[b.style][seed % facadePalette[b.style].length],
     end = ['#797c72', '#977764', '#778887', '#87847a'][variant];
   const trim = '#e7dfc9',
     roof = ['#647574', '#766a60', '#57676d', '#75645c'][variant];
@@ -386,15 +405,16 @@ export function createNeighbourhoodBuilding(
       b.floors ? Math.max(1, Math.round((b.floors * bh) / h)) : undefined,
       leftCoveredHeight,
       rightCoveredHeight,
+      b.style === 'panel' ? SOLID : tile,
     );
   const cornice = (y: number, thickness = 0.22) =>
     box(w + 0.28, thickness, d + 0.28, trim, 0, y, 0);
   if (b.style === 'heritage') {
     body(w, h, d);
     box(
-      w,
+      w + 0.04,
       Math.min(0.75, h * 0.1),
-      d,
+      d + 0.04,
       '#928a7e',
       0,
       Math.min(0.75, h * 0.1) / 2,
@@ -402,6 +422,74 @@ export function createNeighbourhoodBuilding(
     );
     cornice(h - 0.18, 0.28);
     cornice(Math.min(3.1, h * 0.32), 0.15);
+    // Mira's five-storey masonry reads through pale pilasters, a darker shop
+    // floor and individual projecting balconies, even in the merged distant mesh.
+    if (low) {
+      const shopHeight = Math.min(2.8, h * 0.27);
+      const bays = Math.max(2, Math.min(10, Math.round(w / 5.5)));
+      for (let bay = 0; bay < bays; bay++) {
+        const bx = -w / 2 + (w / bays) * (bay + 0.5);
+        box(
+          w / bays - 0.16,
+          shopHeight,
+          0.14,
+          variant === 0 ? '#9e6963' : '#8c8477',
+          bx,
+          shopHeight / 2,
+          d / 2 + 0.02,
+        );
+        box(
+          (w / bays) * 0.69,
+          shopHeight * 0.67,
+          0.05,
+          '#45606a',
+          bx,
+          shopHeight * 0.43,
+          d / 2 + 0.12,
+        );
+        box(
+          (w / bays) * 0.75,
+          0.28,
+          0.19,
+          ['#574951', '#6f7a68', '#8b5345', '#485b65'][bay % 4],
+          bx,
+          shopHeight - 0.34,
+          d / 2 + 0.16,
+        );
+      }
+      for (const px of [-w / 2 + 0.26, -w * 0.15, w * 0.15, w / 2 - 0.26]) {
+        box(
+          0.36,
+          h - shopHeight,
+          0.18,
+          trim,
+          px,
+          (h + shopHeight) / 2,
+          d / 2 + 0.1,
+        );
+        box(0.65, 0.32, 0.24, trim, px, h - 0.45, d / 2 + 0.13);
+      }
+      const floors = b.floors ?? Math.round(h / 2.8);
+      for (let floor = 1; floor < floors; floor++)
+        for (const side of [-1, 1]) {
+          if ((floor + variant) % 3 === 0 && side > 0) continue;
+          const bx = side * w * 0.3,
+            y = (floor * h) / floors + 0.13;
+          const bw = Math.min(2.5, w * 0.15);
+          box(bw, 0.18, 0.8, trim, bx, y, d / 2 - 0.04);
+          box(bw, 0.13, 0.12, trim, bx, y + 0.8, d / 2 + 0.29);
+          for (const rail of [-0.4, 0, 0.4])
+            box(
+              0.11,
+              0.68,
+              0.1,
+              variant === 0 ? trim : '#60696a',
+              bx + bw * rail,
+              y + 0.45,
+              d / 2 + 0.29,
+            );
+        }
+    }
     if (variant === 0 || variant === 2)
       g.gable(w + 0.22, d + 0.22, h, Math.min(1.8, w * 0.11), roof);
     else {
@@ -468,7 +556,8 @@ export function createNeighbourhoodBuilding(
         section > 0 ? sectionHeight(section - 1) : 0,
         section < sections - 1 ? sectionHeight(section + 1) : 0,
       );
-      box(sw + 0.04, 0.2, d + 0.15, roof, x, sh + 0.05, 0);
+      // Shared-height sections meet at an edge; overlapping coplanar caps shimmer.
+      box(sw, 0.2, d + 0.15, roof, x, sh + 0.05, 0);
       if (low) {
         box(1.6, 0.14, 0.52, roof, x, 1.9, d / 2 - 0.04);
         for (const side of [-1, 1])
@@ -483,6 +572,29 @@ export function createNeighbourhoodBuilding(
             5,
             false,
           );
+        // Visible stairwell and mismatched balcony enclosures distinguish the
+        // concrete Akadem slabs from the red-brick late-Soviet blocks.
+        box(
+          0.5,
+          sh - 0.5,
+          0.13,
+          variant === 2 ? '#dfd9cb' : '#8e9e9d',
+          x + sw * 0.27,
+          (sh - 0.5) / 2,
+          d / 2 + 0.05,
+        );
+        const floors = Math.max(
+          2,
+          Math.round(((b.floors ?? h / 2.7) * sh) / h),
+        );
+        for (let floor = 1; floor < floors; floor++) {
+          const y = (floor * sh) / floors;
+          const bx = x - sw * 0.25;
+          const bw = Math.min(2.1, sw * 0.24);
+          box(bw + 0.1, 0.12, 0.55, '#e1ded3', bx, y, d / 2 - 0.01);
+          if ((floor + section + seed) % 4 === 0)
+            box(bw, 0.74, 0.12, '#838e83', bx, y + 0.43, d / 2 + 0.2);
+        }
       }
       if (!low) {
         box(0.65, sh - 0.4, 0.1, accent, x, (sh - 0.4) / 2, d / 2 + 0.03);
@@ -546,6 +658,17 @@ export function createNeighbourhoodBuilding(
           (h - 0.3) / 2,
           side * (d / 2 + 0.02),
         );
+        if (variant === 0 || variant === 2)
+          for (let floor = 2; floor < (b.floors ?? 18); floor += 3)
+            box(
+              w * 0.96,
+              0.24,
+              0.18,
+              variant === 0 ? '#66828e' : '#eee8d9',
+              0,
+              (floor * h) / (b.floors ?? 18),
+              side * (d / 2 + 0.05),
+            );
       }
     if (!low)
       for (const side of [-1, 1]) {

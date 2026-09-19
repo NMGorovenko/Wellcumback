@@ -4,8 +4,16 @@ import * as THREE from 'three';
 import {
   CITY_CAMERA_MODES,
   cityCruiseCamera,
-  clearCityCruiseCamera,
+  clearCityCruiseCamera as clearTerrainCamera,
 } from '../components/game/city/camera.ts';
+
+const flatSurface = {
+  heightAt: () => 0,
+  ceilingAt: () => null,
+  buildingBaseAt: () => 0,
+};
+const clearCityCruiseCamera = (desired, car, buildings) =>
+  clearTerrainCamera(desired, car, buildings, flatSurface);
 
 const perspective = (state, aspect) => {
   const view = cityCruiseCamera(state, aspect);

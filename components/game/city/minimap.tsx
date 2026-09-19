@@ -1,5 +1,5 @@
 'use client';
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import {
   cityNavigationRoute,
   cityRouteLength,
@@ -134,12 +134,7 @@ export default function CityMinimap({
   onExpand: () => void;
 }) {
   const destination = cityStops[target];
-  const cellX = Math.round(state.x / 35),
-    cellZ = Math.round(state.z / 35);
-  const route = useMemo(
-    () => cityNavigationRoute({ x: cellX * 35, z: cellZ * 35 }, destination),
-    [cellX, cellZ, destination],
-  );
+  const route = cityNavigationRoute(state, destination);
   const marker = minimapTarget(state, destination);
   const distance = cityRouteLength(route);
   return (

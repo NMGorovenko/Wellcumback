@@ -1,4 +1,15 @@
-import { CITY_BOUNDS, cityRoads, type CityPoint } from './layout.ts';
+import {
+  cityRoadHeight,
+  cityRoadsConnect,
+  cityGroundHeight,
+} from './surface.ts';
+import {
+  CITY_BOUNDS,
+  CITY_PARKING,
+  cityRoads,
+  type CityPoint,
+  type CityRoad,
+} from './layout.ts';
 
 const clamp = (v: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, v));
@@ -56,19 +67,23 @@ export function minimapTarget(
   };
 }
 
-type Node = CityPoint & { edges: Map<number, number> };
+type Node = CityPoint & { elevation: number; edges: Map<number, number> };
 const nodes: Node[] = [];
-const ids = new Map<string, number>();
-function node(p: CityPoint) {
+const ids = new Map<string, number[]>();
+function node(p: CityPoint, road: CityRoad) {
+  const elevation = cityRoadHeight(road, p.x, p.z);
   const key = `${p.x.toFixed(2)}:${p.z.toFixed(2)}`;
-  const existing = ids.get(key);
+  const at = ids.get(key) ?? [];
+  const existing = at.find(
+    (id) => Math.abs(nodes[id].elevation - elevation) < 1.2,
+  );
   if (existing !== undefined) return existing;
   const id = nodes.length;
-  nodes.push({ ...p, edges: new Map() });
-  ids.set(key, id);
+  nodes.push({ ...p, elevation, edges: new Map() });
+  ids.set(key, [...at, id]);
   return id;
 }
-const splits = cityRoads.map((r) => [node(r.from), node(r.to)]);
+const splits = cityRoads.map((r) => [node(r.from, r), node(r.to, r)]);
 function project(p: CityPoint, a: CityPoint, b: CityPoint) {
   const dx = b.x - a.x,
     dz = b.z - a.z;
@@ -95,7 +110,9 @@ for (let i = 0; i < cityRoads.length; i++)
       const t = (dx * bz - dz * bx) / determinant;
       const u = (dx * az - dz * ax) / determinant;
       if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
-        const id = node({ x: a.from.x + ax * t, z: a.from.z + az * t });
+        const point = { x: a.from.x + ax * t, z: a.from.z + az * t };
+        if (!cityRoadsConnect(a, b, point.x, point.z)) continue;
+        const id = node(point, a);
         splits[i].push(id);
         splits[j].push(id);
       }
@@ -106,8 +123,11 @@ for (let i = 0; i < cityRoads.length; i++)
     ] as const) {
       for (const point of [road.from, road.to]) {
         const closest = project(point, other.from, other.to);
-        if (distance(point, closest) < 0.15) {
-          const id = node(point);
+        if (
+          distance(point, closest) < 0.15 &&
+          cityRoadsConnect(road, other, point.x, point.z)
+        ) {
+          const id = node(point, road);
           splits[first].push(id);
           splits[second].push(id);
         }
@@ -128,13 +148,17 @@ for (const [i, list] of splits.entries()) {
     nodes[previous].edges.set(id, length);
   });
 }
-function nearestRoad(p: CityPoint) {
+type NavigationPoint = CityPoint & { elevation?: number; surfaceId?: string };
+function nearestRoad(p: NavigationPoint) {
+  const height = p.elevation ?? cityGroundHeight(p.x, p.z);
+  const cost = (road: CityRoad, at: CityPoint) =>
+    distance(p, at) + Math.abs(cityRoadHeight(road, at.x, at.z) - height) * 4;
   let best = 0,
     point = project(p, cityRoads[0].from, cityRoads[0].to),
-    gap = distance(p, point);
+    gap = cost(cityRoads[0], point);
   cityRoads.forEach((r, i) => {
     const at = project(p, r.from, r.to),
-      d = distance(p, at);
+      d = cost(r, at);
     if (d < gap) {
       best = i;
       point = at;
@@ -143,18 +167,18 @@ function nearestRoad(p: CityPoint) {
   });
   return { road: best, point };
 }
-export function cityNavigationRoute(
-  start: CityPoint,
-  target: CityPoint,
-): CityPoint[] {
-  const from = nearestRoad(start),
-    to = nearestRoad(target);
-  if (from.road === to.road) return [start, from.point, to.point, target];
+type RouteField = { costs: number[]; next: number[] };
+const destinationFields = new Map<string, RouteField>();
+// Match the interaction radius; reaching a stop must clear the navigation line.
+export const CITY_NAVIGATION_ARRIVAL_RADIUS = 2.8;
+function fieldToDestination(to: ReturnType<typeof nearestRoad>): RouteField {
+  const key = `${to.road}:${to.point.x.toFixed(3)}:${to.point.z.toFixed(3)}`;
+  const cached = destinationFields.get(key);
+  if (cached) return cached;
   const costs = nodes.map(() => Infinity),
     previous = nodes.map(() => -1),
     visited = new Set<number>();
-  for (const id of splits[from.road])
-    costs[id] = distance(from.point, nodes[id]);
+  for (const id of splits[to.road]) costs[id] = distance(to.point, nodes[id]);
   while (visited.size < nodes.length) {
     let next = -1;
     for (let i = 0; i < nodes.length; i++)
@@ -167,17 +191,57 @@ export function cityNavigationRoute(
         previous[id] = next;
       }
   }
-  const end = splits[to.road].reduce((a, b) =>
-    costs[a] + distance(nodes[a], to.point) <
-    costs[b] + distance(nodes[b], to.point)
+  const field = { costs, next: previous };
+  // Destinations are usually the fixed city stops. Bound the cache for callers
+  // supplying arbitrary points; the city graph itself is immutable.
+  if (destinationFields.size >= 24)
+    destinationFields.delete(destinationFields.keys().next().value!);
+  destinationFields.set(key, field);
+  return field;
+}
+export function cityNavigationRoute(
+  start: NavigationPoint,
+  target: NavigationPoint,
+): CityPoint[] {
+  if (
+    distance(start, target) < CITY_NAVIGATION_ARRIVAL_RADIUS &&
+    Math.abs(
+      (start.elevation ?? cityGroundHeight(start.x, start.z)) -
+        (target.elevation ?? cityGroundHeight(target.x, target.z)),
+    ) < 1.5
+  )
+    return [start];
+  if (
+    CITY_PARKING.some((lot) =>
+      [start, target].every(
+        (p) =>
+          Math.abs(p.x - lot.x) <= lot.w / 2 &&
+          Math.abs(p.z - lot.z) <= lot.d / 2,
+      ),
+    )
+  )
+    return [start, target];
+  const from = nearestRoad(start),
+    to = nearestRoad(target);
+  if (from.road === to.road)
+    return [start, from.point, to.point, target].filter(
+      (p, i, all) => !i || distance(p, all[i - 1]) > 0.1,
+    );
+  // Cache the expensive reverse shortest-path field by destination, not a
+  // rounded car position. The exact car position can now move every frame
+  // without snapping GPS to an unrelated nearby street or rebuilding Dijkstra.
+  const { costs, next } = fieldToDestination(to);
+  const begin = splits[from.road].reduce((a, b) =>
+    costs[a] + distance(from.point, nodes[a]) <
+    costs[b] + distance(from.point, nodes[b])
       ? a
       : b,
   );
-  if (!Number.isFinite(costs[end])) return [];
+  if (!Number.isFinite(costs[begin])) return [];
   const route: CityPoint[] = [];
-  for (let id = end; id >= 0; id = previous[id])
+  for (let id = begin; id >= 0; id = next[id])
     route.push({ x: nodes[id].x, z: nodes[id].z });
-  return [start, from.point, ...route.reverse(), to.point, target].filter(
+  return [start, from.point, ...route, to.point, target].filter(
     (p, i, all) => !i || distance(p, all[i - 1]) > 0.1,
   );
 }

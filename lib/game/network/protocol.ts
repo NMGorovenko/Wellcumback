@@ -6,7 +6,7 @@ import {
 import { CITY_BOUNDS, cityStops } from '../city/layout.ts';
 import type { DriveAxes } from '../input/drive.ts';
 import type { CityState } from '../city/engine.ts';
-export const NETWORK_VERSION = 3;
+export const NETWORK_VERSION = 4;
 export const NETWORK_CHANNEL = `wellcum-city-v${NETWORK_VERSION}`;
 const VERSION_MISMATCH =
   'Версии игры различаются. Обновите игру у обоих игроков и создайте новое приглашение.';
@@ -203,6 +203,25 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
       state.powertrain = Object.fromEntries(
         fields.map((key) => [key, motor[key]]),
       ) as typeof state.powertrain;
+    }
+    for (const key of ['elevation', 'pitch'] as const)
+      if (s[key] !== undefined) {
+        if (
+          typeof s[key] !== 'number' ||
+          !Number.isFinite(s[key]) ||
+          Math.abs(s[key]) > (key === 'elevation' ? 150 : Math.PI / 3)
+        )
+          return null;
+        state[key] = s[key];
+      }
+    if (s.surfaceId !== undefined) {
+      if (
+        typeof s.surfaceId !== 'string' ||
+        s.surfaceId.length > 100 ||
+        !/^ground$|^road:[a-z0-9:-]+$/.test(s.surfaceId)
+      )
+        return null;
+      state.surfaceId = s.surfaceId;
     }
     if (s.throttle !== undefined) {
       if (

@@ -144,6 +144,11 @@
       "path": "references/characters/anastasia/portrait-red.png",
       "bytes": 6185565,
       "sha256": "32f14964b2555e9a9d8eda970602ff6f62c97e2edc5d73ccacd5707dbb104257"
+    },
+    {
+      "path": "references/city/kirenskogo-baykitskaya-doner-house.png",
+      "bytes": 503648,
+      "sha256": "54dd8fcb9b3a3902f0006d96310f4a99aaaac2e35fd7678a44b94b6206fbcfe1"
     }
   ]
 }

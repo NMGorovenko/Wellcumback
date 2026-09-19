@@ -2,6 +2,7 @@
   position: absolute;
   margin: 0;
   width: auto;
+  height: calc(100% - 24px);
   max-width: none;
   max-height: none;
   padding: 0;
@@ -320,6 +321,7 @@
 @media (max-width: 760px) {
   .city-map-overlay {
     inset: 6px;
+    height: calc(100% - 12px);
   }
   .city-map-header {
     padding: 11px 13px;
@@ -427,4 +429,13 @@
     transition: none;
     animation: none;
   }
+}
+
+.city-map-street-name {
+  fill: #e7eddf;
+  stroke: #253d35;
+  paint-order: stroke;
+  stroke-linejoin: round;
+  font-weight: 500;
+  pointer-events: none;
 }

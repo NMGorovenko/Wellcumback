@@ -1,3 +1,4 @@
+import { citySurfacePose } from '../lib/game/city/surface.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -42,16 +43,26 @@ void test('zebras cross actual road widths, clear the ring and suppress the cent
   }
 });
 
-void test('driving onto each bridge triggers Yarik once per entry, with hysteresis and saved cooldown', () => {
+void test('entering each bridge triggers Yarik once per entry, with hysteresis and saved cooldown', () => {
   for (const bridge of BRIDGES)
     for (const direction of [-1, 1]) {
       const points =
         direction === 1 ? bridge.points : [...bridge.points].reverse();
-      const [a, b] = points;
+      // The dialogue test uses a long clear span in each direction. The old
+      // straight extension of the curved bank entrance drove off its raised
+      // deck; actual ramp/underpass physics is covered in city-surface.
+      const [a, b] = points
+        .slice(1)
+        .map((p, i) => [points[i], p])
+        .sort(
+          (u, v) =>
+            Math.hypot(v[1].x - v[0].x, v[1].z - v[0].z) -
+            Math.hypot(u[1].x - u[0].x, u[1].z - u[0].z),
+        )[0];
       const length = Math.hypot(b.x - a.x, b.z - a.z),
         fx = (b.x - a.x) / length,
         fz = (b.z - a.z) / length;
-      const outside = bridge.w / 2 + 2;
+      const outside = -10;
       const s = freshCity();
       Object.assign(s, {
         x: a.x - fx * outside,
@@ -61,6 +72,7 @@ void test('driving onto each bridge triggers Yarik once per entry, with hysteres
         vz: fz * 8,
         elapsed: 20,
       });
+      Object.assign(s, citySurfacePose(s.x, s.z, s.heading));
       for (let i = 0; i < 40; i++) tickCity(s, 1 / 60, new Set(['KeyW']));
       assert.equal(s.radio, BRIDGE_QUIP);
       const deadline = s.radioUntil,

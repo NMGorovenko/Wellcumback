@@ -42,7 +42,7 @@ function ready(vehicleId = 'mustang') {
 
 void test('city circuit remains on asphalt with a clear car body in both lanes, away from water and buildings', () => {
   assert.ok(
-    course.length > 2500 && course.length < 3100,
+    course.length > 1300 && course.length < 1800,
     `party circuit grew to ${course.length}m`,
   );
   assert.deepEqual(course.points[0], course.points.at(-1));

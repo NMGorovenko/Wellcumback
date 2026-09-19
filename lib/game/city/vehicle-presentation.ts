@@ -14,8 +14,8 @@ type History = {
 const history = new WeakMap<CityState, History>();
 export function vehiclePose(
   car: CityState,
-  elevation = 0,
-  pitch = 0,
+  elevation = car.elevation ?? 0,
+  pitch = car.pitch ?? 0,
 ): VehiclePose {
   const { x, z, vx, vz, heading, steering, speed, elapsed } = car;
   return { x, z, vx, vz, heading, steering, speed, elapsed, elevation, pitch };
@@ -56,8 +56,8 @@ export function setVehicleRemainder(
 }
 export function presentedVehicle(
   car: CityState,
-  elevation = 0,
-  pitch = 0,
+  elevation = car.elevation ?? 0,
+  pitch = car.pitch ?? 0,
   paused = car.paused,
 ) {
   const entry = history.get(car);
@@ -93,7 +93,12 @@ export function presentedVehicle(
     ...motion
   } = pose;
   return {
-    car: { ...car, ...motion },
+    car: {
+      ...car,
+      ...motion,
+      elevation: renderedElevation,
+      pitch: renderedPitch,
+    },
     elevation: renderedElevation,
     pitch: renderedPitch,
   };

@@ -1,0 +1,240 @@
+{
+  "version": "0.15.0",
+  "status": "artifacts_verified_native_smoke_incomplete",
+  "sourceFreezeAt": "2026-09-19T19:52:28.517Z",
+  "source_files_verified": 295,
+  "unpackaged_test_helper_changes": [
+    {
+      "file": "desktop/smoke.cjs",
+      "old_sha256": "afc3d257419978666ec39ea803d0944b8b0d3bdfd6b9d504643948ceade40169",
+      "new_sha256": "1a77d761761ea0fad8120dde25a1859b94d0bb0fc74f6f02971ded0789a35bbe",
+      "packaged": false,
+      "reason": "Restore disposable test-window focus while selecting camera modes and allow 60 seconds per full native QA phase; production pause and packaged runtime unchanged."
+    },
+    {
+      "file": "scripts/smoke-desktop.mjs",
+      "old_sha256": "5186dfa4f9021d845b97728f7c1d18c531ad6946b4017e54f41b22324c01e151",
+      "new_sha256": "d8c07bc8bf8b3efb24d861c65ec4ac4d705d88f1e138b765253cb19e5bb32992",
+      "packaged": false,
+      "reason": "Restore disposable test-window focus while selecting camera modes and allow 60 seconds per full native QA phase; production pause and packaged runtime unchanged."
+    }
+  ],
+  "checkedAt": "2026-09-19T20:06:15.104Z",
+  "renderer_sha256": "e86a81b8097e05dbff91e5e788e1a6b621c62be95f9b47797583066a402240ab",
+  "source_renderer_sha256": "38b508cec16e87d0cb1ee309bd007087330d5daa048cd1c7f3011f0a7fcfd82c",
+  "notarization": false,
+  "windows_runtime_launch_tested": false,
+  "artifacts": [
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.0-mac-arm64.zip",
+      "bytes": 162589594,
+      "sha256": "9ef857bb461eda5cf427a938252b13d1f2b5378054d9643b82caeb605aa8b24d",
+      "renderer_sha256": "e86a81b8097e05dbff91e5e788e1a6b621c62be95f9b47797583066a402240ab",
+      "source_renderer_sha256": "38b508cec16e87d0cb1ee309bd007087330d5daa048cd1c7f3011f0a7fcfd82c",
+      "signing": "developer-id",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "6b5246e37c8cec8c186de73332a8cec710207ac4a2e6423c9341e3c8f2ba0fb3",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "a45f39c334eb17eaa93c510f618f505d0fb217d8f06af59bf2807ea4030dcef0",
+      "signature": {
+        "mode": "developer-id",
+        "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+        "team": "K9RX3779MP",
+        "timestamp": "20 Sep 2026 at 02:53:25",
+        "appStapled": false,
+        "tunnel": {
+          "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+          "team": "K9RX3779MP",
+          "timestamp": "20 Sep 2026 at 02:53:20",
+          "binary_sha256": "80ab8fd077176b99fac051f7e648233ee1584a0ada523e9ee0ecc18518280861"
+        }
+      },
+      "mac_resources_report": "/tmp/friendslop-relief-desktop-mac-arm64.zip.resources.json"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.0-mac-arm64.dmg",
+      "bytes": 167167318,
+      "sha256": "01064b3c85894191e6dae3dc59de9e81a845406ff40d14a265d33ee34d7519b3",
+      "renderer_sha256": "e86a81b8097e05dbff91e5e788e1a6b621c62be95f9b47797583066a402240ab",
+      "source_renderer_sha256": "38b508cec16e87d0cb1ee309bd007087330d5daa048cd1c7f3011f0a7fcfd82c",
+      "signing": "developer-id",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "6b5246e37c8cec8c186de73332a8cec710207ac4a2e6423c9341e3c8f2ba0fb3",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "a45f39c334eb17eaa93c510f618f505d0fb217d8f06af59bf2807ea4030dcef0",
+      "signature": {
+        "mode": "developer-id",
+        "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+        "team": "K9RX3779MP",
+        "timestamp": "20 Sep 2026 at 02:53:25",
+        "appStapled": false,
+        "tunnel": {
+          "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+          "team": "K9RX3779MP",
+          "timestamp": "20 Sep 2026 at 02:53:20",
+          "binary_sha256": "80ab8fd077176b99fac051f7e648233ee1584a0ada523e9ee0ecc18518280861"
+        }
+      },
+      "mac_resources_report": "/tmp/friendslop-relief-desktop-mac-arm64.dmg.resources.json"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.0-mac-x64.zip",
+      "bytes": 171983127,
+      "sha256": "1c89f9e2b6975688757bd00b414931c6ba4e18b9ae324d80c2dee3c32e8f6360",
+      "renderer_sha256": "e86a81b8097e05dbff91e5e788e1a6b621c62be95f9b47797583066a402240ab",
+      "source_renderer_sha256": "38b508cec16e87d0cb1ee309bd007087330d5daa048cd1c7f3011f0a7fcfd82c",
+      "signing": "developer-id",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "6b5246e37c8cec8c186de73332a8cec710207ac4a2e6423c9341e3c8f2ba0fb3",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "a45f39c334eb17eaa93c510f618f505d0fb217d8f06af59bf2807ea4030dcef0",
+      "signature": {
+        "mode": "developer-id",
+        "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+        "team": "K9RX3779MP",
+        "timestamp": "20 Sep 2026 at 02:52:58",
+        "appStapled": false,
+        "tunnel": {
+          "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+          "team": "K9RX3779MP",
+          "timestamp": "20 Sep 2026 at 02:52:53",
+          "binary_sha256": "83aef239491c3b4a1cac30451d92842ae0f0ddfc07526d80a51b4bbeed634b23"
+        }
+      },
+      "mac_resources_report": "/tmp/friendslop-relief-desktop-mac-x64.zip.resources.json"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.0-mac-x64.dmg",
+      "bytes": 176593010,
+      "sha256": "65318018478b064a4f232ed2f6934c1f1224288291dd87f5106c2cc35c3f7bdb",
+      "renderer_sha256": "e86a81b8097e05dbff91e5e788e1a6b621c62be95f9b47797583066a402240ab",
+      "source_renderer_sha256": "38b508cec16e87d0cb1ee309bd007087330d5daa048cd1c7f3011f0a7fcfd82c",
+      "signing": "developer-id",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "6b5246e37c8cec8c186de73332a8cec710207ac4a2e6423c9341e3c8f2ba0fb3",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "a45f39c334eb17eaa93c510f618f505d0fb217d8f06af59bf2807ea4030dcef0",
+      "signature": {
+        "mode": "developer-id",
+        "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+        "team": "K9RX3779MP",
+        "timestamp": "20 Sep 2026 at 02:52:58",
+        "appStapled": false,
+        "tunnel": {
+          "authority": "Developer ID Application: Nikita Gorovenko (K9RX3779MP)",
+          "team": "K9RX3779MP",
+          "timestamp": "20 Sep 2026 at 02:52:53",
+          "binary_sha256": "83aef239491c3b4a1cac30451d92842ae0f0ddfc07526d80a51b4bbeed634b23"
+        }
+      },
+      "mac_resources_report": "/tmp/friendslop-relief-desktop-mac-x64.dmg.resources.json"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.0-windows-x64-portable.exe",
+      "bytes": 135281655,
+      "sha256": "7fa8fdf2712bae9305bc092fb17d40d29650eb02eec7426a32c5a55dd1cb36bd",
+      "renderer_sha256": "e86a81b8097e05dbff91e5e788e1a6b621c62be95f9b47797583066a402240ab",
+      "source_renderer_sha256": "38b508cec16e87d0cb1ee309bd007087330d5daa048cd1c7f3011f0a7fcfd82c",
+      "signing": "unsigned",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "6b5246e37c8cec8c186de73332a8cec710207ac4a2e6423c9341e3c8f2ba0fb3",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "a45f39c334eb17eaa93c510f618f505d0fb217d8f06af59bf2807ea4030dcef0"
+    },
+    {
+      "file": "/Users/nikitagorovenko/Documents/ChatGPT/Wellcum back/outputs/desktop/FRIENDSLOP-0.15.0-windows-x64-setup.exe",
+      "bytes": 135511380,
+      "sha256": "680d9d5e445ae9beef89db76ad317889ec98edff6ea7c9d2e4e9bb47f55cec8e",
+      "renderer_sha256": "e86a81b8097e05dbff91e5e788e1a6b621c62be95f9b47797583066a402240ab",
+      "source_renderer_sha256": "38b508cec16e87d0cb1ee309bd007087330d5daa048cd1c7f3011f0a7fcfd82c",
+      "signing": "unsigned",
+      "runtime": {
+        "main.cjs": "74f2abda79849b70652b02a5459cf0cf6f417043c0eb9a6823bdfb97ba6d22ab",
+        "security.cjs": "c668e03531f42fee668391be8b4ff1f87225739e8b0529621b858cd698b7ce0e",
+        "preload.cjs": "426857846b7b5ec53851c5d9500057c10c73ae995f706801e32a7a8101ffe307",
+        "network.cjs": "6b5246e37c8cec8c186de73332a8cec710207ac4a2e6423c9341e3c8f2ba0fb3",
+        "rooms.sql": "881b96a8b7094e516316942acfd74d2c4f7743c0a98d6936411f9855a40257ed"
+      },
+      "app_asar_sha256": "a45f39c334eb17eaa93c510f618f505d0fb217d8f06af59bf2807ea4030dcef0"
+    }
+  ],
+  "logs": {
+    "mac": "/tmp/friendslop-relief-desktop-mac.log",
+    "windows": "/tmp/friendslop-relief-desktop-win.log",
+    "smoke": "/tmp/friendslop-relief-desktop-smoke.log"
+  },
+  "smoke": {
+    "status": "incomplete",
+    "native_platform": "darwin/arm64",
+    "phases_completed": [],
+    "phase_results": {
+      "write": "incomplete",
+      "read": "not_run",
+      "moving": "not_run",
+      "lan": "not_run"
+    },
+    "physical_gamepads_tested": false,
+    "final_failure": "Write phase timed out at 60 seconds before did-finish-load (loading the application).",
+    "earlier_observed_environment_failure": {
+      "focused": false,
+      "hidden": true,
+      "paused": true,
+      "native": {
+        "visible": false,
+        "focused": false,
+        "minimized": true,
+        "appHidden": false
+      }
+    },
+    "farthest_attempt_log": "/tmp/friendslop-relief-desktop-smoke-deadline-retry.log",
+    "final_attempt_log": "/tmp/friendslop-relief-desktop-smoke.log",
+    "assertions_reached_in_farthest_attempt": [
+      "wellcum://game secure origin; no renderer process/require globals; sandbox/context isolation/web security and WebGL canvas",
+      "driving minimap opens full map, Escape restores minimap",
+      "native C selects cruise/map/faces/drive; minimap present in each camera",
+      "native S reaches first-story arrival, W brakes until story button enabled; trusted Space does not launch it",
+      "keyboard pause, two-player setting, settings navigation",
+      "simulated Xbox and DualSense device labels",
+      "Escape closes only settings, preserves pause, then keyboard resume",
+      "second pad cannot pause the one-driver city; first Xbox pad pauses and resumes",
+      "after Xbox disconnect, DualSense takes over and pauses/resumes",
+      "city pause menu opens the stories hub"
+    ],
+    "not_completed_assertions": [
+      "Escape from stories back to city",
+      "native fullscreen entry/exit and full canvas coverage",
+      "localStorage write and cold-start read",
+      "moving story phase",
+      "native host/guest LAN phase"
+    ],
+    "note": "Assertions listed above precede the farthest failure checkpoint in the real smoke helper; no complete four-phase PASS is claimed. No production pause/visibility behavior was disabled."
+  },
+  "cleanup": {
+    "checked_at": "2026-09-19T20:07:38.484702+00:00",
+    "own_build_smoke_processes_remaining": false,
+    "temporary_smoke_profiles_remaining": false,
+    "temporary_artifact_dirs_remaining": false,
+    "artifact_mounts_remaining": false,
+    "installed_apps_or_user_profiles_touched": false
+  }
+}

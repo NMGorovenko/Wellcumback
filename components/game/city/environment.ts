@@ -13,19 +13,36 @@ import {
   CITY_ISLANDS,
   RIVER_SECTIONS,
   riverBankZ,
-  cityBarriers,
   ROUNDABOUT,
+  CITY_ROUNDABOUTS,
   cityBuildings,
   cityRoads,
   cityStops,
   riverZ,
   type CityPoint,
+  type CityRoad,
+  distanceToRoad,
 } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { makeLabel } from '../world/labels.ts';
+import {
+  CITY_DECK_THICKNESS,
+  cityGroundHeight,
+  cityRoadHeight,
+  cityRoadLayer,
+  citySurfacePose,
+} from '../../../lib/game/city/surface.ts';
+import { convexPieces, drapedSurface, liftScenery } from './relief.ts';
 import { createCityLandmarks } from './landmarks.ts';
-import { createStreetDetails } from './streets.ts';
+import { createStreetDetails, createStreetSignalLight } from './streets.ts';
+import { collectCityFoliage } from './foliage-occlusion.ts';
+import { createBridgeRails } from './bridge-rails.ts';
+import { createYeniseySign } from './yenisey-sign.ts';
 import { roadDashClear } from '../../../lib/game/city/crossings.ts';
+import {
+  buildRoadSurfaces,
+  roadSurfaceOutlines,
+} from '../../../lib/game/city/road-surfaces.ts';
 import { createEuropeMonument, createChapelCannon } from './monuments.ts';
 import {
   createCivicBuilding,
@@ -122,22 +139,48 @@ export function createCityEnvironment(kit: RenderKit) {
   kit.scene.add(root);
   const { minX, maxX, minZ, maxZ } = CITY_BOUNDS;
   const width = maxX - minX;
-  function polygon(points: CityPoint[], y: number, color: string) {
-    const shape = new THREE.Shape();
-    points.forEach((p, i) =>
-      i ? shape.lineTo(p.x, -p.z) : shape.moveTo(p.x, -p.z),
-    );
-    shape.closePath();
-    const mesh = kit.mesh(
-      new THREE.ShapeGeometry(shape),
-      kit.material(color),
+  const groundRoadHoles = roadSurfaceOutlines(
+    cityRoads.filter(
+      (r) =>
+        cityRoadLayer(r) !== 'raised' ||
+        (!!r.bridge && r.bridge !== 'nikolaevsky'),
+    ),
+    ROUNDABOUT,
+    0.65,
+  );
+  function polygon(
+    points: CityPoint[],
+    y: number,
+    color: string,
+    ground = true,
+  ) {
+    const mesh = drapedSurface(
+      kit,
       root,
+      convexPieces(points),
+      color,
+      ground ? cityGroundHeight : () => 0,
+      y,
+      ground ? 8 : 80,
+      ground ? groundRoadHoles : [],
     );
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = y;
-    mesh.castShadow = false;
+    mesh.name = ground ? 'city-relief-ground' : 'city-water';
     return mesh;
   }
+  const roadSample = (roads: readonly CityRoad[]) => (x: number, z: number) => {
+    let nearest = roads[0],
+      best = Infinity;
+    for (const road of roads) {
+      const gap = distanceToRoad(x, z, road);
+      if (gap < best) {
+        best = gap;
+        nearest = road;
+      }
+    }
+    return cityRoadHeight(nearest, x, z);
+  };
+  const surfaceHeight = (x: number, z: number) =>
+    citySurfacePose(x, z, 0).elevation;
   const north = RIVER_SECTIONS.map((p) => ({ x: p.x, z: p.z - p.half }));
   const south = RIVER_SECTIONS.map((p) => ({ x: p.x, z: p.z + p.half }));
   polygon(
@@ -146,47 +189,94 @@ export function createCityEnvironment(kit: RenderKit) {
     '#82966d',
   );
   polygon([...south, { x: maxX, z: maxZ }, { x: minX, z: maxZ }], 0, '#82966d');
-  polygon([...north, ...south.slice().reverse()], -3, '#367f9e');
+  polygon([...north, ...south.slice().reverse()], -3, '#367f9e', false);
   for (const side of [-1, 1])
     for (let i = 0; i < RIVER_SECTIONS.length - 1; i++) {
       const a = RIVER_SECTIONS[i],
         b = RIVER_SECTIONS[i + 1];
       const from = { x: a.x, z: a.z + side * (a.half + 3) },
         to = { x: b.x, z: b.z + side * (b.half + 3) };
-      ribbon(kit, root, from, to, 5, 0.025, '#d4d2b7');
+      const bankDx = to.x - from.x,
+        bankDz = to.z - from.z,
+        bankLength = Math.hypot(bankDx, bankDz);
+      const nx = (-bankDz / bankLength) * 2.5,
+        nz = (bankDx / bankLength) * 2.5;
+      drapedSurface(
+        kit,
+        root,
+        [
+          [
+            { x: from.x + nx, z: from.z + nz },
+            { x: to.x + nx, z: to.z + nz },
+            { x: to.x - nx, z: to.z - nz },
+            { x: from.x - nx, z: from.z - nz },
+          ],
+        ],
+        '#d4d2b7',
+        cityGroundHeight,
+        0.025,
+        4,
+      );
+      const bankPositions: number[] = [],
+        bankUVs: number[] = [];
+      const segments = Math.ceil(bankLength / 8);
+      const shore = (t: number, bottom = false) => {
+        const x = a.x + (b.x - a.x) * t;
+        const z =
+          a.z +
+          side * a.half +
+          (b.z + side * b.half - (a.z + side * a.half)) * t;
+        return [x, bottom ? -3 : cityGroundHeight(x, z + side * 0.02), z];
+      };
+      for (let j = 0; j < segments; j++) {
+        const p = shore(j / segments),
+          q = shore((j + 1) / segments),
+          r = shore((j + 1) / segments, true),
+          t = shore(j / segments, true);
+        bankPositions.push(...p, ...q, ...r, ...p, ...r, ...t);
+        bankUVs.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+      }
       const edge = new THREE.BufferGeometry();
       edge.setAttribute(
         'position',
-        new THREE.Float32BufferAttribute(
-          [
-            from.x,
-            0,
-            from.z,
-            to.x,
-            0,
-            to.z,
-            to.x,
-            -3,
-            to.z,
-            from.x,
-            -3,
-            from.z,
-          ],
-          3,
-        ),
+        new THREE.Float32BufferAttribute(bankPositions, 3),
       );
-      edge.setAttribute(
-        'uv',
-        new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2),
-      );
-      edge.setIndex(side < 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2]);
+      edge.setAttribute('uv', new THREE.Float32BufferAttribute(bankUVs, 2));
       edge.computeVertexNormals();
-      kit.mesh(edge, kit.material('#8f8c82'), root);
+      const bankMaterial = kit.material('#8f8c82');
+      bankMaterial.side = THREE.DoubleSide;
+      kit.mesh(edge, bankMaterial, root);
     }
   for (const island of CITY_ISLANDS) polygon(island.points, 0.027, '#708858');
+  for (const layer of new Set(cityRoads.map(cityRoadLayer))) {
+    const roads = cityRoads.filter((road) => cityRoadLayer(road) === layer);
+    const surfaces = buildRoadSurfaces(
+      roads,
+      layer === 'ground' ? ROUNDABOUT : undefined,
+    );
+    const sample = layer === 'raised' ? roadSample(roads) : cityGroundHeight;
+    const asphalt = drapedSurface(
+      kit,
+      root,
+      surfaces.asphalt,
+      '#535b5e',
+      sample,
+      0.065,
+      layer === 'raised' ? 1 : 3,
+    );
+    asphalt.name = `city-asphalt:${layer}`;
+    const curbs = drapedSurface(
+      kit,
+      root,
+      surfaces.curbs,
+      '#b9b9af',
+      sample,
+      0.14,
+      layer === 'raised' ? 1 : 3,
+    );
+    curbs.name = `city-curbs:${layer}`;
+  }
   for (const road of cityRoads) {
-    ribbon(kit, root, road.from, road.to, road.width + 1.2, 0.045, '#d0cdbc');
-    ribbon(kit, root, road.from, road.to, road.width, 0.058, '#535b5e');
     const dx = road.to.x - road.from.x,
       dz = road.to.z - road.from.z,
       length = Math.hypot(dx, dz);
@@ -203,109 +293,195 @@ export function createCityEnvironment(kit: RenderKit) {
           ROUNDABOUT.outerRadius + 1
       )
         continue;
+      const paint = new THREE.Group();
+      root.add(paint);
       ribbon(
         kit,
-        root,
+        paint,
         { x, z },
         { x: x + (dx * 2.3) / length, z: z + (dz * 2.3) / length },
         0.11,
-        0.071,
-        '#e8dca7',
+        0.1,
+        '#e7e6dc',
       );
+      liftScenery(kit, paint, (px, pz) => cityRoadHeight(road, px, pz));
     }
   }
-  for (const r of cityRoads.filter((r) => r.bridge)) {
+  for (const r of cityRoads.filter(
+    (r) => r.bridge || cityRoadLayer(r) === 'raised',
+  )) {
     const dx = r.to.x - r.from.x,
       dz = r.to.z - r.from.z,
       length = Math.hypot(dx, dz);
-    ribbon(kit, root, r.from, r.to, r.width + 0.6, -0.14, '#869596');
-    for (let t = 20; t < length - 10; t += 40)
+    const nx = -dz / length,
+      nz = dx / length;
+    const corners = [
+      { x: r.from.x + (nx * r.width) / 2, z: r.from.z + (nz * r.width) / 2 },
+      { x: r.to.x + (nx * r.width) / 2, z: r.to.z + (nz * r.width) / 2 },
+      { x: r.to.x - (nx * r.width) / 2, z: r.to.z - (nz * r.width) / 2 },
+      { x: r.from.x - (nx * r.width) / 2, z: r.from.z - (nz * r.width) / 2 },
+    ];
+    const underside = drapedSurface(
+      kit,
+      root,
+      [corners],
+      '#718083',
+      (x, z) => cityRoadHeight(r, x, z),
+      -CITY_DECK_THICKNESS,
+      4,
+    );
+    underside.material = kit.material('#718083');
+    underside.material.side = THREE.DoubleSide;
+    underside.castShadow = true;
+    for (let along = 0; along < length; along += 8) {
+      const next = Math.min(length, along + 8);
       for (const side of [-1, 1]) {
-        const x =
-            r.from.x +
-            (dx * t) / length -
-            ((side * dz) / length) * (r.width / 2 + 0.2),
-          z =
-            r.from.z +
-            (dz * t) / length +
-            ((side * dx) / length) * (r.width / 2 + 0.2);
-        kit.box(1.5, 3, 2, '#8f8c82', x, -1.6, z, root, 0);
-        kit.cylinder(0.09, 0.14, 4.5, '#40545a', x, 2.25, z, root);
-        if (r.bridge === 'kommunalny')
-          for (let j = 0; j < 12; j++) {
-            const f = (q: number) => -2.7 + 2.3 * (1 - ((q - 6) / 6) ** 2);
+        const point = (t: number, y: number) => {
+          const x =
+            r.from.x + (dx * t) / length + side * nx * (r.width / 2 + 0.2);
+          const z =
+            r.from.z + (dz * t) / length + side * nz * (r.width / 2 + 0.2);
+          return new THREE.Vector3(x, cityRoadHeight(r, x, z) + y, z);
+        };
+        const a = point(along, 0),
+          b = point(next, 0),
+          c = point(next, -CITY_DECK_THICKNESS),
+          d = point(along, -CITY_DECK_THICKNESS);
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute(
+          'position',
+          new THREE.Float32BufferAttribute(
+            [
+              ...a.toArray(),
+              ...b.toArray(),
+              ...c.toArray(),
+              ...a.toArray(),
+              ...c.toArray(),
+              ...d.toArray(),
+            ],
+            3,
+          ),
+        );
+        geometry.setAttribute(
+          'uv',
+          new THREE.Float32BufferAttribute(
+            [0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1],
+            2,
+          ),
+        );
+        geometry.computeVertexNormals();
+        kit.mesh(geometry, underside.material, root);
+      }
+    }
+    if (r.bridge === 'kommunalny') {
+      for (let start = 2; start + 24 < length - 2; start += 32) {
+        for (const side of [-1, 1]) {
+          const arch = (u: number) => {
+            const t = start + u * 24;
+            const x = r.from.x + (dx * t) / length + side * nx * r.width * 0.4;
+            const z = r.from.z + (dz * t) / length + side * nz * r.width * 0.4;
+            const y =
+              cityRoadHeight(r, x, z) -
+              CITY_DECK_THICKNESS -
+              0.65 -
+              4.2 * (2 * u - 1) ** 2;
+            return new THREE.Vector3(x, y, z);
+          };
+          for (let step = 0; step < 16; step++)
             kit.rod(
-              new THREE.Vector3(
-                x + (dx / length) * (j - 6) * 2,
-                f(j),
-                z + (dz / length) * (j - 6) * 2,
-              ),
-              new THREE.Vector3(
-                x + (dx / length) * (j - 5) * 2,
-                f(j + 1),
-                z + (dz / length) * (j - 5) * 2,
-              ),
-              0.32,
+              arch(step / 16),
+              arch((step + 1) / 16),
+              0.34,
               '#d4d2b7',
               root,
             );
+          for (const u of [0, 0.25, 0.75, 1]) {
+            const bottom = arch(u),
+              top = bottom.clone();
+            top.y = cityRoadHeight(r, top.x, top.z) - CITY_DECK_THICKNESS;
+            kit.rod(bottom, top, 0.16, '#d4d2b7', root);
           }
+        }
       }
+    }
+    for (let along = 18; along < length - 8; along += 32) {
+      const x = r.from.x + (dx * along) / length,
+        z = r.from.z + (dz * along) / length;
+      const lowerRoad = cityRoads.some(
+        (road) =>
+          cityRoadLayer(road) === 'lower' &&
+          distanceToRoad(x, z, road) < road.width / 2 + 4,
+      );
+      if (lowerRoad) continue;
+      const top = cityRoadHeight(r, x, z) - CITY_DECK_THICKNESS,
+        bottom = cityGroundHeight(x, z) - 0.5;
+      if (top - bottom < 0.75) continue;
+      for (const side of [-1, 1])
+        kit.box(
+          1.1,
+          top - bottom,
+          1.6,
+          '#a3aaa1',
+          x + side * nx * r.width * 0.36,
+          (top + bottom) / 2,
+          z + side * nz * r.width * 0.36,
+          root,
+          0,
+        );
+    }
   }
-  for (const b of cityBarriers) {
-    const rail = kit.box(b.w, 1.1, b.d, '#b4b8a5', b.x, 0.5, b.z, root, 0);
-    rail.rotation.y = b.angle ?? 0;
-  }
-  // The round island is a real circular collider; its surrounding 16 m lane is drivable.
-  const roundRoad = kit.mesh(
-    new THREE.CircleGeometry(ROUNDABOUT.outerRadius + 0.65, 80),
-    kit.material('#d2ccaf'),
-    root,
-  );
-  roundRoad.rotation.x = -Math.PI / 2;
-  roundRoad.position.set(ROUNDABOUT.x, 0.078, ROUNDABOUT.z);
-  const lane = kit.mesh(
-    new THREE.RingGeometry(ROUNDABOUT.innerRadius, ROUNDABOUT.outerRadius, 80),
-    kit.material('#536671'),
-    root,
-  );
-  lane.rotation.x = -Math.PI / 2;
-  lane.position.set(ROUNDABOUT.x, 0.087, ROUNDABOUT.z);
-  kit.cylinder(
-    ROUNDABOUT.innerRadius,
-    ROUNDABOUT.innerRadius,
-    0.38,
-    '#c9c9ad',
-    ROUNDABOUT.x,
-    0.19,
-    ROUNDABOUT.z,
-    root,
-  );
-  kit.cylinder(
-    ROUNDABOUT.innerRadius - 0.4,
-    ROUNDABOUT.innerRadius - 0.4,
-    0.07,
-    '#829966',
-    ROUNDABOUT.x,
-    0.4,
-    ROUNDABOUT.z,
-    root,
-  );
-  for (let j = 0; j < 32; j++) {
-    const dash = kit.mesh(
-      new THREE.RingGeometry(36.9, 37.05, 4, 1, (j * Math.PI) / 16, 0.1),
-      kit.material('#e8dca7'),
-      root,
+  createBridgeRails(kit, root);
+  for (const roundabout of CITY_ROUNDABOUTS) {
+    const ringRoot = new THREE.Group();
+    root.add(ringRoot);
+    // The round island is a real circular collider; its surrounding 16 m lane is drivable.
+    // The same asphalt union includes the ring, with open entrances. The old
+    // independent cream disk left a curb drawn straight across every approach.
+    const islandCurb = kit.cylinder(
+      roundabout.innerRadius,
+      roundabout.innerRadius,
+      0.38,
+      '#c9c9ad',
+      roundabout.x,
+      0.19,
+      roundabout.z,
+      ringRoot,
     );
-    dash.rotation.x = -Math.PI / 2;
-    dash.position.set(ROUNDABOUT.x, 0.099, ROUNDABOUT.z);
-  }
-  for (let j = 0; j < 8; j++) {
-    const angle = (j * Math.PI) / 4,
-      x = ROUNDABOUT.x + Math.cos(angle) * 5.7,
-      z = ROUNDABOUT.z + Math.sin(angle) * 5.7;
-    kit.cylinder(0.14, 0.2, 1.6, '#6c6650', x, 1.15, z, root);
-    kit.sphere(1.05, 1.65, 1.05, '#708858', x, 2.7, z, root, 12);
+    islandCurb.userData.reliefDrape = true;
+    kit.cylinder(
+      roundabout.innerRadius - 0.4,
+      roundabout.innerRadius - 0.4,
+      0.07,
+      '#829966',
+      roundabout.x,
+      0.4,
+      roundabout.z,
+      ringRoot,
+    );
+    for (let j = 0; j < 32; j++) {
+      const dash = kit.mesh(
+        new THREE.RingGeometry(
+          (roundabout.innerRadius + roundabout.outerRadius) / 2 - 0.075,
+          (roundabout.innerRadius + roundabout.outerRadius) / 2 + 0.075,
+          4,
+          1,
+          (j * Math.PI) / 16,
+          0.1,
+        ),
+        kit.material('#e7e6dc'),
+        ringRoot,
+      );
+      dash.rotation.x = -Math.PI / 2;
+      dash.position.set(roundabout.x, 0.1, roundabout.z);
+    }
+    for (let j = 0; j < 8; j++) {
+      const angle = (j * Math.PI) / 4,
+        x = roundabout.x + Math.cos(angle) * 5.7,
+        z = roundabout.z + Math.sin(angle) * 5.7;
+      kit.cylinder(0.14, 0.2, 1.6, '#6c6650', x, 1.15, z, ringRoot);
+      kit.sphere(1.05, 1.65, 1.05, '#708858', x, 2.7, z, ringRoot, 12);
+    }
+    liftScenery(kit, ringRoot, cityGroundHeight);
   }
   const lit = new THREE.MeshStandardMaterial({
     color: '#f3d5a3',
@@ -313,7 +489,11 @@ export function createCityEnvironment(kit: RenderKit) {
     emissiveIntensity: 0.65,
   });
   kit.materials.add(lit);
+  const cityRoot = root;
   for (const [index, building] of cityBuildings.entries()) {
+    const root = new THREE.Group();
+    root.position.y = cityGroundHeight(building.x, building.z);
+    cityRoot.add(root);
     const { x, z, w, d, h, color } = building;
     if (createCentreLandmark(kit, root, building)) continue;
     if (createDistrictLandmark(kit, root, building)) continue;
@@ -395,19 +575,31 @@ export function createCityEnvironment(kit: RenderKit) {
       );
     }
   }
-  createCityParking(kit, root);
-  createNeighbourhoodGreenery(kit, root);
+  const props = new THREE.Group();
+  root.add(props);
+  createCityParking(kit, props);
+  createYeniseySign(kit, props);
+  createNeighbourhoodGreenery(kit, props);
+  createNorthernChapel(kit, props);
+  createEuropeMonument(kit, props);
+  createChapelCannon(kit, props);
+  const scenery = createCityLandmarks(kit, props, lit);
+  const streetSignals = createStreetSignalLight(kit);
+  const streetFurniture = createStreetDetails(
+    kit,
+    props,
+    lit,
+    scenery,
+    streetSignals.material,
+  );
+  liftScenery(kit, props, cityGroundHeight);
   createSiberianRidges(kit, root);
-  createNorthernChapel(kit, root);
-  createEuropeMonument(kit, root);
-  createChapelCannon(kit, root);
-  const scenery = createCityLandmarks(kit, root, lit);
-  const streetFurniture = createStreetDetails(kit, root, lit, scenery);
+  const cameraOccluders = collectCityFoliage(root);
   batchCity(kit, root);
   const labels: THREE.Sprite[] = [];
   const label = (text: string, x: number, z: number, width: number, y = 3) => {
     const sprite = makeLabel(kit, text, '#ede4bd', width);
-    sprite.position.set(x, y, z);
+    sprite.position.set(x, cityGroundHeight(x, z) + y, z);
     kit.scene.add(sprite);
     labels.push(sprite);
     return sprite;
@@ -429,10 +621,10 @@ export function createCityEnvironment(kit: RenderKit) {
       }),
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(stop.x, 0.1, stop.z);
+    ring.position.set(stop.x, surfaceHeight(stop.x, stop.z) + 0.1, stop.z);
     ring.castShadow = false;
     const sign = makeLabel(kit, stop.title, stop.color, 5.6);
-    sign.position.set(stop.x, 3, stop.z);
+    sign.position.set(stop.x, surfaceHeight(stop.x, stop.z) + 3, stop.z);
     kit.scene.add(sign);
     const overviewSign = makeLabel(kit, overviewNames[index], stop.color, 24);
     const canvas = overviewSign.material.map!.image as HTMLCanvasElement;
@@ -472,6 +664,7 @@ export function createCityEnvironment(kit: RenderKit) {
     root,
     scenery,
     streetFurniture,
+    cameraOccluders,
     stops,
     labels,
     update(
@@ -480,7 +673,9 @@ export function createCityEnvironment(kit: RenderKit) {
       nearStop = -1,
       overview = false,
       overviewLabelWidth = 32,
+      carPosition?: CityPoint,
     ) {
+      streetSignals.update(time);
       labels.forEach((sprite) => {
         sprite.visible = overview;
       });
@@ -498,7 +693,15 @@ export function createCityEnvironment(kit: RenderKit) {
         (ring.material as THREE.MeshBasicMaterial).opacity = selected
           ? 0.92
           : 0.42;
-        sign.visible = !overview && index === targetStop && index !== nearStop;
+        const stop = cityStops[index];
+        const clearOfCar =
+          !carPosition ||
+          Math.hypot(stop.x - carPosition.x, stop.z - carPosition.z) > 80;
+        // Close destinations are already in the HUD/minimap. Keeping their
+        // billboard out of the camera's neighbourhood prevents it crossing the
+        // car immediately after nearStop clears on departure.
+        sign.visible =
+          !overview && index === targetStop && index !== nearStop && clearOfCar;
         // Only the selected destination gets a large label; neighbouring story
         // entrances would overlap at the scale of the whole city.
         overviewLabel.visible = overview && selected;
@@ -506,7 +709,8 @@ export function createCityEnvironment(kit: RenderKit) {
         sign.scale.set(width, (width * 96) / 512, 1);
         const mapWidth = THREE.MathUtils.clamp(overviewLabelWidth, 180, 1800);
         overviewLabel.scale.set(mapWidth, (mapWidth * 96) / 512, 1);
-        overviewLabel.position.y = overview ? mapWidth * 0.14 : 3;
+        overviewLabel.position.y =
+          surfaceHeight(stop.x, stop.z) + (overview ? mapWidth * 0.14 : 3);
       });
       for (let i = 0; i < 64; i++) {
         const x = minX + ((i * 7.73 + time * 0.65) % width);

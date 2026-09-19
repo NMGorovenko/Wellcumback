@@ -1,10 +1,12 @@
+import { cityBarriers } from './barriers.ts';
 import {
   vehiclePose,
   rememberVehicleStep,
   setVehicleRemainder,
   resetVehiclePresentation,
 } from './vehicle-presentation.ts';
-import { stepCar } from './car-physics.ts';
+import { stepCar, type CarInput, type VehicleTuning } from './car-physics.ts';
+import { citySurfacePose, cityRoadHeight } from './surface.ts';
 import { freshPowertrain, type PowertrainState } from './powertrain.ts';
 import { resolveDrive, type DriveAxes } from '../input/drive.ts';
 import {
@@ -19,12 +21,14 @@ import {
   CITY_BOUNDS,
   CITY_SPAWN,
   CITY_PARKING,
-  ROUNDABOUT,
-  cityBarriers,
+  CITY_ROUNDABOUTS,
   cityBuildings,
   cityStops,
 } from './layout.ts';
 export type CityState = {
+  elevation?: number;
+  pitch?: number;
+  surfaceId?: string;
   paused: boolean;
   players: number;
   x: number;
@@ -58,6 +62,7 @@ export type CityState = {
   conversation?: CityConversation;
 };
 export const freshCity = (): CityState => ({
+  ...citySurfacePose(CITY_SPAWN.x, CITY_SPAWN.z, CITY_SPAWN.heading),
   paused: false,
   players: 1,
   x: CITY_SPAWN.x,
@@ -110,7 +115,7 @@ for (const b of blockers) {
 
 const RADIUS = 0.85,
   STEP = 1 / 60;
-export function cityBlocked(x: number, z: number) {
+export function cityBlocked(x: number, z: number, elevation?: number) {
   if (
     x < CITY_BOUNDS.minX + RADIUS ||
     x > CITY_BOUNDS.maxX - RADIUS ||
@@ -126,8 +131,9 @@ export function cityBlocked(x: number, z: number) {
   )
     return true;
   if (
-    Math.hypot(x - ROUNDABOUT.x, z - ROUNDABOUT.z) <
-    ROUNDABOUT.innerRadius + RADIUS
+    CITY_ROUNDABOUTS.some(
+      (ring) => Math.hypot(x - ring.x, z - ring.z) < ring.innerRadius + RADIUS,
+    )
   )
     return true;
   return (
@@ -140,16 +146,76 @@ export function cityBlocked(x: number, z: number) {
       dz = z - b.z;
     const localX = dx * Math.cos(angle) - dz * Math.sin(angle),
       localZ = dx * Math.sin(angle) + dz * Math.cos(angle);
-    return (
-      Math.abs(localX) < b.w / 2 + RADIUS && Math.abs(localZ) < b.d / 2 + RADIUS
-    );
+    if (
+      Math.abs(localX) >= b.w / 2 + RADIUS ||
+      Math.abs(localZ) >= b.d / 2 + RADIUS
+    )
+      return false;
+    if (elevation !== undefined && b.roadId) {
+      const road = cityRoads.find((r) => r.id === b.roadId)!;
+      if (Math.abs(cityRoadHeight(road, x, z) - elevation) > 2.5) return false;
+    }
+    return true;
   });
 }
 /** Three circles approximate the coupe body, including its long bonnet. */
-export function cityCarBlocked(x: number, z: number, heading: number) {
+export function cityCarBlocked(
+  x: number,
+  z: number,
+  heading: number,
+  elevation = citySurfacePose(x, z, heading).elevation,
+) {
   return [-1.2, 0, 1.2].some((offset) =>
-    cityBlocked(x + Math.sin(heading) * offset, z - Math.cos(heading) * offset),
+    cityBlocked(
+      x + Math.sin(heading) * offset,
+      z - Math.cos(heading) * offset,
+      elevation,
+    ),
   );
+}
+/** Shared city/race terrain step. The surface history selects the correct
+ * deck at a crossing; steep ledges are solid instead of vertical teleports. */
+export function stepCityCar(
+  s: CityState,
+  input: CarInput,
+  dt: number,
+  tuning?: VehicleTuning,
+) {
+  const prior = citySurfacePose(s.x, s.z, s.heading, s.elevation, s.surfaceId);
+  Object.assign(s, prior);
+  // A modest gravity component is noticeable uphill without turning parking
+  // or the automatic transmission into a hill-start simulation.
+  if (s.speed > 0.5) {
+    const gravity = Math.sin(prior.pitch) * 9.81 * 0.45 * dt;
+    s.vx -= Math.sin(s.heading) * gravity;
+    s.vz += Math.cos(s.heading) * gravity;
+  }
+  const before = { x: s.x, z: s.z };
+  const result = stepCar(
+    s,
+    input,
+    dt,
+    (x, z, heading) => {
+      const pose = citySurfacePose(
+        x,
+        z,
+        heading,
+        prior.elevation,
+        prior.surfaceId,
+      );
+      const travel = Math.hypot(x - before.x, z - before.z);
+      return (
+        Math.abs(pose.elevation - prior.elevation) > 0.3 + travel * 0.22 ||
+        cityCarBlocked(x, z, heading, pose.elevation)
+      );
+    },
+    tuning,
+  );
+  Object.assign(
+    s,
+    citySurfacePose(s.x, s.z, s.heading, prior.elevation, prior.surfaceId),
+  );
+  return result;
 }
 /** Resolve only canonical destinations, then choose a clear pose on their road. */
 export function cityTravelArrival(stopId: string) {
@@ -218,6 +284,7 @@ export function teleportCityCar(s: CityState, stopId: string) {
   const arrival = cityTravelArrival(stopId);
   if (!arrival) return false;
   Object.assign(s, {
+    ...citySurfacePose(arrival.x, arrival.z, arrival.heading),
     x: arrival.x,
     z: arrival.z,
     heading: arrival.heading,
@@ -252,6 +319,7 @@ export function teleportCityCar(s: CityState, stopId: string) {
 export function resetCityCar(s: CityState) {
   resetVehiclePresentation(s);
   Object.assign(s, {
+    ...citySurfacePose(CITY_SPAWN.x, CITY_SPAWN.z, CITY_SPAWN.heading),
     x: CITY_SPAWN.x,
     z: CITY_SPAWN.z,
     vx: 0,
@@ -278,14 +346,13 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
     s.radioUntil = s.elapsed + 4;
   }
   s.previousHorn = horn;
-  const { worldContact: hit } = stepCar(
+  const { worldContact: hit } = stepCityCar(
     s,
     {
       ...resolveDrive(keys, axes),
       handbrake: keys.has('ShiftLeft'),
     },
     STEP,
-    cityCarBlocked,
   );
   const magnitude = s.speed;
   if (hit && !s.bumpCooldown && magnitude > 1) {

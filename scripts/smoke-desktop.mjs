@@ -58,7 +58,7 @@ try {
       cwd: root,
       env,
       stdio: 'inherit',
-      timeout: 40000,
+      timeout: 70000,
     });
     if (run.error || run.status !== 0)
       throw (

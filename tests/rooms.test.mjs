@@ -589,18 +589,35 @@ void test('concurrent host epoch cannot keep a returning guest offline', async (
 
 void test('room protocol carries the six-speed city at 300 km/h and preserves it through the reconnect pause', async () => {
   const { freshCity, tickCity } = await import('../lib/game/city/engine.ts');
+  const { stepCar } = await import('../lib/game/city/car-physics.ts');
+  const { citySurfacePose } = await import('../lib/game/city/surface.ts');
   const { hostPoll, guestPoll } = await party(2);
+  // Build the actual sixth-gear state on an open run: the compact city has no
+  // straight long enough for 0–300. Then drive a real downhill road at the cap
+  // before publishing; no gearbox, speed or reconnect fields are fabricated.
+  const city = freshCity();
+  for (let i = 0; i < 1500; i++)
+    stepCar(
+      city,
+      { throttle: 1, steer: 0, handbrake: false },
+      1 / 60,
+      () => false,
+    );
   const road = cityRoads.find((r) => r.id === 'left-quay:1');
-  const dx = road.to.x - road.from.x,
-    dz = road.to.z - road.from.z,
+  const dx = road.from.x - road.to.x,
+    dz = road.from.z - road.to.z,
     length = Math.hypot(dx, dz);
-  const city = {
-    ...freshCity(),
-    x: road.from.x + (dx / length) * 15,
-    z: road.from.z + (dz / length) * 15,
+  Object.assign(city, {
+    x: road.to.x + (dx / length) * 50,
+    z: road.to.z + (dz / length) * 50,
     heading: Math.atan2(dx, -dz),
-  };
-  for (let i = 0; i < 1500; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
+    vx: (dx / length) * city.speed,
+    vz: (dz / length) * city.speed,
+  });
+  Object.assign(city, citySurfacePose(city.x, city.z, city.heading));
+  const start = { x: city.x, z: city.z };
+  for (let i = 0; i < 60; i++) tickCity(city, 1 / 60, new Set(['KeyW']));
+  assert.ok(Math.hypot(city.x - start.x, city.z - start.z) > 83);
   assert.equal(city.bumps, 0);
   assert.ok(Math.abs(city.speed - CITY_TOP_SPEED) < 1e-8);
   const world = { ...snapshot(3), state: city };

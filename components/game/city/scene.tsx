@@ -4,6 +4,7 @@ import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
 import type { CityState } from '@/lib/game/city/engine';
+import { citySurfacePose } from '@/lib/game/city/surface';
 import { RenderKit } from '../world/render-kit';
 import { createCityEnvironment } from './environment';
 import { createCityAtmosphere } from './atmosphere';
@@ -15,6 +16,7 @@ import {
   cityDriveCamera,
   cityCruiseCamera,
   clearCityCruiseCamera,
+  cityCameraFocus,
   cityFaceCamera,
   cityOverviewCamera,
   followCityHeading,
@@ -143,6 +145,7 @@ export default function CityScene({
         depthWrite: false,
         side: THREE.DoubleSide,
       });
+    skidGeometry.rotateX(-Math.PI / 2);
     kit.geometries.add(skidGeometry);
     kit.materials.add(skidMaterial);
     const skids = new THREE.InstancedMesh(
@@ -156,6 +159,8 @@ export default function CityScene({
       x: 0,
       z: 0,
       angle: 0,
+      y: 0,
+      pitch: 0,
       life: 0,
     }));
     const dummy = new THREE.Object3D(),
@@ -184,14 +189,15 @@ export default function CityScene({
       const sprite = new THREE.Sprite(material);
       sprite.visible = false;
       scene.add(sprite);
-      return { sprite, age: 2, x: 0, z: 0 };
+      return { sprite, age: 2, x: 0, y: 0, z: 0 };
     });
     let skidCursor = 0,
       smokeCursor = 0,
       emitClock = 0,
       last = performance.now(),
       raf = 0,
-      lastElapsed = game.current.elapsed;
+      lastElapsed = game.current.elapsed,
+      lastTravelRevision = game.current.travelRevision ?? 0;
     const projected = new THREE.Vector3();
     const currentLook = look.clone(),
       currentOutward = outward.clone();
@@ -244,20 +250,35 @@ export default function CityScene({
     resize();
     let lastCameraTime = performance.now();
     const render = (now: number) => {
-      const s = presentedVehicle(game.current).car,
+      const presented = presentedVehicle(game.current),
+        s = {
+          ...presented.car,
+          elevation: presented.elevation,
+          pitch: presented.pitch,
+        },
         dt = s.paused ? 0 : Math.min((now - last) / 1000, 0.05);
       last = now;
-      if (s.elapsed < lastElapsed) {
+      const discontinuity =
+        s.elapsed < lastElapsed ||
+        (s.travelRevision ?? 0) !== lastTravelRevision;
+      if (discontinuity) {
         tracks.forEach((t) => (t.life = 0));
         smoke.forEach((p) => (p.age = 2));
         emitClock = 0;
       }
       lastElapsed = s.elapsed;
+      lastTravelRevision = s.travelRevision ?? 0;
       const cameraDelta = Math.min((now - lastCameraTime) / 1000, 0.05);
       lastCameraTime = now;
-      cameraHeading = followCityHeading(cameraHeading, s.heading, cameraDelta);
+      cameraHeading = discontinuity
+        ? s.heading
+        : followCityHeading(cameraHeading, s.heading, cameraDelta);
       const driveView = localView(s);
       const smoothCamera = 1 - Math.exp(-cameraDelta * 8);
+      if (discontinuity) {
+        currentLook.set(driveView.look.x, driveView.look.y, driveView.look.z);
+        previousMode = null;
+      }
       const desiredLook =
         mode.current !== 'map'
           ? projected.set(driveView.look.x, driveView.look.y, driveView.look.z)
@@ -277,8 +298,24 @@ export default function CityScene({
       currentHalfHeight += (halfHeight - currentHalfHeight) * smoothCamera;
       camera.position
         .copy(currentLook)
-        .addScaledVector(currentOutward, cameraDistance);
-      camera.lookAt(currentLook);
+        .addScaledVector(
+          currentOutward,
+          mode.current === 'map'
+            ? cameraDistance
+            : Math.max(24, currentHalfHeight * 3),
+        );
+      if (mode.current !== 'map' && mode.current !== 'cruise') {
+        const clear = clearCityCruiseCamera(
+          camera.position,
+          s,
+          undefined,
+          undefined,
+          city.cameraOccluders,
+        );
+        const focus = cityCameraFocus(currentLook, camera.position, clear, s);
+        camera.position.set(clear.x, clear.y, clear.z);
+        camera.lookAt(focus.x, focus.y, focus.z);
+      } else camera.lookAt(currentLook);
       camera.left = -currentHalfHeight * aspect;
       camera.right = currentHalfHeight * aspect;
       camera.top = currentHalfHeight;
@@ -296,10 +333,16 @@ export default function CityScene({
           projected.set(view.look.x, view.look.y, view.look.z),
           blend,
         );
-        const clear = clearCityCruiseCamera(cruisePosition, s);
-        cruisePosition.set(clear.x, clear.y, clear.z);
-        cruiseCamera.position.copy(cruisePosition);
-        cruiseCamera.lookAt(cruiseLook);
+        const clear = clearCityCruiseCamera(
+          cruisePosition,
+          s,
+          undefined,
+          undefined,
+          city.cameraOccluders,
+        );
+        const focus = cityCameraFocus(cruiseLook, cruisePosition, clear, s);
+        cruiseCamera.position.set(clear.x, clear.y, clear.z);
+        cruiseCamera.lookAt(focus.x, focus.y, focus.z);
         cruiseCamera.fov += (view.fov - cruiseCamera.fov) * blend;
         cruiseCamera.updateProjectionMatrix();
         activeCamera = cruiseCamera;
@@ -307,6 +350,9 @@ export default function CityScene({
       } else scene.fog = null;
       previousMode = mode.current;
       car.update(s, dt, mode.current === 'faces');
+      car.root.rotation.order = 'YXZ';
+      car.root.position.y = presented.elevation + 0.04;
+      car.root.rotation.x = presented.pitch;
       const line = citySpeech(s);
       placeSpeechBubble(
         speechRef,
@@ -322,6 +368,7 @@ export default function CityScene({
         s.nearStop,
         mode.current === 'map' && currentHalfHeight > overviewHalfHeight * 0.65,
         (currentHalfHeight * 2 * 150) / viewportHeight,
+        s,
       );
       // A city-sized shadow frustum wastes resolution. Follow the presented car
       // in every street view and turn shadows off for the multi-kilometre map.
@@ -330,7 +377,7 @@ export default function CityScene({
       sun.castShadow = mode.current !== 'map';
       sun.shadow.autoUpdate = sun.castShadow;
       const texel = (shadowSize * 2) / sun.shadow.mapSize.x;
-      projected.set(s.x, 0, s.z);
+      projected.set(s.x, presented.elevation, s.z);
       const shadowX = projected.dot(shadowRight),
         shadowY = projected.dot(shadowUp);
       projected.addScaledVector(
@@ -360,10 +407,19 @@ export default function CityScene({
               s.z +
               side * 0.8 * Math.sin(s.heading) +
               1.3 * Math.cos(s.heading);
+          const contact = citySurfacePose(
+            x,
+            z,
+            s.heading,
+            presented.elevation,
+            s.surfaceId,
+          );
           Object.assign(tracks[skidCursor], {
             x,
             z,
             angle: -s.heading,
+            y: contact.elevation + 0.105,
+            pitch: contact.pitch,
             life: 1,
           });
           skidCursor = (skidCursor + 1) % SKID_CAPACITY;
@@ -371,13 +427,15 @@ export default function CityScene({
           puff.age = 0;
           puff.x = x;
           puff.z = z;
+          puff.y = contact.elevation;
           smokeCursor = (smokeCursor + 1) % SMOKE_CAPACITY;
         }
       }
       tracks.forEach((track, i) => {
         track.life = Math.max(0, track.life - dt / 8);
-        dummy.position.set(track.x, 0.092, track.z);
-        dummy.rotation.set(-Math.PI / 2, 0, track.angle);
+        dummy.position.set(track.x, track.y, track.z);
+        dummy.rotation.order = 'YXZ';
+        dummy.rotation.set(track.pitch, track.angle, 0);
         dummy.scale.setScalar(track.life > 0 ? 1 : 0);
         dummy.updateMatrix();
         skids.setMatrixAt(i, dummy.matrix);
@@ -397,7 +455,7 @@ export default function CityScene({
         if (!alive) return;
         puff.sprite.position.set(
           puff.x + Math.sin(i * 4.7) * puff.age * 0.22,
-          0.25 + puff.age * 0.48,
+          puff.y + 0.25 + puff.age * 0.48,
           puff.z + puff.age * 0.2,
         );
         puff.sprite.scale.setScalar(0.35 + puff.age * 0.7);

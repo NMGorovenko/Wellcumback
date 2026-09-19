@@ -6,6 +6,12 @@ import {
   type CityBuilding,
 } from '../../../lib/game/city/layout.ts';
 import type { CityState } from '../../../lib/game/city/engine.ts';
+import {
+  CITY_DECK_THICKNESS,
+  cityGroundHeight,
+  cityOverpassClearance,
+  citySurfacePose,
+} from '../../../lib/game/city/surface.ts';
 
 export type CityCameraMode = 'drive' | 'cruise' | 'map' | 'faces';
 export const CITY_CAMERA_MODES: CityCameraMode[] = [
@@ -16,14 +22,40 @@ export const CITY_CAMERA_MODES: CityCameraMode[] = [
 ];
 
 type CameraPoint = { x: number; y: number; z: number };
+export type CityCameraOccluder = {
+  minX: number;
+  minY: number;
+  minZ: number;
+  maxX: number;
+  maxY: number;
+  maxZ: number;
+};
+type CameraCar = Pick<CityState, 'x' | 'z'> & {
+  elevation?: number;
+  pitch?: number;
+  surfaceId?: string;
+};
+type DrivingCameraCar = Pick<
+  CityState,
+  'x' | 'z' | 'vx' | 'vz' | 'heading' | 'speed'
+> &
+  CameraCar;
+export type CityCameraSurface = {
+  heightAt: (x: number, z: number, car: CameraCar) => number;
+  ceilingAt: (x: number, z: number) => number | null;
+  buildingBaseAt: (x: number, z: number) => number;
+};
+const cityCameraSurface: CityCameraSurface = {
+  heightAt: (x, z, car) =>
+    citySurfacePose(x, z, 0, car.elevation, car.surfaceId).elevation,
+  ceilingAt: cityOverpassClearance,
+  buildingBaseAt: cityGroundHeight,
+};
 
 /** A perspective camera near roof height gives the street a distant vanishing
  * point. The boom opens gradually at speed; sideways motion leads the view
  * without spinning the camera away from the driver's heading during a drift. */
-export function cityCruiseCamera(
-  state: Pick<CityState, 'x' | 'z' | 'vx' | 'vz' | 'heading' | 'speed'>,
-  aspect: number,
-) {
+export function cityCruiseCamera(state: DrivingCameraCar, aspect: number) {
   const speed = Math.max(0, Math.min(CITY_TOP_SPEED, state.speed));
   const fx = Math.sin(state.heading),
     fz = -Math.cos(state.heading);
@@ -37,12 +69,15 @@ export function cityCruiseCamera(
   return {
     position: {
       x: state.x - fx * distance,
-      y: height,
+      y: (state.elevation ?? 0) + height,
       z: state.z - fz * distance,
     },
     look: {
       x: state.x + fx * lead + dx * driftLead,
-      y: 1.05,
+      y:
+        (state.elevation ?? 0) +
+        1.05 +
+        Math.sin(state.pitch ?? 0) * lead * 0.65,
       z: state.z + fz * lead + dz * driftLead,
     },
     fov: 58 + (speed / CITY_TOP_SPEED) * 6,
@@ -54,16 +89,51 @@ export function cityCruiseCamera(
  * This is applied after smoothing, so interpolation cannot tunnel through walls. */
 export function clearCityCruiseCamera(
   desired: CameraPoint,
-  car: Pick<CityState, 'x' | 'z'>,
+  car: CameraCar,
   buildings: readonly Pick<
     CityBuilding,
     'x' | 'z' | 'w' | 'd' | 'h'
   >[] = cityBuildings,
+  surface: CityCameraSurface = cityCameraSurface,
+  foliage: readonly CityCameraOccluder[] = [],
 ): CameraPoint {
-  const anchor = { x: car.x, y: 1.25, z: car.z };
+  const elevation = car.elevation ?? 0;
+  const anchor = { x: car.x, y: elevation + 1.25, z: car.z };
+  const ceilingAt = (
+    x: number,
+    z: number,
+    floor = surface.heightAt(x, z, car),
+  ) => {
+    const deck = surface.ceilingAt(x, z);
+    // Compare against the selected surface here, not the car's height farther
+    // down the hill: an uphill section of the same deck is never a ceiling.
+    return deck !== null && floor < deck - 2.5
+      ? deck - CITY_DECK_THICKNESS - 0.85
+      : Infinity;
+  };
+  let eyeY = Math.max(
+    elevation + 2.5,
+    desired.y,
+    surface.heightAt(desired.x, desired.z, car) + 1,
+  );
+  const planar = Math.hypot(desired.x - car.x, desired.z - car.z);
+  const steps = Math.max(8, Math.min(240, Math.ceil(planar / 0.8)));
+  let maximumY = Infinity;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const x = car.x + (desired.x - car.x) * t,
+      z = car.z + (desired.z - car.z) * t;
+    const floor = surface.heightAt(x, z, car);
+    eyeY = Math.max(eyeY, anchor.y + (floor + 0.55 - anchor.y) / t);
+    maximumY = Math.min(
+      maximumY,
+      anchor.y + (ceilingAt(x, z, floor) - anchor.y) / t,
+    );
+  }
+  eyeY = Math.min(eyeY, maximumY);
   const delta = {
     x: desired.x - anchor.x,
-    y: Math.max(2.5, desired.y) - anchor.y,
+    y: eyeY - anchor.y,
     z: desired.z - anchor.z,
   };
   const distance = Math.hypot(delta.x, delta.y, delta.z);
@@ -72,20 +142,33 @@ export function clearCityCruiseCamera(
     minZ = Math.min(anchor.z, desired.z) - 0.65,
     maxZ = Math.max(anchor.z, desired.z) + 0.65;
   let closest = 1;
-  for (const b of buildings) {
+  // If a hill and a bridge ceiling leave no unobstructed long boom, retract
+  // before the first obstruction instead of jumping the camera onto the deck.
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps,
+      x = anchor.x + delta.x * t,
+      z = anchor.z + delta.z * t;
+    const y = anchor.y + delta.y * t;
+    const floor = surface.heightAt(x, z, car);
+    if (y < floor + 0.35 || y > ceilingAt(x, z, floor)) {
+      closest = Math.max(0, (i - 1) / steps);
+      break;
+    }
+  }
+  const checkBox = (box: CityCameraOccluder) => {
     if (
-      b.x + b.w / 2 < minX ||
-      b.x - b.w / 2 > maxX ||
-      b.z + b.d / 2 < minZ ||
-      b.z - b.d / 2 > maxZ
+      box.maxX < minX ||
+      box.minX > maxX ||
+      box.maxZ < minZ ||
+      box.minZ > maxZ
     )
-      continue;
+      return;
     let enter = 0,
       leave = 1;
     for (const [origin, direction, low, high] of [
-      [anchor.x, delta.x, b.x - b.w / 2 - 0.65, b.x + b.w / 2 + 0.65],
-      [anchor.y, delta.y, -1, b.h + 1.1],
-      [anchor.z, delta.z, b.z - b.d / 2 - 0.65, b.z + b.d / 2 + 0.65],
+      [anchor.x, delta.x, box.minX - 0.65, box.maxX + 0.65],
+      [anchor.y, delta.y, box.minY - 0.3, box.maxY + 0.3],
+      [anchor.z, delta.z, box.minZ - 0.65, box.maxZ + 0.65],
     ]) {
       if (Math.abs(direction) < 1e-7) {
         if (origin < low || origin > high) {
@@ -101,24 +184,70 @@ export function clearCityCruiseCamera(
     }
     if (enter <= leave && leave >= 0 && enter <= 1)
       closest = Math.min(closest, enter);
+  };
+  for (const b of buildings) {
+    if (
+      b.x + b.w / 2 < minX ||
+      b.x - b.w / 2 > maxX ||
+      b.z + b.d / 2 < minZ ||
+      b.z - b.d / 2 > maxZ
+    )
+      continue;
+    const base = surface.buildingBaseAt(b.x, b.z);
+    checkBox({
+      minX: b.x - b.w / 2,
+      maxX: b.x + b.w / 2,
+      minY: base - 0.7,
+      maxY: base + b.h + 0.8,
+      minZ: b.z - b.d / 2,
+      maxZ: b.z + b.d / 2,
+    });
   }
-  if (closest === 1) return { ...desired, y: Math.max(2.5, desired.y) };
+  for (const crown of foliage) checkBox(crown);
+  if (closest === 1) return { ...desired, y: eyeY };
   const fraction = Math.max(0, closest - 0.3 / Math.max(distance, 0.01));
   if (fraction * Math.hypot(delta.x, delta.z) < 4.5)
-    return { x: car.x, y: Math.max(6, desired.y), z: car.z };
+    return {
+      x: car.x,
+      y: Math.min(Math.max(elevation + 6, eyeY), ceilingAt(car.x, car.z)),
+      z: car.z,
+    };
   return {
     x: anchor.x + delta.x * fraction,
-    y: Math.max(2.5, anchor.y + delta.y * fraction),
+    y: anchor.y + delta.y * fraction,
     z: anchor.z + delta.z * fraction,
+  };
+}
+
+/** A retracted boom cannot retain its long look-ahead: the car would slip
+ * behind the camera. Ease the target back to the cabin as clearance intervenes. */
+export function cityCameraFocus(
+  desiredLook: CameraPoint,
+  desiredEye: CameraPoint,
+  clearEye: CameraPoint,
+  car: CameraCar,
+): CameraPoint {
+  const blend =
+    Math.hypot(clearEye.x - car.x, clearEye.z - car.z) < 4.5
+      ? 1
+      : Math.min(
+          1,
+          Math.hypot(
+            desiredEye.x - clearEye.x,
+            desiredEye.y - clearEye.y,
+            desiredEye.z - clearEye.z,
+          ) / 2,
+        );
+  return {
+    x: desiredLook.x + (car.x - desiredLook.x) * blend,
+    y: desiredLook.y + ((car.elevation ?? 0) + 0.8 - desiredLook.y) * blend,
+    z: desiredLook.z + (car.z - desiredLook.z) * blend,
   };
 }
 
 /** Rear chase view: the bonnet points into the road, with enough room to
  * read the next corner. Drift leads the camera along velocity, not the nose. */
-export function cityDriveCamera(
-  state: Pick<CityState, 'x' | 'z' | 'vx' | 'vz' | 'heading' | 'speed'>,
-  aspect: number,
-) {
+export function cityDriveCamera(state: DrivingCameraCar, aspect: number) {
   const speed = Math.max(0, Math.min(CITY_TOP_SPEED, state.speed));
   const lead = 2.8 + speed * 0.43;
   const fx = Math.sin(state.heading),
@@ -128,7 +257,11 @@ export function cityDriveCamera(
   const dz = moving ? state.vz / Math.max(state.speed, 0.4) : fz;
   const length = Math.hypot(1, 0.68);
   return {
-    look: { x: state.x + dx * lead, y: 0.6, z: state.z + dz * lead },
+    look: {
+      x: state.x + dx * lead,
+      y: (state.elevation ?? 0) + 0.6,
+      z: state.z + dz * lead,
+    },
     outward: { x: -fx / length, y: 0.68 / length, z: -fz / length },
     halfHeight: Math.max(
       7.5 + speed * 0.4,
@@ -151,10 +284,7 @@ export function followCityHeading(current: number, target: number, dt: number) {
 
 /** A front-quarter cutaway view shows the real cabin faces. The target leads
  * actual travel, including lateral drift and reverse, rather than only the bonnet. */
-export function cityFaceCamera(
-  state: Pick<CityState, 'x' | 'z' | 'vx' | 'vz' | 'heading' | 'speed'>,
-  aspect: number,
-) {
+export function cityFaceCamera(state: DrivingCameraCar, aspect: number) {
   const speed = Math.max(0, Math.min(CITY_TOP_SPEED, state.speed));
   const lead = 0.65 + speed * 0.16;
   const travelX =
@@ -178,15 +308,27 @@ export function cityFaceCamera(
   const acrossView = Math.abs(
     (travelX * outwardZ - travelZ * outwardX) / horizontalLength,
   );
+  const verticalLead =
+    (Math.abs(travelX * outwardX + travelZ * outwardZ) / horizontalLength) *
+    (y / length) *
+    lead;
   const halfWidth = 3.15 + lead * acrossView;
   return {
-    look: { x: state.x + travelX * lead, y: 0.72, z: state.z + travelZ * lead },
+    look: {
+      x: state.x + travelX * lead,
+      y: (state.elevation ?? 0) + 0.72,
+      z: state.z + travelZ * lead,
+    },
     outward: {
       x: outwardX,
       y: y / length,
       z: outwardZ,
     },
-    halfHeight: Math.max(3.75 + speed * 0.1, halfWidth / Math.max(0.3, aspect)),
+    halfHeight: Math.max(
+      3.75 + speed * 0.1,
+      3.15 + verticalLead,
+      halfWidth / Math.max(0.3, aspect),
+    ),
   };
 }
 
@@ -194,6 +336,10 @@ export function cityFaceCamera(
  * changes the comfortable driving scale. The scenic southern ridges fit too. */
 export function cityOverviewCamera(aspect: number) {
   const look = { x: 0, y: 0, z: 3 };
+  const maxSceneY = Math.max(
+    CITY_SCENERY_BOUNDS.maxY,
+    ...cityBuildings.map((b) => cityGroundHeight(b.x, b.z) + b.h + 8),
+  );
   const norm = Math.hypot(0.39, 0.75, 0.55);
   const outward = { x: 0.39 / norm, y: 0.75 / norm, z: 0.55 / norm };
   const horizontal = Math.hypot(outward.x, outward.z);
@@ -201,7 +347,7 @@ export function cityOverviewCamera(aspect: number) {
     extentY = 0;
   for (const x of [CITY_SCENERY_BOUNDS.minX, CITY_SCENERY_BOUNDS.maxX])
     for (const z of [CITY_SCENERY_BOUNDS.minZ, CITY_SCENERY_BOUNDS.maxZ])
-      for (const y of [0, CITY_SCENERY_BOUNDS.maxY]) {
+      for (const y of [0, maxSceneY]) {
         const dz = z - look.z;
         const cameraX = (x * outward.z - dz * outward.x) / horizontal;
         const cameraY =

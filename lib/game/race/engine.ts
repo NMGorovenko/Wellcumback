@@ -1,10 +1,11 @@
+import { citySurfacePose } from '../city/surface.ts';
 import {
   vehiclePose,
   rememberVehicleStep,
   setVehicleRemainder,
   resetVehiclePresentation,
 } from '../city/vehicle-presentation.ts';
-import { cityCarBlocked, freshCity } from '../city/engine.ts';
+import { cityCarBlocked, freshCity, stepCityCar } from '../city/engine.ts';
 import { stepCar } from '../city/car-physics.ts';
 import { crossedGate, raceBoundaryHalfWidth, type Course } from './course.ts';
 import {
@@ -174,7 +175,16 @@ export function startRace(s: RaceState, course: Course) {
       z: point.z + point.dx * side,
       heading: Math.atan2(point.dx, -point.dz),
     });
-    r.elevation = point.y;
+    if (course.id === 'krasnoyarsk')
+      Object.assign(r.car, citySurfacePose(r.car.x, r.car.z, r.car.heading));
+    else
+      Object.assign(r.car, {
+        elevation: point.y,
+        pitch: 0,
+        surfaceId: undefined,
+      });
+    r.elevation = r.car.elevation!;
+    r.pitch = r.car.pitch!;
   });
   return true;
 }
@@ -228,7 +238,11 @@ export function respawnRacer(s: RaceState, r: Racer, course: Course) {
     drifting: false,
     driftBlend: 0,
   });
-  r.elevation = p.y;
+  if (course.id === 'krasnoyarsk')
+    Object.assign(r.car, citySurfacePose(r.car.x, r.car.z, r.car.heading));
+  else Object.assign(r.car, { elevation: p.y, pitch: 0, surfaceId: undefined });
+  r.elevation = r.car.elevation!;
+  r.pitch = r.car.pitch!;
   r.combo = 0;
   r.comboDuration = 0;
   r.straightTime = 0;
@@ -247,7 +261,14 @@ export function resolveCarContacts(
     for (let j = i + 1; j < cars.length; j++) {
       const a = cars[i],
         b = cars[j];
-      if (a.finishTime !== null || b.finishTime !== null) continue;
+      if (
+        a.finishTime !== null ||
+        b.finishTime !== null ||
+        Math.abs(
+          (a.car.elevation ?? a.elevation) - (b.car.elevation ?? b.elevation),
+        ) > 2.5
+      )
+        continue;
       const pa = previous[i],
         pb = previous[j];
       const travel =
@@ -423,13 +444,16 @@ function step(
     r.previousReset = input.reset;
     if (r.finishTime !== null || resets.has(r.id)) return;
     r.car.elapsed += dt;
-    const hit = stepCar(
-      r.car,
-      input,
-      dt,
-      (x, z, h) => carBlocked(course, x, z, h),
-      vehicleTuning(r.vehicleId, course.id === 'krasnoyarsk'),
-    );
+    const hit =
+      course.id === 'krasnoyarsk'
+        ? stepCityCar(r.car, input, dt, vehicleTuning(r.vehicleId, true))
+        : stepCar(
+            r.car,
+            input,
+            dt,
+            (x, z, h) => carBlocked(course, x, z, h),
+            vehicleTuning(r.vehicleId, false),
+          );
     if (hit.worldContact) contacts.add(r.id);
   });
   // Reset is a teleport, never sweep its old position or award a crossed gate.
@@ -439,7 +463,22 @@ function step(
     previous[i] = { x: c.x, z: c.z, heading: c.heading };
   });
   resolveCarContacts(s, course, previous).forEach((id) => contacts.add(id));
-  if (course.id !== 'krasnoyarsk')
+  if (course.id === 'krasnoyarsk')
+    s.racers.forEach((r) => {
+      Object.assign(
+        r.car,
+        citySurfacePose(
+          r.car.x,
+          r.car.z,
+          r.car.heading,
+          r.car.elevation,
+          r.car.surfaceId,
+        ),
+      );
+      r.elevation = r.car.elevation!;
+      r.pitch = r.car.pitch!;
+    });
+  else
     s.racers.forEach((r) => {
       const c = r.car,
         dx = Math.sin(c.heading) * 1.35,
@@ -450,6 +489,11 @@ function step(
           course.closest(c.x - dx, c.z - dz).y,
         2.7,
       );
+      Object.assign(c, {
+        elevation: r.elevation,
+        pitch: r.pitch,
+        surfaceId: undefined,
+      });
     });
   s.racers.forEach((r, i) => {
     if (!resets.has(r.id)) advanceGates(s, r, course, previous[i]);

@@ -32,10 +32,10 @@ const timer = setTimeout(
   () =>
     fail(
       new Error(
-        `Native desktop smoke timed out after 30 seconds: ${phase}, ${checkpoint}`,
+        `Native desktop smoke timed out after 60 seconds: ${phase}, ${checkpoint}`,
       ),
     ),
-  30000,
+  60000,
 );
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function waitFor(contents, expression, label) {
@@ -55,6 +55,13 @@ async function waitFor(contents, expression, label) {
     destination: document.querySelector('.city-heading')?.textContent,
     arrival: document.querySelector('.city-arrival')?.textContent
   })`);
+  const nativeWindow = BrowserWindow.fromWebContents(contents);
+  ui.native = {
+    visible: nativeWindow?.isVisible(),
+    focused: nativeWindow?.isFocused(),
+    minimized: nativeWindow?.isMinimized(),
+    appHidden: process.platform === 'darwin' ? app.isHidden() : undefined,
+  };
   throw new Error(`Timed out waiting for ${label}: ${JSON.stringify(ui)}`);
 }
 
@@ -141,6 +148,22 @@ async function resumeCity(contents) {
     `!document.querySelector('.city-pause-menu')`,
     'continuing after focus pause',
   );
+}
+
+async function selectCityCamera(contents, mode) {
+  checkpoint = `selecting ${mode} camera with the native keyboard`;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    // Another desktop QA surface may take focus between C and the next frame.
+    // Restore and explicitly resume our disposable window before continuing;
+    // a real blur pause correctly hides the minimap and ignores camera input.
+    await resumeCity(contents);
+    const selected = await contents.executeJavaScript(
+      `Boolean(document.querySelector('.city-view-${mode} .city-minimap'))`,
+    );
+    if (selected) return;
+    await tapKey(contents, 'C');
+  }
+  throw new Error(`Native keyboard could not select city camera: ${mode}`);
 }
 
 async function inspectCityInput(window) {
@@ -311,6 +334,9 @@ async function inspect(window) {
   // The production window and the game's genuine focus/blur handling are unchanged.
   if (process.platform === 'darwin')
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Minimized windows stop normal foreground input. This transient QA window
+  // must stay visible throughout a held native key / simulated pad sequence.
+  window.setMinimizable(false);
   window.setAlwaysOnTop(true);
   window.show();
   await ensureNativeFocus(contents);
@@ -368,14 +394,8 @@ async function inspect(window) {
       'Escape closes the city map and restores the minimap',
     );
     // Map navigation is independent from the four retained camera modes.
-    for (const mode of ['cruise', 'map', 'faces', 'drive']) {
-      await tapKey(contents, 'C');
-      await waitFor(
-        contents,
-        `Boolean(document.querySelector('.city-view-${mode} .city-minimap'))`,
-        `${mode} camera retains the driving minimap`,
-      );
-    }
+    for (const mode of ['cruise', 'map', 'faces', 'drive'])
+      await selectCityCamera(contents, mode);
     await inspectCityInput(window);
     await contents.executeJavaScript(
       `document.querySelector('[aria-label="Клавиатура и геймпады"]').click()`,

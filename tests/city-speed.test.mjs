@@ -28,17 +28,22 @@ const fullSpeedRun = () => {
   const dx = road.to.x - road.from.x,
     dz = road.to.z - road.from.z,
     length = Math.hypot(dx, dz);
-  return {
+  const car = {
     ...freshCity(),
     x: road.from.x + (dx / length) * 15,
     z: road.from.z + (dz / length) * 15,
     heading: Math.atan2(dx, -dz),
+    speed: 260 / 3.6,
+    vx: ((dx / length) * 260) / 3.6,
+    vz: ((dz / length) * 260) / 3.6,
   };
+  Object.assign(car.powertrain, { gear: 6, rpm: (4358 * 260) / 300, load: 1 });
+  return car;
 };
 const cruising = () => {
   const car = {
     ...straight(),
-    z: -1100,
+    z: straight().z - 40,
     speed: CITY_TOP_SPEED,
     vz: -CITY_TOP_SPEED,
   };
@@ -84,19 +89,26 @@ void test('city Mustang reaches 300 progressively and the AMG stays competitivel
     );
 });
 
-void test('keyboard and analog throttle reach 300 on a real road at 30, 60 and 144 Hz', () => {
+void test('keyboard and analog throttle approach 300 on an uphill city road at 30, 60 and 144 Hz', () => {
   const states = [30, 60, 144].flatMap((hz) =>
     [false, true].map((analog) => {
       const car = fullSpeedRun();
-      for (let frame = 0; frame < 25 * hz; frame++)
+      for (let frame = 0; frame < 8.2 * hz; frame++) {
         tickCity(
           car,
           1 / hz,
           new Set(analog ? [] : ['KeyW']),
           analog ? throttle : undefined,
         );
+        const road = cityRoads.find((r) => r.id === 'left-quay:1');
+        assert.ok(distanceToRoad(car.x, car.z, road) + 2 < road.width / 2);
+        assert.equal(cityCarBlocked(car.x, car.z, car.heading), false);
+      }
       assert.equal(car.bumps, 0);
-      assert.ok(Math.abs(car.speed - CITY_TOP_SPEED) < 1e-8);
+      assert.ok(
+        car.speed * 3.6 > 294 && car.speed <= CITY_TOP_SPEED,
+        'the climb retains near-maximum speed while flat-road test reaches exactly300',
+      );
       assert.equal(car.powertrain.gear, 6);
       assert.equal(car.drifting, false);
       return car;
@@ -109,7 +121,12 @@ void test('keyboard and analog throttle reach 300 on a real road at 30, 60 and 1
 });
 
 void test('a short steering tap at 300 stays inside a 20 m street and settles without a spin', () => {
-  const road = cityRoads.find((r) => r.id === 'svobodny-mira-9maya:8');
+  const road = cityRoads.find(
+    (r) =>
+      r.id.startsWith('svobodny-mira-9maya:') &&
+      r.from.x === straight().x &&
+      r.from.z === straight().z,
+  );
   assert.equal(road.width, 20);
   for (const direction of [-1, 1]) {
     const car = cruising();
@@ -160,7 +177,7 @@ void test('braking from 300 is progressive and stops within a clear 160 m approa
 
 void test('pausing and JSON rejoining preserve the high-speed transmission and continuation', () => {
   const host = fullSpeedRun();
-  for (let frame = 0; frame < 18 * 60; frame++)
+  for (let frame = 0; frame < 4 * 60; frame++)
     tickCity(host, 1 / 60, new Set(['KeyW']));
   const uninterrupted = JSON.parse(JSON.stringify(host));
   host.paused = true;
@@ -169,11 +186,11 @@ void test('pausing and JSON rejoining preserve the high-speed transmission and c
   assert.equal(JSON.stringify(host), paused);
   const rejoined = JSON.parse(JSON.stringify(host));
   rejoined.paused = false;
-  for (let frame = 0; frame < 7 * 60; frame++) {
+  for (let frame = 0; frame < 4.2 * 60; frame++) {
     tickCity(rejoined, 1 / 60, new Set(), throttle);
     tickCity(uninterrupted, 1 / 60, new Set(['KeyW']));
   }
-  assert.ok(Math.abs(rejoined.speed - CITY_TOP_SPEED) < 1e-8);
+  assert.ok(rejoined.speed * 3.6 > 294 && rejoined.speed <= CITY_TOP_SPEED);
   assert.equal(rejoined.z, uninterrupted.z);
   assert.deepEqual(rejoined.powertrain, uninterrupted.powertrain);
 });

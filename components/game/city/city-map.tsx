@@ -3,7 +3,6 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -21,6 +20,8 @@ import {
   CITY_BOUNDS,
   CITY_DISTRICTS,
   CITY_ISLANDS,
+  CITY_NAMED_STREETS,
+  cityRoads,
   cityStops,
 } from '@/lib/game/city/layout';
 import type { CityState } from '@/lib/game/city/engine';
@@ -47,6 +48,7 @@ const shortNames: Record<string, string> = {
   planeta: 'Планета',
   komsomoll: 'Комсомолл',
   kubatura: 'Кубатура',
+  kvant: 'Квант',
   udachny: 'Удачный',
   akadem: 'Академгородок',
   predmostnaya: 'Предмостная',
@@ -98,12 +100,7 @@ export const CityMap = forwardRef<
   const stop = cityStops[selected];
   const scale = camera.width / size.width,
     height = size.height * scale;
-  const routeX = Math.round(state.x / 25) * 25,
-    routeZ = Math.round(state.z / 25) * 25;
-  const route = useMemo(
-    () => cityNavigationRoute({ x: routeX, z: routeZ }, stop),
-    [routeX, routeZ, stop],
-  );
+  const route = cityNavigationRoute(state, stop);
   const length = cityRouteLength(route);
   const select = (index: number) => {
     setSelected(index);
@@ -338,6 +335,57 @@ export const CityMap = forwardRef<
                 strokeLinecap="round"
               />
             )}
+            {scale < 2.6 &&
+              CITY_NAMED_STREETS.map((street) => {
+                const segment = cityRoads
+                  .filter((road) => street.roadIds.includes(road.id))
+                  .filter((road) => {
+                    const x = (road.from.x + road.to.x) / 2;
+                    const z = (road.from.z + road.to.z) / 2;
+                    return (
+                      Math.abs(x - camera.x) < camera.width * 0.48 &&
+                      Math.abs(z - camera.z) < height * 0.48 &&
+                      Math.hypot(
+                        road.to.x - road.from.x,
+                        road.to.z - road.from.z,
+                      ) /
+                        scale >
+                        street.name.length * 5.5
+                    );
+                  })
+                  .sort(
+                    (a, b) =>
+                      Math.hypot(b.to.x - b.from.x, b.to.z - b.from.z) -
+                      Math.hypot(a.to.x - a.from.x, a.to.z - a.from.z),
+                  )[0];
+                if (!segment) return null;
+                const x = (segment.from.x + segment.to.x) / 2;
+                const z = (segment.from.z + segment.to.z) / 2;
+                let angle =
+                  (Math.atan2(
+                    segment.to.z - segment.from.z,
+                    segment.to.x - segment.from.x,
+                  ) *
+                    180) /
+                  Math.PI;
+                if (angle > 90) angle -= 180;
+                if (angle < -90) angle += 180;
+                return (
+                  <text
+                    key={street.name}
+                    className="city-map-street-name"
+                    x={x}
+                    y={z}
+                    transform={`rotate(${angle} ${x} ${z})`}
+                    fontSize={scale * 10.5}
+                    strokeWidth={scale * 3}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                  >
+                    {street.name}
+                  </text>
+                );
+              })}
             {cityStops.map((point, index) => {
               const chosen = index === selected;
               const offsetY =

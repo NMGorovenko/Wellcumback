@@ -47,6 +47,8 @@ void test('driving view leads real forward, reversing and sideways motion while 
         const [vx, vz] = motion;
         const s = {
           ...freshCity(),
+          elevation: 0,
+          pitch: 0,
           x: 0,
           z: 0,
           heading,
@@ -89,7 +91,7 @@ void test('all three actual photo faces are large enough and unobstructed by the
       ['passenger-nikita', 'passenger-yaroslav', 'passenger-roma'],
     );
     for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-      const s = { ...freshCity(), heading };
+      const s = { ...freshCity(), elevation: 0, pitch: 0, heading };
       car.update(s, 0, true);
       scene.updateMatrixWorld(true);
       const { camera } = cameraFor(s, 16 / 9, true);
@@ -145,7 +147,11 @@ void test('all three actual photo faces are large enough and unobstructed by the
     }
     const before = [kit.geometries.size, kit.materials.size, kit.textures.size];
     for (let i = 0; i < 120; i++)
-      car.update({ ...freshCity(), elapsed: i / 60 }, 1 / 60, i % 2 === 0);
+      car.update(
+        { ...freshCity(), elevation: 0, pitch: 0, elapsed: i / 60 },
+        1 / 60,
+        i % 2 === 0,
+      );
     assert.deepEqual(
       [kit.geometries.size, kit.materials.size, kit.textures.size],
       before,
@@ -162,6 +168,8 @@ void test('chase camera sits behind the car and gives the forward road more room
       fz = -Math.cos(heading);
     const s = {
       ...freshCity(),
+      elevation: 0,
+      pitch: 0,
       x: 0,
       z: 0,
       heading,
@@ -208,7 +216,17 @@ void test('camera heading crosses north smoothly and ignores frame-rate spikes',
 void test('speed progressively opens the chase view and reserves more forward road under a shallow angle', () => {
   const frames = [0, 6, 12, 18, 24, 32].map((speed) =>
     cityDriveCamera(
-      { ...freshCity(), x: 0, z: 0, heading: 0, vx: 0, vz: -speed, speed },
+      {
+        ...freshCity(),
+        elevation: 0,
+        pitch: 0,
+        x: 0,
+        z: 0,
+        heading: 0,
+        vx: 0,
+        vz: -speed,
+        speed,
+      },
       16 / 9,
     ),
   );
@@ -229,7 +247,17 @@ void test('speed progressively opens the chase view and reserves more forward ro
     'a shallow rear angle shows the road instead of looking straight down',
   );
   const { camera } = cameraFor(
-    { ...freshCity(), x: 0, z: 0, heading: 0, vx: 0, vz: -18, speed: 18 },
+    {
+      ...freshCity(),
+      elevation: 0,
+      pitch: 0,
+      x: 0,
+      z: 0,
+      heading: 0,
+      vx: 0,
+      vz: -18,
+      speed: 18,
+    },
     16 / 9,
   );
   const road = new THREE.Vector3(0, 0, -30).project(camera);

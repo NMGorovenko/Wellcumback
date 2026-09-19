@@ -8,6 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { freshCity, tickCity, resetCityCar } from '../lib/game/city/engine.ts';
 import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
+import { citySurfacePose } from '../lib/game/city/surface.ts';
 import { freshRace, tickRace, RACE_STEP } from '../lib/game/race/engine.ts';
 import { raceCourse } from '../lib/game/race/course.ts';
 import { neutralRaceInput } from '../lib/game/race/types.ts';
@@ -32,6 +33,7 @@ function straight(car = freshCity()) {
     speed: CITY_TOP_SPEED,
     paused: false,
   });
+  Object.assign(car, citySurfacePose(car.x, car.z, car.heading));
   Object.assign(car.powertrain, { gear: 6, rpm: 4300, shiftReadyAt: 1e6 });
   return car;
 }
@@ -242,7 +244,9 @@ for (const hz of [120, 144])
       camera.position.copy(look).addScaledVector(outward, distance);
       camera.lookAt(look);
       camera.updateMatrixWorld();
-      point.set(visual.x, 1, visual.z).project(camera);
+      point
+        .set(visual.x, (visual.elevation ?? 0) + 1, visual.z)
+        .project(camera);
       const pixel = (1 - point.y) * 360;
       if (frame > hz * 0.2)
         assert.ok(

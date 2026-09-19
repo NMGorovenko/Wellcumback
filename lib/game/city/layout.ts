@@ -1,26 +1,31 @@
-/** Real relative geography projected into a 40%-scale driving world.
- * Landmarks retain their relative banks and neighbourhoods; local lanes and
- * island driving permissions are deliberately simplified for this arcade game. */
+/** Schematic Krasnoyarsk: relative geography comes from a 40% reference map,
+ * then long land journeys and water crossings are compressed independently.
+ * Buildings, cars, street widths and junctions keep their physical dimensions. */
 export type CityPoint = { x: number; z: number };
-export type CityRect = CityPoint & { w: number; d: number; angle?: number };
+export type CityRect = CityPoint & {
+  w: number;
+  d: number;
+  angle?: number;
+  roadId?: string;
+};
 export const CITY_METRE_SCALE = 0.4;
-export function cityGeo(lat: number, lon: number): CityPoint {
+function referenceGeo(lat: number, lon: number): CityPoint {
   return {
     x: (lon - 92.86) * 62250 * CITY_METRE_SCALE,
     z: -(lat - 56.01) * 111320 * CITY_METRE_SCALE,
   };
 }
-export const CITY_BOUNDS = { minX: -5000, maxX: 3500, minZ: -2900, maxZ: 2300 };
+export const CITY_BOUNDS = { minX: -2500, maxX: 1750, minZ: -1750, maxZ: 1250 };
 export const CITY_SCENERY_BOUNDS = {
-  minX: -5100,
-  maxX: 3600,
-  minZ: -3020,
-  maxZ: 2470,
+  minX: -2570,
+  maxX: 1820,
+  minZ: -1820,
+  maxZ: 1320,
   maxY: 115,
 };
 export const RIVER_HALF_WIDTH = 180;
 export const RIVER_SLOPE = 0.28;
-export const RIVER_SECTIONS = [
+const REFERENCE_RIVER_SECTIONS = [
   { x: -5000, z: 2000, half: 150 },
   { x: -4000, z: 1630, half: 160 },
   { x: -2600, z: 1260, half: 170 },
@@ -37,17 +42,81 @@ export const RIVER_SECTIONS = [
   { x: 3200, z: -1390, half: 450 },
   { x: 3500, z: -1520, half: 360 },
 ];
-function riverSample(x: number) {
+function sampleRiver(x: number, sections: typeof REFERENCE_RIVER_SECTIONS) {
   let i = 0;
-  while (i < RIVER_SECTIONS.length - 2 && x > RIVER_SECTIONS[i + 1].x) i++;
-  const a = RIVER_SECTIONS[i],
-    b = RIVER_SECTIONS[i + 1],
+  while (i < sections.length - 2 && x > sections[i + 1].x) i++;
+  const a = sections[i],
+    b = sections[i + 1],
     t = Math.max(0, Math.min(1, (x - a.x) / (b.x - a.x)));
   return {
     z: a.z + (b.z - a.z) * t,
     half: a.half + (b.half - a.half) * t,
     slope: (b.z - a.z) / (b.x - a.x),
   };
+}
+/** Convert an old reference-map anchor exactly once. Canonical exports below
+ * already contain compact coordinates; never apply this to them again. */
+export function compactCityPoint<T extends CityPoint>(p: T): T {
+  const river = sampleRiver(p.x, REFERENCE_RIVER_SECTIONS);
+  const away = p.z - river.z,
+    distance = Math.abs(away);
+  return {
+    ...p,
+    x: p.x * 0.5,
+    z:
+      river.z * 0.5 +
+      Math.sign(away) *
+        (Math.min(distance, river.half) * 0.2 +
+          Math.max(0, distance - river.half) * 0.6),
+  };
+}
+export const cityGeo = (lat: number, lon: number): CityPoint =>
+  compactCityPoint(referenceGeo(lat, lon));
+export const RIVER_SECTIONS = REFERENCE_RIVER_SECTIONS.map((p) => ({
+  x: p.x * 0.5,
+  z: p.z * 0.5,
+  half: p.half * 0.2,
+}));
+const riverSample = (x: number) => sampleRiver(x, RIVER_SECTIONS);
+// Splitting at each bank and bend keeps a formerly straight road exactly on the
+// same shore after the piecewise projection instead of cutting across water.
+export function compactCityPath<T extends CityPoint>(points: T[]): T[] {
+  const result: T[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1],
+      b = points[i],
+      dx = b.x - a.x,
+      dz = b.z - a.z;
+    const cuts = [0, 1];
+    if (Math.abs(dx) > 1e-8)
+      for (const section of REFERENCE_RIVER_SECTIONS) {
+        const t = (section.x - a.x) / dx;
+        if (t > 0 && t < 1) cuts.push(t);
+      }
+    cuts.sort((a, b) => a - b);
+    const bends = [...cuts];
+    for (let j = 1; j < bends.length; j++) {
+      const lo = bends[j - 1],
+        hi = bends[j];
+      const r0 = sampleRiver(a.x + dx * lo, REFERENCE_RIVER_SECTIONS),
+        r1 = sampleRiver(a.x + dx * hi, REFERENCE_RIVER_SECTIONS);
+      for (const bank of [-1, 1]) {
+        const d0 = a.z + dz * lo - r0.z - bank * r0.half,
+          d1 = a.z + dz * hi - r1.z - bank * r1.half;
+        if (d0 * d1 < 0) cuts.push(lo + ((hi - lo) * d0) / (d0 - d1));
+      }
+    }
+    cuts.sort((a, b) => a - b);
+    for (const t of cuts) {
+      const p = compactCityPoint({ ...a, x: a.x + dx * t, z: a.z + dz * t });
+      if (
+        !result.length ||
+        Math.hypot(p.x - result.at(-1)!.x, p.z - result.at(-1)!.z) > 0.001
+      )
+        result.push(p);
+    }
+  }
+  return result;
 }
 export const riverZ = (x: number) => riverSample(x).z;
 export const riverBankZ = (x: number, side: number) =>
@@ -71,7 +140,7 @@ export function pointInPolygon(
   }
   return inside;
 }
-export const CITY_ISLANDS = [
+const referenceIslands = [
   {
     id: 'tatyshev',
     name: 'ТАТЫШЕВ',
@@ -113,6 +182,34 @@ export const CITY_ISLANDS = [
     ],
   },
 ];
+export const CITY_ISLANDS = referenceIslands.map((island) => {
+  const points =
+    island.id === 'otdyha'
+      ? [
+          { x: -25, z: 302 },
+          { x: 30, z: 255 },
+          { x: 90, z: 245 },
+          { x: 190, z: 238 },
+          { x: 260, z: 243.1 },
+          { x: 350, z: 248.9 },
+          { x: 425, z: 223.75 },
+          { x: 350, z: 286.2 },
+          { x: 285, z: 314.35 },
+          { x: 200, z: 345 },
+          { x: 80, z: 352 },
+          { x: 0, z: 308 },
+        ]
+      : compactCityPath([...island.points, island.points[0]]).slice(0, -1);
+  const xs = points.map((p) => p.x),
+    zs = points.map((p) => p.z);
+  return {
+    ...island,
+    ...compactCityPoint(island),
+    points,
+    w: Math.max(...xs) - Math.min(...xs),
+    d: Math.max(...zs) - Math.min(...zs),
+  };
+});
 export const onCityIsland = (x: number, z: number) =>
   CITY_ISLANDS.some((i) => pointInPolygon(x, z, i.points));
 export const inCityWater = (x: number, z: number, padding = 0) =>
@@ -125,8 +222,9 @@ export type CityRoad = {
   to: CityPoint;
   width: number;
   bridge?: string;
+  layer?: 'lower' | 'raised';
 };
-const road = (
+const projectedRoad = (
   id: string,
   points: CityPoint[],
   width: number,
@@ -135,6 +233,12 @@ const road = (
   points
     .slice(1)
     .map((to, i) => ({ id: `${id}:${i}`, from: points[i], to, width, bridge }));
+const road = (
+  id: string,
+  points: CityPoint[],
+  width: number,
+  bridge?: string,
+) => projectedRoad(id, compactCityPath(points), width, bridge);
 const niko = [
   { x: -1450, z: 760 },
   { x: -1290, z: 1040 },
@@ -147,16 +251,35 @@ const kommun = [
   { x: 690, z: 900 },
 ];
 const october = [
-  cityGeo(56.03635, 92.93285),
+  referenceGeo(56.03635, 92.93285),
   { x: 1980, z: -890 },
   { x: 2180, z: -650 },
-  cityGeo(56.0162, 92.9556),
+  referenceGeo(56.0162, 92.9556),
 ];
-export const BRIDGES = [
+const referenceBridges = [
   { id: 'nikolaevsky', title: 'НИКОЛАЕВСКИЙ МОСТ', points: niko },
   { id: 'kommunalny', title: 'КОММУНАЛЬНЫЙ МОСТ', points: kommun },
   { id: 'oktyabrsky', title: 'ОКТЯБРЬСКИЙ МОСТ', points: october },
-].map((b) => ({
+];
+const projectedBridges = referenceBridges.map((b) => ({
+  ...b,
+  points: compactCityPath(b.points),
+}));
+const octoberApproach = projectedBridges[2].points;
+// Count the water span as bridge; its short dry ramps remain regular streets.
+projectedBridges[2].points = octoberApproach.slice(1, -1);
+for (const end of [0, projectedBridges[2].points.length - 1]) {
+  const p = projectedBridges[2].points[end],
+    outside = end === 0 ? octoberApproach[0] : octoberApproach.at(-1)!;
+  const dx = outside.x - p.x,
+    dz = outside.z - p.z,
+    length = Math.hypot(dx, dz);
+  projectedBridges[2].points[end] = {
+    x: p.x + (dx / length) * 12,
+    z: p.z + (dz / length) * 12,
+  };
+}
+export const BRIDGES = projectedBridges.map((b) => ({
   ...b,
   x: b.points[1].x,
   z: b.points[1].z,
@@ -168,18 +291,37 @@ export const BRIDGES = [
       0,
     ),
 }));
-export const ROUNDABOUT = { x: 690, z: 950, innerRadius: 26, outerRadius: 48 };
+export const ROUNDABOUT = {
+  x: 345,
+  z: riverBankZ(345, 1) + 80,
+  innerRadius: 26,
+  outerRadius: 48,
+};
+export const CITY_STUD_ROUNDABOUT = {
+  x: -720,
+  z: 335,
+  innerRadius: 16,
+  outerRadius: 30,
+};
+export const CITY_ROUNDABOUTS = [ROUNDABOUT, CITY_STUD_ROUNDABOUT] as const;
+export const CITY_YENISEY_SIGN = {
+  x: -865,
+  z: 455,
+  width: 64,
+  height: 5.2,
+  angle: 0.35,
+};
 const leftQuay = RIVER_SECTIONS.map((p) => ({ x: p.x, z: p.z - p.half - 42 }));
 const rightQuay = RIVER_SECTIONS.flatMap((p) =>
-  p.x === 700
+  p.x === 350
     ? [
-        { x: 630, z: 1007 },
-        { x: 750, z: 1007 },
-        { x: 770, z: 900 },
+        { x: ROUNDABOUT.x - 70, z: ROUNDABOUT.z + 58 },
+        { x: ROUNDABOUT.x + 70, z: ROUNDABOUT.z + 58 },
+        { x: ROUNDABOUT.x + 88, z: ROUNDABOUT.z - 50 },
       ]
     : [{ x: p.x, z: p.z + p.half + 42 }],
 );
-export const CITY_ROUTES = {
+const referenceRoutes = {
   studPlaneta: [
     { x: -1550, z: 790 },
     { x: -1520, z: 740 },
@@ -202,12 +344,89 @@ export const CITY_ROUTES = {
     { x: -4650, z: 1640 },
   ],
 };
+export const CITY_ROUTES = {
+  studPlaneta: compactCityPath(referenceRoutes.studPlaneta),
+  western: compactCityPath(referenceRoutes.western),
+  // A continuous downhill alternative into the centre, through the lower
+  // Nikolaevsky passage and along the left-bank embankment.
+  studDubrovinsky: [
+    compactCityPoint(referenceRoutes.studPlaneta[1]),
+    compactCityPoint(referenceRoutes.studPlaneta[0]),
+    {
+      x: -775,
+      z: leftQuay[2].z + ((leftQuay[3].z - leftQuay[2].z) * 525) / 550,
+    },
+    ...leftQuay.slice(3, 6),
+  ],
+};
 export const cityRoads: CityRoad[] = [
-  ...road('left-quay', leftQuay, 18),
-  ...road('right-quay', rightQuay, 18),
-  ...road('svobodny-mira-9maya', CITY_ROUTES.studPlaneta, 20),
-  ...road('akadem-udachny', CITY_ROUTES.western, 17),
-  ...BRIDGES.flatMap((b) => road(`bridge-${b.id}`, b.points, b.w, b.id)),
+  ...projectedRoad('left-quay', leftQuay, 18),
+  ...projectedRoad('right-quay', rightQuay, 18),
+  ...road('svobodny-mira-9maya', referenceRoutes.studPlaneta, 20),
+  ...road('akadem-udachny', referenceRoutes.western, 17),
+  ...projectedRoad(
+    'studgorodok-ring',
+    Array.from({ length: 33 }, (_, i) => ({
+      x: CITY_STUD_ROUNDABOUT.x + 23 * Math.sin((i * Math.PI) / 16),
+      z: CITY_STUD_ROUNDABOUT.z + 23 * Math.cos((i * Math.PI) / 16),
+    })),
+    14,
+  ),
+  ...projectedRoad(
+    'kirenskogo-west',
+    [
+      { x: -760, z: 335 },
+      { x: -743, z: 335 },
+    ],
+    14,
+  ),
+  ...projectedRoad(
+    'kirenskogo-north',
+    [
+      { x: -720, z: 312 },
+      { x: -760, z: 270 },
+    ],
+    14,
+  ),
+  ...projectedRoad(
+    'baykitskaya',
+    [
+      { x: -697, z: 335 },
+      { x: -650, z: 255 },
+      { x: -550, z: 110 },
+    ],
+    12,
+  ),
+  ...projectedRoad(
+    'kirenskogo-south',
+    [
+      { x: -720, z: 358 },
+      { x: -735, z: 400 },
+      compactCityPoint(referenceRoutes.studPlaneta[1]),
+    ],
+    14,
+  ),
+  ...projectedRoad(
+    'doner-access',
+    [
+      { x: -735, z: 400 },
+      { x: -677, z: 400 },
+    ],
+    10,
+  ),
+  ...BRIDGES.flatMap((b) =>
+    projectedRoad(`bridge-${b.id}`, b.points, b.w, b.id),
+  ),
+  ...projectedRoad(
+    'oktyabrsky-left',
+    [octoberApproach[0], BRIDGES[2].points[0]],
+    22,
+  ),
+  ...projectedRoad(
+    'oktyabrsky-right',
+    [BRIDGES[2].points.at(-1)!, octoberApproach.at(-1)!],
+    22,
+  ),
   ...road('nikolaevsky-left', [{ x: -1550, z: 790 }, niko[0]], 20),
   ...road(
     'nikolaevsky-right',
@@ -219,20 +438,17 @@ export const cityRoads: CityRoad[] = [
     ],
     20,
   ),
-  ...road(
+  ...projectedRoad(
     'predmostnaya-ring',
     Array.from({ length: 33 }, (_, i) => ({
-      x: 690 + 37 * Math.sin((i * Math.PI) / 16),
-      z: 950 + 37 * Math.cos((i * Math.PI) / 16),
+      x: ROUNDABOUT.x + 37 * Math.sin((i * Math.PI) / 16),
+      z: ROUNDABOUT.z + 37 * Math.cos((i * Math.PI) / 16),
     })),
     16,
   ),
-  ...road(
+  ...projectedRoad(
     'predmostnaya-north',
-    [
-      { x: 690, z: 900 },
-      { x: 690, z: 913 },
-    ],
+    [BRIDGES[1].points.at(-1)!, { x: ROUNDABOUT.x, z: ROUNDABOUT.z - 37 }],
     18,
   ),
   ...road(
@@ -254,6 +470,50 @@ export const cityRoads: CityRoad[] = [
       { x: 360, z: 145 },
     ],
     17,
+  ),
+  ...projectedRoad(
+    'karl-marx-west',
+    [
+      { x: -550, z: 110 },
+      { x: -470, z: 90 },
+      { x: -390, z: 56 },
+    ],
+    17,
+  ),
+  ...projectedRoad(
+    'ada-lebedeva',
+    [
+      { x: -600, z: -275 },
+      { x: -350, z: -260 },
+      { x: 0, z: -225 },
+      { x: 200, z: -225 },
+      { x: 460, z: -250 },
+    ],
+    12,
+  ),
+  ...projectedRoad(
+    'gorkogo-north',
+    [
+      { x: -190, z: -244 },
+      { x: -190, z: -113.65714285714284 },
+    ],
+    12,
+  ),
+  ...projectedRoad(
+    'perensona-north',
+    [
+      { x: 90, z: -225 },
+      { x: 90, z: -67.875 },
+    ],
+    12,
+  ),
+  ...projectedRoad(
+    'ada-east-link',
+    [
+      { x: 460, z: -250 },
+      { x: 460, z: -120.23333333333332 },
+    ],
+    12,
   ),
   ...road(
     'perensona',
@@ -331,17 +591,21 @@ export const cityRoads: CityRoad[] = [
     14,
     'tatyshev-ramp',
   ),
-  ...road(
+  ...projectedRoad(
     'otdyha-loop',
     [
-      { x: 395, z: 535 },
-      { x: 170, z: 565 },
-      { x: 80, z: 620 },
-      { x: 220, z: 715 },
-      { x: 565, z: 730 },
-      { x: 650, z: 640 },
-      { x: 560, z: 585 },
-      { x: 395, z: 535 },
+      compactCityPoint({ x: 395, z: 535 }),
+      { x: 165, z: 255 },
+      { x: 90, z: 259 },
+      { x: 35, z: 300 },
+      { x: 90, z: 338 },
+      { x: 170, z: 333 },
+      { x: 200, z: 316 },
+      { x: 282.5, z: 296.825 },
+      { x: 325, z: 270.75 },
+      { x: 280, z: 268.3 },
+      { x: 235, z: 264 },
+      compactCityPoint({ x: 395, z: 535 }),
     ],
     14,
   ),
@@ -425,6 +689,65 @@ export const cityRoads: CityRoad[] = [
     18,
   ),
 ];
+// Attach each approach to the intact physical ring rather than shrinking it.
+for (const [id, point] of [
+  ['nikolaevsky-right', { x: ROUNDABOUT.x, z: ROUNDABOUT.z + 37 }],
+  ['predmostnaya-east', { x: ROUNDABOUT.x + 37, z: ROUNDABOUT.z }],
+  ['krasrab', { x: ROUNDABOUT.x + 26, z: ROUNDABOUT.z - 26 }],
+] as const) {
+  const parts = cityRoads.filter((r) => r.id.startsWith(id + ':'));
+  if (id === 'nikolaevsky-right') parts.at(-1)!.to = point;
+  else parts[0].from = point;
+}
+for (const r of cityRoads) {
+  // The embankment is visibly narrower than the Svobodny/Mira arterial.
+  if (/^left-quay:[2-8]$/.test(r.id)) r.width = 16;
+  if (r.id === 'left-quay:2' || r.id === 'left-quay:3') r.layer = 'lower';
+  if (r.id.startsWith('nikolaevsky-left:') || r.bridge === 'nikolaevsky')
+    r.layer = 'raised';
+}
+/** Semantic street labels use the actual road axes, never copied map anchors. */
+export const CITY_NAMED_STREETS: readonly {
+  name: string;
+  roadIds: readonly string[];
+}[] = [
+  {
+    name: 'Свободный',
+    roadIds: cityRoads
+      .filter((r) => /^svobodny-mira-9maya:[1-4]$/.test(r.id))
+      .map((r) => r.id),
+  },
+  {
+    name: 'Мира',
+    roadIds: cityRoads
+      .filter((r) => /^svobodny-mira-9maya:(5|6|7|8|9|10|11)$/.test(r.id))
+      .map((r) => r.id),
+  },
+  {
+    name: 'Карла Маркса',
+    roadIds: cityRoads
+      .filter((r) => r.id.startsWith('karl-marx'))
+      .map((r) => r.id),
+  },
+  {
+    name: 'Ленина',
+    roadIds: cityRoads
+      .filter((r) => r.id.startsWith('lenina:'))
+      .map((r) => r.id),
+  },
+  {
+    name: 'Ады Лебедевой',
+    roadIds: cityRoads
+      .filter((r) => r.id.startsWith('ada-lebedeva:'))
+      .map((r) => r.id),
+  },
+  {
+    name: 'Дубровинского',
+    roadIds: cityRoads
+      .filter((r) => /^left-quay:[2-8]$/.test(r.id))
+      .map((r) => r.id),
+  },
+];
 export function distanceToRoad(x: number, z: number, r: CityRoad) {
   const dx = r.to.x - r.from.x,
     dz = r.to.z - r.from.z,
@@ -437,31 +760,6 @@ export function distanceToRoad(x: number, z: number, r: CityRoad) {
     );
   return Math.hypot(x - r.from.x - t * dx, z - r.from.z - t * dz);
 }
-export const cityBarriers: CityRect[] = cityRoads
-  .filter(
-    (r) => r.bridge && !['vinogradovsky', 'tatyshev-ramp'].includes(r.bridge),
-  )
-  .flatMap((r) => {
-    const dx = r.to.x - r.from.x,
-      dz = r.to.z - r.from.z,
-      l = Math.hypot(dx, dz),
-      pieces: CityRect[] = [];
-    for (let t = 9; t < l - 9; t += 12)
-      for (const side of [-1, 1]) {
-        const x =
-            r.from.x + (dx * t) / l - ((side * dz) / l) * (r.width / 2 + 0.4),
-          z = r.from.z + (dz * t) / l + ((side * dx) / l) * (r.width / 2 + 0.4);
-        if (
-          cityRoads.some(
-            (other) =>
-              other !== r && distanceToRoad(x, z, other) < other.width / 2 + 8,
-          )
-        )
-          continue;
-        pieces.push({ x, z, w: 0.6, d: 11.5, angle: Math.atan2(dx, dz) });
-      }
-    return pieces;
-  });
 
 export type CityMission = 'screen' | 'clean' | 'moving' | 'roma2';
 export const cityStops: (CityPoint & {
@@ -579,8 +877,28 @@ export const cityStops: (CityPoint & {
     subtitle: 'Съезд с Коммунального',
     color: '#a1c9a4',
   },
-];
-export const CITY_SPAWN = { x: -1538, z: 770, heading: Math.atan2(30, 50) };
+].map((p) => ({
+  ...compactCityPoint(p),
+  mission: p.mission as CityMission | undefined,
+}));
+cityStops.push({
+  id: 'kvant',
+  x: -70,
+  z: -125,
+  title: 'ТЦ «Квант»',
+  subtitle: 'Красной Армии, 10 · центр',
+  color: '#a3bed6',
+});
+const predmostnayaStop = cityStops.find((s) => s.id === 'predmostnaya')!;
+Object.assign(predmostnayaStop, { x: ROUNDABOUT.x + 48, z: ROUNDABOUT.z });
+const islandStop = cityStops.find((s) => s.id === 'otdyha')!;
+Object.assign(islandStop, { x: 90, z: 338 });
+const spawn = compactCityPoint({ x: -1538, z: 770 });
+const spawnTarget = compactCityPoint({ x: -1520, z: 740 });
+export const CITY_SPAWN = {
+  ...spawn,
+  heading: Math.atan2(spawnTarget.x - spawn.x, spawn.z - spawnTarget.z),
+};
 export const CITY_DISTRICTS = [
   { name: 'ОКТЯБРЬСКИЙ', x: -1900, z: 0 },
   { name: 'ЖЕЛЕЗНОДОРОЖНЫЙ', x: -1100, z: -200 },
@@ -589,7 +907,7 @@ export const CITY_DISTRICTS = [
   { name: 'СВЕРДЛОВСКИЙ', x: -300, z: 1600 },
   { name: 'КИРОВСКИЙ', x: 1550, z: 900 },
   { name: 'ЛЕНИНСКИЙ', x: 2950, z: 100 },
-];
+].map((p) => compactCityPoint(p));
 export type CityBuilding = CityRect & {
   h: number;
   color: string;
@@ -599,6 +917,8 @@ export type CityBuilding = CityRect & {
     | 'theatre'
     | 'city-clock'
     | 'borisova'
+    | 'orbita'
+    | 'doner'
     | 'ikit'
     | 'planeta'
     | 'udachny'
@@ -607,6 +927,7 @@ export type CityBuilding = CityRect & {
     | 'museum'
     | 'pushkin'
     | 'kubatura'
+    | 'kvant'
     | 'pho'
     | 'frank'
     | 'fresco';
@@ -626,21 +947,47 @@ const landmark = (
   color: string,
 ): CityBuilding => ({ ...cityGeo(lat, lon), w, d, h, color, kind });
 export const cityBuildings: CityBuilding[] = [
+  { kind: 'orbita', x: -840, z: 430, w: 22, d: 20, h: 56, color: '#d8d8cd' },
+  { kind: 'orbita', x: -900, z: 420, w: 25, d: 18, h: 35, color: '#d8d8cd' },
+  { kind: 'orbita', x: -920, z: 390, w: 18, d: 18, h: 42, color: '#d8d8cd' },
+  { kind: 'doner', x: -677, z: 386, w: 14, d: 8, h: 4.2, color: '#544b3b' },
+  { kind: 'kvant', x: -70, z: -168, w: 54, d: 32, h: 22, color: '#6592aa' },
   landmark('borisova', 55.992306, 92.795672, 26, 28, 48, '#d8d8cd'),
   landmark('ikit', 55.994336, 92.797027, 48, 18, 13.5, '#d6cfb4'),
   landmark('university', 56.004, 92.772, 35, 21, 7, '#ccb79a'),
-  landmark('planeta', 56.050913, 92.904369, 65, 28, 9, '#bd9573'),
-  landmark('komsomoll', 56.019849, 92.900873, 60, 20, 12, '#d8d9cf'),
-  landmark('kubatura', 56.037233, 92.934533, 52, 25, 10, '#d8d9cf'),
+  landmark('planeta', 56.050913, 92.904369, 120, 65, 24, '#bd9573'),
+  landmark('komsomoll', 56.019849, 92.900873, 90, 40, 23, '#d8d9cf'),
+  landmark('kubatura', 56.037233, 92.934533, 70, 38, 18, '#d8d9cf'),
   landmark('pushkin', 56.011344, 92.865642, 25, 15, 7, '#c8bdad'),
   landmark('theatre', 56.008645, 92.868542, 30, 16, 6, '#d4d2b7'),
   landmark('museum', 56.00735, 92.872592, 23, 10, 6, '#ba815b'),
   landmark('frank', 56.011079, 92.856719, 22, 14, 7.8, '#c6a496'),
   landmark('pho', 56.013714, 92.852395, 19, 12, 5.8, '#d7c4a2'),
   landmark('fresco', 56.012043, 92.874562, 19, 14, 6.6, '#ad806b'),
-  { kind: 'station', x: -1250, z: 215, w: 48, d: 23, h: 10, color: '#d6d8b4' },
-  { kind: 'city-clock', x: 245, z: 90, w: 8, d: 8, h: 14, color: '#cbb98d' },
-  { kind: 'arena', x: 330, z: 645, w: 65, d: 38, h: 12, color: '#aebec1' },
+  {
+    kind: 'station',
+    ...compactCityPoint({ x: -1250, z: 215 }),
+    w: 48,
+    d: 23,
+    h: 10,
+    color: '#d6d8b4',
+  },
+  {
+    kind: 'city-clock',
+    ...compactCityPoint({ x: 245, z: 90 }),
+    w: 8,
+    d: 8,
+    h: 14,
+    color: '#cbb98d',
+  },
+  {
+    kind: 'arena',
+    ...compactCityPoint({ x: 330, z: 645 }),
+    w: 65,
+    d: 38,
+    h: 12,
+    color: '#aebec1',
+  },
   {
     kind: 'udachny',
     ...cityGeo(55.979489, 92.698624),
@@ -650,11 +997,52 @@ export const cityBuildings: CityBuilding[] = [
     color: '#c3b192',
   },
 ];
+// Landmarks keep full-sized parcels; move their forecourts as complete nodes
+// instead of squeezing a building across the now shorter street network.
+for (const [kind, x, z] of [
+  ['ikit', -800, 390],
+  ['museum', 150, 144],
+  ['arena', 110, 300],
+  ['planeta', 645, -1005],
+  ['komsomoll', 600, -220],
+  ['kubatura', 1005, -550],
+] as const)
+  Object.assign(
+    cityBuildings.find((b) => b.kind === kind)!,
+    { x, z },
+  );
 export const CITY_PARKING = [
-  { id: 'komsomoll', x: 1020, z: -487, w: 130, d: 52 },
-  { id: 'kubatura', x: 1930, z: -1240, w: 82, d: 70 },
-  { id: 'planeta', x: 1150, z: -1758, w: 165, d: 58 },
+  { id: 'kvant', x: -70, z: -125, w: 70, d: 28 },
+  { id: 'komsomoll', x: 600, z: -166, w: 130, d: 52 },
+  { id: 'kubatura', x: 1010, z: -494, w: 90, d: 62 },
+  { id: 'planeta', x: 645, z: -931, w: 165, d: 58 },
 ];
+for (const parking of CITY_PARKING) {
+  const stop = cityStops.find((s) => s.id === parking.id)!;
+  if (parking.id !== 'planeta')
+    Object.assign(stop, { x: parking.x, z: parking.z });
+  const connection =
+    parking.id === 'kvant'
+      ? { x: -70, z: -103.30909090909091 }
+      : parking.id === 'planeta'
+        ? CITY_ROUTES.studPlaneta.at(-1)!
+        : parking.id === 'komsomoll'
+          ? compactCityPoint({ x: 1020, z: -620 })
+          : compactCityPoint({ x: 1814, z: -1173 });
+  // Each lot has a dry clear lane from a through street; parking details honour
+  // this lane in their own collision/decoration exclusions.
+  cityRoads.push(
+    ...projectedRoad(
+      `${parking.id}-forecourt`,
+      [
+        connection,
+        ...(parking.id === 'komsomoll' ? [{ x: 530, z: -166 }] : []),
+        { x: parking.x, z: parking.z },
+      ],
+      14,
+    ),
+  );
+}
 export function cityParcelClear(x: number, z: number, w: number, d: number) {
   return (
     !cityRoads.some((r) => {
@@ -689,7 +1077,7 @@ export function cityParcelClear(x: number, z: number, w: number, d: number) {
 }
 /** Schematic developed districts: dense blocks, then genuine green gaps between
  * them. These are art-directed neighbourhood envelopes, not cadastral parcels. */
-export const CITY_NEIGHBOURHOODS = [
+const referenceNeighbourhoods = [
   {
     id: 'centre',
     x: -920,
@@ -790,6 +1178,21 @@ export const CITY_NEIGHBOURHOODS = [
     style: 'panel',
   },
 ] as const;
+export const CITY_NEIGHBOURHOODS = referenceNeighbourhoods.map((zone) => {
+  const centre = compactCityPoint({
+    x: zone.x + (zone.columns * zone.cell) / 2,
+    z: zone.z + (zone.rows * zone.cell) / 2,
+  });
+  const columns = Math.max(3, Math.round(zone.columns * 0.6)),
+    rows = Math.max(2, Math.round(zone.rows * 0.65));
+  return {
+    ...zone,
+    columns,
+    rows,
+    x: centre.x - (columns * zone.cell) / 2,
+    z: centre.z - (rows * zone.cell) / 2,
+  };
+});
 export const CITY_COURTYARDS: (CityRect & { district: string })[] = [];
 const trunkRoads = [...cityRoads];
 const nearRectangle = (x: number, z: number, p: CityRect, padding = 0) =>
@@ -810,8 +1213,9 @@ function clearNeighbourhoodStreet(
       onCityIsland(x, z) ||
       cityBuildings.some((b) => nearRectangle(x, z, b, width / 2 + 4)) ||
       CITY_PARKING.some((p) => nearRectangle(x, z, p, width / 2 + 2)) ||
-      Math.hypot(x - ROUNDABOUT.x, z - ROUNDABOUT.z) <
-        ROUNDABOUT.outerRadius + 8
+      CITY_ROUNDABOUTS.some(
+        (ring) => Math.hypot(x - ring.x, z - ring.z) < ring.outerRadius + 8,
+      )
     )
       return false;
   }
@@ -1023,7 +1427,7 @@ for (const [ri, r] of trunkRoads.entries()) {
         continue;
       const n = ri + Math.floor(t / 210),
         style =
-          x < -3100 ? 'cottage' : x < 850 && z < 180 ? 'heritage' : 'panel';
+          x < -1550 ? 'cottage' : x < 425 && z < 180 ? 'heritage' : 'panel';
       const floors =
         style === 'cottage'
           ? 1 + (n % 2)

@@ -1,7 +1,9 @@
+import { stepCar } from '../lib/game/city/car-physics.ts';
+import { cityBarriers } from '../lib/game/city/barriers.ts';
 import { CITY_TOP_SPEED } from '../lib/game/city/powertrain.ts';
 import {
   CITY_ROUTES,
-  BRIDGES,
+  distanceToRoad,
   cityBuildings,
   cityRoads,
   riverBankZ,
@@ -111,10 +113,23 @@ void test('the higher forward limit cannot tunnel through buildings, banks, or b
   assert.equal(straight.bumps, 0);
   const building = cityBuildings.find((b) => b.kind === 'borisova');
   const bankX = CITY_ROUTES.western.at(-1).x;
-  const [a, b] = BRIDGES[0].points;
-  const length = Math.hypot(b.x - a.x, b.z - a.z);
-  const nx = (b.z - a.z) / length,
-    nz = -(b.x - a.x) / length;
+  // Aim at an actual rail section, not an opening where a quay joins a bridge.
+  const rail = cityBarriers[0];
+  const road = cityRoads
+    .filter((r) => r.bridge === 'nikolaevsky')
+    .sort(
+      (a, b) =>
+        distanceToRoad(rail.x, rail.z, a) - distanceToRoad(rail.x, rail.z, b),
+    )[0];
+  const dx = road.to.x - road.from.x,
+    dz = road.to.z - road.from.z;
+  const along =
+    ((rail.x - road.from.x) * dx + (rail.z - road.from.z) * dz) /
+    (dx * dx + dz * dz);
+  const start = { x: road.from.x + dx * along, z: road.from.z + dz * along };
+  const length = Math.hypot(rail.x - start.x, rail.z - start.z);
+  const nx = (rail.x - start.x) / length,
+    nz = (rail.z - start.z) / length;
   for (const state of [
     {
       x: building.x + building.w / 2 + 8,
@@ -131,8 +146,8 @@ void test('the higher forward limit cannot tunnel through buildings, banks, or b
       vz: CITY_TOP_SPEED,
     },
     {
-      x: (a.x + b.x) / 2,
-      z: (a.z + b.z) / 2,
+      x: start.x,
+      z: start.z,
       heading: Math.atan2(nx, -nz),
       vx: nx * CITY_TOP_SPEED,
       vz: nz * CITY_TOP_SPEED,
@@ -207,7 +222,7 @@ void test('automatic drift trajectories match on 30, 60 and 144Hz displays', () 
   }
 });
 
-void test('six-speed full throttle keeps pulling beyond the old ceiling while partial triggers stay gentle', () => {
+void test('six-speed standalone full throttle keeps pulling beyond the old ceiling while partial triggers stay gentle', () => {
   const road = cityRoads.find((r) => r.id === 'left-quay:1');
   const dx = road.to.x - road.from.x,
     dz = road.to.z - road.from.z,
@@ -221,7 +236,14 @@ void test('six-speed full throttle keeps pulling beyond the old ceiling while pa
     partial = streetCity();
   const marks = new Map();
   for (let i = 0; i < 1500; i++) {
-    tickCity(full, 1 / 60, new Set(['KeyW']));
+    // Full 0–300 timing needs more straight asphalt than the compact city.
+    // Collision/terrain acceleration is covered separately on actual roads.
+    stepCar(
+      full,
+      { throttle: 1, steer: 0, handbrake: false },
+      1 / 60,
+      () => false,
+    );
     if (i < 30)
       tickCity(partial, 1 / 60, new Set(), { throttle: 0.25, steer: 0 });
     for (const speed of [18, 100 / 3.6, 200 / 3.6, CITY_TOP_SPEED - 0.01])
