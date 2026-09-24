@@ -1,3 +1,4 @@
+import { freshCityDamage } from '../city/destruction.ts';
 import { citySurfacePose } from '../city/surface.ts';
 import {
   vehiclePose,
@@ -66,6 +67,7 @@ export function freshRace(): RaceState {
     paused: true,
     players: 1,
     phase: 'lobby',
+    damage: freshCityDamage(),
     trackId: 'krasnoyarsk',
     mode: 'circuit',
     laps: 3,
@@ -150,6 +152,7 @@ export function startRace(s: RaceState, course: Course) {
   if (s.phase !== 'lobby' || !s.racers.length || s.racers.some((r) => !r.ready))
     return false;
   s.phase = 'countdown';
+  s.damage = freshCityDamage();
   s.countdown = 3;
   s.elapsed = 0;
   s.accumulator = 0;
@@ -446,7 +449,13 @@ function step(
     r.car.elapsed += dt;
     const hit =
       course.id === 'krasnoyarsk'
-        ? stepCityCar(r.car, input, dt, vehicleTuning(r.vehicleId, true))
+        ? stepCityCar(
+            r.car,
+            input,
+            dt,
+            vehicleTuning(r.vehicleId, true),
+            (s.damage ??= freshCityDamage()),
+          )
         : stepCar(
             r.car,
             input,

@@ -1,3 +1,4 @@
+import { validCityDamage } from '../city/destruction.ts';
 import {
   CITY_TOP_SPEED,
   AUTOMATIC_RATIOS,
@@ -6,7 +7,7 @@ import {
 import { CITY_BOUNDS, cityStops } from '../city/layout.ts';
 import type { DriveAxes } from '../input/drive.ts';
 import type { CityState } from '../city/engine.ts';
-export const NETWORK_VERSION = 4;
+export const NETWORK_VERSION = 5;
 export const NETWORK_CHANNEL = `wellcum-city-v${NETWORK_VERSION}`;
 const VERSION_MISMATCH =
   'Версии игры различаются. Обновите игру у обоих игроков и создайте новое приглашение.';
@@ -42,7 +43,7 @@ export function drivingKeys(keys: ReadonlySet<string>): DriveKey[] {
 /** Invites and remote input are untrusted. Peers can send only bounded driving
  * state; no executable code, arbitrary object merging or game saves are accepted. */
 export function readPeerPacket(raw: unknown): PeerPacket | null {
-  if (typeof raw !== 'string' || raw.length > 12000) return null;
+  if (typeof raw !== 'string' || raw.length > 24000) return null;
   try {
     const p: unknown = JSON.parse(raw);
     if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
@@ -176,6 +177,14 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
       radio: s.radio,
       interaction: null,
     });
+    if (!validCityDamage(s.damage)) return null;
+    if (s.damage) {
+      const damage = s.damage as NonNullable<CityState['damage']>;
+      state.damage = {
+        marks: damage.marks,
+        hits: damage.hits.map((h) => [...h]),
+      };
+    }
     if (s.powertrain !== undefined) {
       if (
         !s.powertrain ||

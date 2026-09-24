@@ -157,7 +157,7 @@ void test('the higher forward limit cannot tunnel through buildings, banks, or b
     for (let i = 0; i < 120; i++) {
       tickCity(s, 1 / 60, new Set(['KeyW']));
       assert.equal(
-        cityCarBlocked(s.x, s.z, s.heading),
+        cityCarBlocked(s.x, s.z, s.heading, s.elevation, s.damage),
         false,
         'the complete car stays outside blockers on every step',
       );

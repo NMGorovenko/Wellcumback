@@ -991,6 +991,8 @@ export type CityBuilding = CityRect & {
     | 'station'
     | 'university'
     | 'theatre'
+    | 'apollo'
+    | 'theatre-fountain'
     | 'city-clock'
     | 'borisova'
     | 'orbita'
@@ -1045,6 +1047,16 @@ export const cityBuildings: CityBuilding[] = [
   landmark('komsomoll', 56.019849, 92.900873, 90, 40, 23, '#d8d9cf'),
   landmark('kubatura', 56.037233, 92.934533, 70, 38, 18, '#d8d9cf'),
   landmark('pushkin', 56.011344, 92.865642, 25, 15, 7, '#c8bdad'),
+  { kind: 'apollo', x: 113, z: 137, w: 2, d: 2, h: 8, color: '#7b817e' },
+  {
+    kind: 'theatre-fountain',
+    x: 105,
+    z: 144,
+    w: 9.9,
+    d: 9.9,
+    h: 2.9,
+    color: '#7b817e',
+  },
   landmark('theatre', 56.008645, 92.868542, 30, 16, 6, '#d4d2b7'),
   landmark('museum', 56.00735, 92.872592, 23, 10, 6, '#ba815b'),
   landmark('frank', 56.011079, 92.856719, 22, 14, 7.8, '#c6a496'),

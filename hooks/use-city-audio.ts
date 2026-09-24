@@ -3,12 +3,14 @@ import { useEffect, useRef } from 'react';
 import type { CityState } from '@/lib/game/city/engine';
 import { advanceV8, freshV8 } from '@/lib/game/audio/v8-model';
 import { createCityFoley } from '@/lib/game/audio/city-foley';
+import { breakableObjects, type CityDamage } from '@/lib/game/city/destruction';
 
 export function useCityAudio(
   enabled: boolean,
   state: CityState,
   voice: 'v8' | 'v6' = 'v8',
   mix = 1,
+  damage: CityDamage | undefined = state.damage,
 ) {
   const audio = useRef<{
     context: AudioContext;
@@ -20,6 +22,7 @@ export function useCityAudio(
   const resumePending = useRef(false);
   const resumeAt = useRef(0);
   const latest = useRef(state);
+  const heardImpact = useRef<string | null>(null);
   useEffect(() => {
     latest.current = state;
   }, [state]);
@@ -115,7 +118,21 @@ export function useCityAudio(
       dt,
     );
     current.graph.update(motor.current, true);
-  }, [state, enabled]);
+    const hit = damage?.hits.at(-1);
+    const signature = hit ? `${hit[0]}:${hit[1]}` : '';
+    if (
+      heardImpact.current !== null &&
+      heardImpact.current !== signature &&
+      hit &&
+      state.elapsed - hit[1] >= 0 &&
+      state.elapsed - hit[1] < 0.4
+    ) {
+      const object = breakableObjects[hit[0]];
+      if (object && Math.hypot(object.x - state.x, object.z - state.z) < 45)
+        current.graph.impact(object.kind, hit[3]);
+    }
+    heardImpact.current = signature;
+  }, [state, enabled, damage]);
   useEffect(
     () => () => {
       clearTimeout(suspend.current);

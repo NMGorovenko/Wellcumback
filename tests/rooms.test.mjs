@@ -660,3 +660,44 @@ void test('an upgraded relay never re-labels a saved incompatible room as curren
   assert.equal(created.body.version, ROOM_VERSION);
   db.sqlite.close();
 });
+
+void test('broken city scenery survives SQL persistence, guest rejoin and shared race snapshots', async () => {
+  const { freshCity } = await import('../lib/game/city/engine.ts');
+  const { freshRace } = await import('../lib/game/race/engine.ts');
+  const { breakableObjects, strikeCityObject } =
+    await import('../lib/game/city/destruction.ts');
+  const { hostPoll, guestPoll } = await party(2);
+  const city = freshCity(),
+    tree = breakableObjects.find((o) => o.kind === 'tree');
+  strikeCityObject(city.damage, tree.id, 20, 0, 1);
+  const world = { ...snapshot(3), state: city };
+  assert.equal(
+    (await hostPoll({ snapshot: world, snapshotSeq: 1 })).status,
+    200,
+  );
+  assert.deepEqual((await guestPoll()).body.snapshot.state.damage, city.damage);
+  await hostPoll({}, 1000 + MEMBER_STALE_MS + 1);
+  const returned = await guestPoll(
+    { rejoin: true },
+    1000 + MEMBER_STALE_MS + 2,
+  );
+  assert.equal(returned.body.frozen, true);
+  assert.deepEqual(returned.body.snapshot.state.damage, city.damage);
+  const race = freshRace();
+  race.damage = city.damage;
+  const next = { ...snapshot(4, 'race', true), state: race };
+  assert.equal(
+    (
+      await hostPoll(
+        { snapshot: next, snapshotSeq: 2 },
+        1000 + MEMBER_STALE_MS + 3,
+      )
+    ).status,
+    200,
+  );
+  assert.deepEqual(
+    (await guestPoll({}, 1000 + MEMBER_STALE_MS + 4)).body.snapshot.state
+      .damage,
+    city.damage,
+  );
+});

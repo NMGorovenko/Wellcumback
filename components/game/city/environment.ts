@@ -1,3 +1,6 @@
+import { createTheatreSquareGround } from './opera-landmark.ts';
+import { createCityDestruction } from './destruction.ts';
+import type { CityDamage } from '../../../lib/game/city/destruction.ts';
 import {
   createNeighbourhoodBuilding,
   createNeighbourhoodGreenery,
@@ -825,6 +828,7 @@ export function* buildCityEnvironment(
   root.add(props);
   yield { label: 'Вывески и городские детали', progress: 0.73 };
   createCityParking(kit, props);
+  createTheatreSquareGround(kit, props);
   createYeniseySign(kit, props);
   createNeighbourhoodGreenery(kit, props);
   createNorthernChapel(kit, props);
@@ -842,6 +846,7 @@ export function* buildCityEnvironment(
   liftScenery(kit, props, cityGroundHeight);
   createSiberianRidges(kit, root);
   const bobrovyLog = createBobrovyLog(kit, root);
+  const destruction = createCityDestruction(kit, root);
   const cameraOccluders = collectCityFoliage(root);
   yield { label: 'Подготовка поездки', progress: 0.82 };
   for (const part of batchCity(kit, root))
@@ -912,6 +917,7 @@ export function* buildCityEnvironment(
   dummy.rotation.set(-Math.PI / 2, 0, 0);
   return {
     root,
+    destruction,
     scenery,
     streetFurniture,
     cameraOccluders,
@@ -986,6 +992,7 @@ export function* buildCityEnvironment(
 
 export type CityEnvironment = {
   root: THREE.Group;
+  destruction: { update(damage: CityDamage | undefined, time: number): void };
   scenery: ReturnType<typeof createCityLandmarks>;
   streetFurniture: ReturnType<typeof createStreetDetails>;
   cameraOccluders: ReturnType<typeof collectCityFoliage>;

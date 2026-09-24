@@ -216,6 +216,7 @@ export default function RaceScene({
           }),
         };
         cityEnvironment?.update(state.elapsed);
+        cityEnvironment?.destruction.update(state.damage, state.elapsed);
         // Animate wheels/heads exactly once. The viewport passes only read models.
         for (const item of models) {
           const r = state.racers.find((r) => r.id === item.id);

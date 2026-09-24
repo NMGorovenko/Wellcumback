@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import CityScene from './scene';
-import { freshCity } from '@/lib/game/city/engine';
+import { freshCity, stepCityCar } from '@/lib/game/city/engine';
+import { breakableObjects, freshCityDamage } from '@/lib/game/city/destruction';
 import { cityRoads, type CityPoint } from '@/lib/game/city/layout';
 import { citySurfacePose } from '@/lib/game/city/surface';
 import type { CityCameraMode } from './camera';
@@ -19,6 +20,7 @@ const places: Record<string, CityPoint & { heading: number; road?: string }> = {
   ИКИТ: { x: -760, z: 402, heading: -1.05 },
   'Бобровый лог': { x: -858, z: 1211, heading: Math.PI },
   Коммунальный: { x: 150, z: 520, heading: 0 },
+  'Театральная площадь': { x: 106, z: 162, heading: 0 },
 };
 /** A disposable review scene using the actual renderer; never reads or writes saves. */
 export default function CityReview() {
@@ -27,6 +29,30 @@ export default function CityReview() {
   const [mode, setMode] = useState<CityCameraMode>('cruise');
   const [ready, setReady] = useState(false);
   const [place, setPlace] = useState('Старт');
+  const impactUntil = useRef(0);
+  function impact(kind: 'rail' | 'tree') {
+    const object = breakableObjects
+      .filter((o) => o.kind === kind)
+      .sort(
+        (a, b) =>
+          Math.hypot(a.x + 769, a.z - 433) - Math.hypot(b.x + 769, b.z - 433),
+      )[0];
+    const dx = kind === 'rail' ? Math.cos(object.angle ?? 0) : 0;
+    const dz = kind === 'rail' ? -Math.sin(object.angle ?? 0) : -1;
+    const x = object.x - dx * 7,
+      z = object.z - dz * 7,
+      heading = Math.atan2(dx, -dz);
+    Object.assign(game.current, citySurfacePose(x, z, heading, object.y), {
+      x,
+      z,
+      heading,
+      vx: dx * 19,
+      vz: dz * 19,
+      speed: 19,
+      damage: freshCityDamage(),
+    });
+    impactUntil.current = game.current.elapsed + 0.9;
+  }
   function inspect(name: string) {
     const p = places[name],
       road = cityRoads.find((r) => r.id === p.road);
@@ -45,7 +71,16 @@ export default function CityReview() {
     let last = performance.now(),
       raf = 0;
     const tick = (now: number) => {
-      game.current.elapsed += Math.min(0.1, (now - last) / 1000);
+      const dt = Math.min(0.1, (now - last) / 1000);
+      game.current.elapsed += dt;
+      if (game.current.elapsed < impactUntil.current) {
+        for (let i = 0; i < 6; i++)
+          stepCityCar(
+            game.current,
+            { throttle: 0, steer: 0, handbrake: false },
+            dt / 6,
+          );
+      }
       last = now;
       raf = requestAnimationFrame(tick);
     };
@@ -111,6 +146,12 @@ export default function CityReview() {
           Повернуть 45°
         </button>
         <span>{ready ? 'Готово' : 'Загрузка…'}</span>
+        <button onClick={() => impact('rail')} disabled={!ready}>
+          Удар в перила
+        </button>
+        <button onClick={() => impact('tree')} disabled={!ready}>
+          Удар в дерево
+        </button>
       </div>
     </main>
   );

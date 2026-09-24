@@ -72,6 +72,7 @@ export function createCityFoley(
   const intake = noiseLayer(640, 0.55),
     tyres = noiseLayer(1100, 0.7),
     pop = noiseLayer(360, 0.6);
+  const impact = noiseLayer(700, 1.2);
   const banks = ([0, 1] as const).map((bank) => {
     const oscillator = own(context.createOscillator());
     const wave = exhaustWave(bank, 64, voice);
@@ -132,6 +133,23 @@ export function createCityFoley(
     param.setTargetAtTime(value, now, lag);
   };
   return {
+    impact(kind: 'rail' | 'tree', force: number, atTime = context.currentTime) {
+      if (disposed) return;
+      impact.filter.frequency.setValueAtTime(
+        kind === 'rail' ? 960 : 230,
+        atTime,
+      );
+      impact.filter.Q.value = kind === 'rail' ? 2.8 : 0.65;
+      const gain = impact.gain.gain;
+      gain.cancelScheduledValues(atTime);
+      gain.setValueAtTime(0, atTime);
+      gain.linearRampToValueAtTime(0.7 + force * 0.6, atTime + 0.007);
+      gain.exponentialRampToValueAtTime(
+        0.001,
+        atTime + (kind === 'rail' ? 0.48 : 0.3),
+      );
+      gain.setValueAtTime(0, atTime + 0.5);
+    },
     update(state: V8State, audible: boolean, atTime = context.currentTime) {
       if (disposed) return;
       const now = atTime;
@@ -200,6 +218,7 @@ export function createCityFoley(
       target(master.gain, 0, atTime, 0.012);
       target(horn.gain, 0, atTime, 0.008);
       target(pop.gain.gain, 0, atTime, 0.008);
+      target(impact.gain.gain, 0, atTime, 0.008);
     },
     dispose() {
       if (disposed) return;

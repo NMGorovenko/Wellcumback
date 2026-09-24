@@ -1,3 +1,4 @@
+import { validCityDamage } from '../city/destruction.ts';
 import { CAR_COLORS } from './vehicles.ts';
 const obj = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -49,6 +50,7 @@ export function validRaceState(value: unknown, capacity = 3) {
   if (
     !integer(capacity, 1, 3) ||
     !obj(value) ||
+    !validCityDamage(value.damage) ||
     !['krasnoyarsk', 'nordschleife'].includes(String(value.trackId)) ||
     !['circuit', 'drift'].includes(String(value.mode)) ||
     !['lobby', 'countdown', 'racing', 'result'].includes(String(value.phase)) ||

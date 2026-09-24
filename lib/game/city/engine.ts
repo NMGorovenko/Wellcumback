@@ -1,3 +1,11 @@
+import {
+  cityBreakablesAt,
+  breakableObjects,
+  freshCityDamage,
+  isCityObjectBroken,
+  strikeCityObject,
+  type CityDamage,
+} from './destruction.ts';
 import { cityBarriers } from './barriers.ts';
 import {
   vehiclePose,
@@ -26,6 +34,7 @@ import {
   cityStops,
 } from './layout.ts';
 export type CityState = {
+  damage?: CityDamage;
   elevation?: number;
   pitch?: number;
   surfaceId?: string;
@@ -64,6 +73,7 @@ export type CityState = {
 export const freshCity = (): CityState => ({
   ...citySurfacePose(CITY_SPAWN.x, CITY_SPAWN.z, CITY_SPAWN.heading),
   paused: false,
+  damage: freshCityDamage(),
   players: 1,
   x: CITY_SPAWN.x,
   z: CITY_SPAWN.z,
@@ -89,6 +99,7 @@ export const freshCity = (): CityState => ({
   conversation: freshCityConversation(),
 });
 const blockers = [...cityBuildings, ...cityBarriers];
+const barrierIds = new Map(cityBarriers.map((b, i) => [b, i]));
 // Static spatial index keeps a city drive independent of the number of distant houses.
 const BLOCK_CELL = 64,
   blockerGrid = new Map<string, typeof blockers>();
@@ -115,7 +126,12 @@ for (const b of blockers) {
 
 const RADIUS = 0.85,
   STEP = 1 / 60;
-export function cityBlocked(x: number, z: number, elevation?: number) {
+export function cityBlocked(
+  x: number,
+  z: number,
+  elevation?: number,
+  damage?: CityDamage,
+) {
   if (
     x < CITY_BOUNDS.minX + RADIUS ||
     x > CITY_BOUNDS.maxX - RADIUS ||
@@ -136,11 +152,22 @@ export function cityBlocked(x: number, z: number, elevation?: number) {
     )
   )
     return true;
+  if (
+    cityBreakablesAt(
+      x,
+      z,
+      elevation ?? citySurfacePose(x, z, 0).elevation,
+      damage,
+    ).some((id) => breakableObjects[id].kind === 'tree')
+  )
+    return true;
   return (
     blockerGrid.get(
       `${Math.floor(x / BLOCK_CELL)}:${Math.floor(z / BLOCK_CELL)}`,
     ) ?? []
   ).some((b) => {
+    const id = barrierIds.get(b);
+    if (id !== undefined && isCityObjectBroken(damage, id)) return false;
     const angle = b.angle ?? 0,
       dx = x - b.x,
       dz = z - b.z;
@@ -164,12 +191,14 @@ export function cityCarBlocked(
   z: number,
   heading: number,
   elevation = citySurfacePose(x, z, heading).elevation,
+  damage?: CityDamage,
 ) {
   return [-1.2, 0, 1.2].some((offset) =>
     cityBlocked(
       x + Math.sin(heading) * offset,
       z - Math.cos(heading) * offset,
       elevation,
+      damage,
     ),
   );
 }
@@ -180,6 +209,7 @@ export function stepCityCar(
   input: CarInput,
   dt: number,
   tuning?: VehicleTuning,
+  damage = (s.damage ??= freshCityDamage()),
 ) {
   const prior = citySurfacePose(s.x, s.z, s.heading, s.elevation, s.surfaceId);
   Object.assign(s, prior);
@@ -191,6 +221,7 @@ export function stepCityCar(
     s.vz += Math.cos(s.heading) * gravity;
   }
   const before = { x: s.x, z: s.z };
+  let destructiveContact = false;
   const result = stepCar(
     s,
     input,
@@ -204,9 +235,20 @@ export function stepCityCar(
         prior.surfaceId,
       );
       const travel = Math.hypot(x - before.x, z - before.z);
+      for (const offset of [-1.2, 0, 1.2]) {
+        const ids = cityBreakablesAt(
+          x + Math.sin(heading) * offset,
+          z - Math.cos(heading) * offset,
+          pose.elevation,
+          damage,
+        );
+        for (const id of ids)
+          if (strikeCityObject(damage, id, s.vx, s.vz, s.elapsed))
+            destructiveContact = true;
+      }
       return (
         Math.abs(pose.elevation - prior.elevation) > 0.3 + travel * 0.22 ||
-        cityCarBlocked(x, z, heading, pose.elevation)
+        cityCarBlocked(x, z, heading, pose.elevation, damage)
       );
     },
     tuning,
@@ -215,7 +257,12 @@ export function stepCityCar(
     s,
     citySurfacePose(s.x, s.z, s.heading, prior.elevation, prior.surfaceId),
   );
-  return result;
+  if (destructiveContact) {
+    s.vx *= 0.76;
+    s.vz *= 0.76;
+    s.speed = Math.hypot(s.vx, s.vz);
+  }
+  return { worldContact: result.worldContact || destructiveContact };
 }
 /** Resolve only canonical destinations, then choose a clear pose on their road. */
 export function cityTravelArrival(stopId: string) {

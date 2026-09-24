@@ -396,6 +396,7 @@ export default function CityScene({
           !!line,
           car.passengers,
         );
+        city.destruction.update(s.damage, s.elapsed);
         city.update(
           s.elapsed,
           selectedStop.current,

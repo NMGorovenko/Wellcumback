@@ -1,3 +1,4 @@
+import type { CityDamage } from '../city/destruction.ts';
 import type { CityState } from '../city/engine.ts';
 import type { CarInput } from '../city/car-physics.ts';
 import type { TrackId } from './course.ts';
@@ -39,6 +40,7 @@ export const neutralRaceInput = (): RaceInput => ({
   reset: false,
 });
 export type RaceState = {
+  damage?: CityDamage;
   paused: boolean;
   players: number;
   phase: RacePhase;

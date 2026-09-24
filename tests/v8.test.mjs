@@ -270,7 +270,7 @@ void test('V8 graph reuses sources, clears transients and disposes exactly once'
       p.calls.at(-1)[1] === 0 &&
       p.calls.at(-1)[2] === 20,
   );
-  assert.equal(fades.length, 3, 'master, horn and exhaust pop all fade');
+  assert.equal(fades.length, 4, 'master, horn, exhaust and impact all fade');
   graph.dispose();
   graph.dispose();
   graph.update(s, true);

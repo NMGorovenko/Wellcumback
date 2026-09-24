@@ -1,3 +1,4 @@
+import { validCityDamage } from '../game/city/destruction.ts';
 import {
   validRaceInputs,
   validRaceState,
@@ -206,6 +207,8 @@ function readSnapshot(value: unknown): RoomSnapshot {
       value.brief !== (value.state.phase === 'lobby'))
   )
     return fail(400, 'INVALID_SNAPSHOT', 'Неверный заезд.');
+  if (value.scene === 'city' && !validCityDamage(value.state.damage))
+    return fail(400, 'INVALID_SNAPSHOT', 'Неверное состояние окружения.');
   const snapshot: RoomSnapshot = {
     scene: value.scene as RoomSnapshot['scene'],
     epoch: value.epoch,

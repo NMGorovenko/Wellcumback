@@ -1,3 +1,7 @@
+import {
+  createOperaLandmark,
+  createTheatreSquareProp,
+} from './opera-landmark.ts';
 import * as THREE from 'three';
 import type { CityBuilding } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
@@ -11,6 +15,11 @@ export function createCentreLandmark(
   root: THREE.Group,
   b: CityBuilding,
 ) {
+  if (
+    createOperaLandmark(kit, root, b) ||
+    createTheatreSquareProp(kit, root, b)
+  )
+    return true;
   if (createKvantLandmark(kit, root, b)) return true;
   if (
     !['museum', 'pushkin', 'theatre', 'pho', 'frank', 'fresco'].includes(
@@ -124,31 +133,6 @@ export function createCentreLandmark(
         );
         feather.rotation.z = side * 0.22;
       }
-  } else if (b.kind === 'theatre') {
-    box(b.w - 1, 3.8, b.d - 3, white, 0, 2, -1);
-    const hall = cyl(4, 2.6, white, 0, 5, -1);
-    hall.scale.z = 1.25;
-    box(7, 7, 4, white, 0, 3.5, -b.d / 2 + 2.1);
-    box(b.w - 2, 3.7, 0.1, glass, 0, 2.1, front - 1.4);
-    for (let x = -b.w / 2 + 2; x < b.w / 2; x += 1.4)
-      box(0.09, 3.7, 0.1, white, x, 2.1, front - 1.3);
-    for (const y of [1, 2.4, 3.7])
-      box(b.w - 2, 0.1, 0.12, white, 0, y, front - 1.3);
-    for (const x of [-b.w / 2 + 1, -b.w / 2 + 2.8, b.w / 2 - 2.8, b.w / 2 - 1])
-      cyl(0.3, 4, white, x, 2.1, front - 0.3);
-    box(b.w, 0.5, 3, white, 0, 4.35, front - 1);
-    for (const side of [-1, 1])
-      for (let n = 0; n < 6; n++)
-        box(
-          0.3,
-          0.4,
-          0.3,
-          '#806d50',
-          side * 7 + (n % 2) * 0.35,
-          1.5 + Math.floor(n / 2) * 0.6,
-          front - 1.15,
-        );
-    sign('ОПЕРА И БАЛЕТ', '#776f60', 14, 0, 4.38, front + 0.55);
   } else if (b.kind === 'pushkin') {
     box(b.w - 1, b.h - 1, b.d - 1.6, '#a6a89c', 0, (b.h - 1) / 2, -0.3);
     for (let y = 0.35; y < 6; y += 0.36)

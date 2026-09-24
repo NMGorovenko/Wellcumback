@@ -31,14 +31,19 @@ export function collectCityFoliage(root: THREE.Object3D): CityCameraOccluder[] {
         matrix.multiply(instance);
       }
       bounds.copy(object.geometry.boundingBox!).applyMatrix4(matrix);
-      crowns.push({
+      const occluder = {
         minX: bounds.min.x,
         minY: bounds.min.y,
         minZ: bounds.min.z,
         maxX: bounds.max.x,
         maxY: bounds.max.y,
         maxZ: bounds.max.z,
-      });
+      };
+      crowns.push(occluder);
+      if (object.userData.cityTreeIndices) {
+        object.userData.cityTreeOccluders ??= [];
+        object.userData.cityTreeOccluders[i] = occluder;
+      }
     }
   });
   return crowns;

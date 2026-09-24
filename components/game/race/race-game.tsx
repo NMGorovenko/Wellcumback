@@ -1,4 +1,5 @@
 'use client';
+import type { CityDamage } from '@/lib/game/city/destruction';
 import {
   useRef,
   useState,
@@ -126,12 +127,14 @@ function RaceAudio({
   racer,
   enabled,
   mix,
+  damage,
 }: {
   racer: Racer;
+  damage?: CityDamage;
   enabled: boolean;
   mix: number;
 }) {
-  useCityAudio(enabled, { ...racer.car }, 'v8', mix);
+  useCityAudio(enabled, { ...racer.car }, 'v8', mix, damage);
   return null;
 }
 export default function RaceGame({
@@ -357,6 +360,7 @@ export default function RaceGame({
     <section className="race-stage" aria-label="Гонки">
       {local.map((r) => (
         <RaceAudio
+          damage={view.damage}
           key={`${r.id}/${r.vehicleId}/${local.length}`}
           racer={r}
           enabled={
