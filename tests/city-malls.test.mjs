@@ -109,6 +109,12 @@ void test('parking furniture and covered ramps leave actual streets and lot thro
     root.updateMatrixWorld(true);
     for (const lot of root.children) {
       const p = CITY_PARKING.find((p) => lot.name === `parking:${p.id}`);
+      if (p.id === 'kubatura') {
+        // The sloped terrace is emitted in world space and checked against
+        // its clipped footprint and road lanes in city-kubatura-terrace.
+        assert.ok(lot.getObjectByName('kubatura:terrace-pavement'));
+        continue;
+      }
       let raised = 0;
       for (const mesh of lot.children) {
         if (!mesh.isMesh) continue;

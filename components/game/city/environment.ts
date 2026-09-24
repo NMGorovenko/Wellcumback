@@ -30,7 +30,9 @@ import type { RenderKit } from '../world/render-kit.ts';
 import { makeLabel } from '../world/labels.ts';
 import {
   CITY_DECK_THICKNESS,
+  CITY_KUBATURA_TERRACE,
   cityGroundHeight,
+  cityKubaturaRetainingEdges,
   cityRoadHeight,
   cityRoadLayer,
   citySurfacePose,
@@ -45,7 +47,7 @@ import { createCityLandmarks } from './landmarks.ts';
 import { createStreetDetails, createStreetSignalLight } from './streets.ts';
 import { collectCityFoliage } from './foliage-occlusion.ts';
 import { createBridgeRails } from './bridge-rails.ts';
-import { createBobrovyLog } from './bobrovy-log.ts';
+import { BOBROVY_TERRAIN_FOOTPRINTS, createBobrovyLog } from './bobrovy-log.ts';
 import { createYeniseyWater } from './river-water.ts';
 import { createYeniseySign } from './yenisey-sign.ts';
 import { roadDashClear } from '../../../lib/game/city/crossings.ts';
@@ -178,7 +180,7 @@ export function* buildCityEnvironment(
   const { minX, maxX, minZ, maxZ } = CITY_BOUNDS;
   const width = maxX - minX;
   const water = createYeniseyWater(kit);
-  const groundRoadHoles = roadSurfaceOutlines(
+  const groundSurfaceHoles = roadSurfaceOutlines(
     cityRoads.filter(
       (r) =>
         cityRoadLayer(r) !== 'raised' ||
@@ -186,6 +188,19 @@ export function* buildCityEnvironment(
     ),
     ROUNDABOUT,
     0.65,
+  );
+  // Parking pavement and masonry replace the underlying ground just like
+  // asphalt roads. Cutting their exact footprints also removes coarse shore
+  // triangles that otherwise rise through the ramp or hide the retaining face.
+  groundSurfaceHoles.push(
+    ...BOBROVY_TERRAIN_FOOTPRINTS,
+    CITY_KUBATURA_TERRACE.outline,
+    ...cityKubaturaRetainingEdges().map(({ p, q, nx, nz }) => [
+      p,
+      { x: p.x + nx * 3, z: p.z + nz * 3 },
+      { x: q.x + nx * 3, z: q.z + nz * 3 },
+      q,
+    ]),
   );
   function polygon(
     points: CityPoint[],
@@ -201,7 +216,7 @@ export function* buildCityEnvironment(
       ground ? cityGroundHeight : () => 0,
       y,
       ground ? 8 : 80,
-      ground ? groundRoadHoles : [],
+      ground ? groundSurfaceHoles : [],
     );
     mesh.name = ground ? 'city-relief-ground' : 'city-water';
     if (!ground) mesh.material = water.material;
@@ -290,7 +305,7 @@ export function* buildCityEnvironment(
         cityGroundHeight,
         0,
         8,
-        groundRoadHoles,
+        groundSurfaceHoles,
       );
       shadeTerrain(mesh);
       if (index % 4 === 0)
@@ -335,7 +350,7 @@ export function* buildCityEnvironment(
         cityGroundHeight,
         0,
         1e6,
-        groundRoadHoles,
+        groundSurfaceHoles,
       );
       shadeTerrain(shore);
     }

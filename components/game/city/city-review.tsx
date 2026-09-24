@@ -1,13 +1,17 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import CityScene from './scene';
+import CityScene, { type CityReviewCamera } from './scene';
 import { freshCity, stepCityCar } from '@/lib/game/city/engine';
 import { breakableObjects, freshCityDamage } from '@/lib/game/city/destruction';
-import { cityRoads, type CityPoint } from '@/lib/game/city/layout';
+import { cityRoads } from '@/lib/game/city/layout';
 import { citySurfacePose } from '@/lib/game/city/surface';
 import type { CityCameraMode } from './camera';
+import {
+  CITY_LANDMARK_REVIEW_PLACES,
+  type CityReviewPlace,
+} from './review-views';
 
-const places: Record<string, CityPoint & { heading: number; road?: string }> = {
+const places: Record<string, CityReviewPlace> = {
   Старт: { x: -769, z: 432.963636, heading: 0 },
   'Мост → Студгородок': {
     x: -625,
@@ -21,6 +25,7 @@ const places: Record<string, CityPoint & { heading: number; road?: string }> = {
   'Бобровый лог': { x: -858, z: 1211, heading: Math.PI },
   Коммунальный: { x: 150, z: 520, heading: 0 },
   'Театральная площадь': { x: 106, z: 162, heading: 0 },
+  ...CITY_LANDMARK_REVIEW_PLACES,
 };
 /** A disposable review scene using the actual renderer; never reads or writes saves. */
 export default function CityReview() {
@@ -29,8 +34,10 @@ export default function CityReview() {
   const [mode, setMode] = useState<CityCameraMode>('cruise');
   const [ready, setReady] = useState(false);
   const [place, setPlace] = useState('Старт');
+  const [reviewCamera, setReviewCamera] = useState<CityReviewCamera>();
   const impactUntil = useRef(0);
   function impact(kind: 'rail' | 'tree') {
+    setReviewCamera(undefined);
     const object = breakableObjects
       .filter((o) => o.kind === kind)
       .sort(
@@ -63,7 +70,18 @@ export default function CityReview() {
       road ? 80 : undefined,
       road ? `road:${road.id}` : undefined,
     );
-    Object.assign(game.current, p, pose, { speed: 0, vx: 0, vz: 0 });
+    Object.assign(game.current, pose, {
+      x: p.x,
+      z: p.z,
+      heading: p.heading,
+      speed: 0,
+      vx: 0,
+      vz: 0,
+      travelRevision: (game.current.travelRevision ?? 0) + 1,
+    });
+    impactUntil.current = 0;
+    setReviewCamera(p.view);
+    if (p.view) setMode('cruise');
     setPlace(name);
   }
   useEffect(() => {
@@ -71,7 +89,7 @@ export default function CityReview() {
     let last = performance.now(),
       raf = 0;
     const tick = (now: number) => {
-      const dt = Math.min(0.1, (now - last) / 1000);
+      const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
       game.current.elapsed += dt;
       if (game.current.elapsed < impactUntil.current) {
         for (let i = 0; i < 6; i++)
@@ -103,6 +121,7 @@ export default function CityReview() {
           speechRef={speech}
           cameraMode={mode}
           onReady={setReady}
+          reviewCamera={reviewCamera}
         />
       </div>
       <div
@@ -112,6 +131,8 @@ export default function CityReview() {
           top: 12,
           zIndex: 100,
           display: 'flex',
+          flexWrap: 'wrap',
+          maxWidth: 'calc(100vw - 24px)',
           gap: 8,
           padding: 8,
           background: '#17322ee8',
@@ -130,9 +151,20 @@ export default function CityReview() {
         </select>
         <select
           aria-label="Камера осмотра"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as CityCameraMode)}
+          value={reviewCamera ? 'landmark' : mode}
+          onChange={(e) => {
+            if (e.target.value === 'landmark') {
+              setReviewCamera(places[place].view);
+              setMode('cruise');
+              return;
+            }
+            setReviewCamera(undefined);
+            setMode(e.target.value as CityCameraMode);
+          }}
         >
+          {places[place].view && (
+            <option value="landmark">Ракурс объекта</option>
+          )}
           <option value="cruise">Низкая</option>
           <option value="drive">Сверху</option>
           <option value="map">Весь город</option>
@@ -141,6 +173,20 @@ export default function CityReview() {
           type="button"
           onClick={() => {
             game.current.heading += Math.PI / 4;
+            if (reviewCamera) {
+              const { position, look } = reviewCamera,
+                dx = position.x - look.x,
+                dz = position.z - look.z,
+                c = Math.SQRT1_2;
+              setReviewCamera({
+                ...reviewCamera,
+                position: {
+                  x: look.x + (dx + dz) * c,
+                  y: position.y,
+                  z: look.z + (dz - dx) * c,
+                },
+              });
+            }
           }}
         >
           Повернуть 45°

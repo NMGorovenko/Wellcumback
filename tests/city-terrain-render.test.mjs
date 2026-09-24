@@ -16,6 +16,7 @@ import {
 } from '../lib/game/city/engine.ts';
 import {
   cityGroundHeight,
+  cityKubaturaTerraceDistance,
   cityRoadHeight,
   cityRoadLayer,
   citySurfacePose,
@@ -334,6 +335,70 @@ void test('rendered road height follows the drivable surface through sharp parce
     failures.length,
     0,
     JSON.stringify(failures.sort((a, b) => b.error - a.error).slice(0, 5)),
+  );
+});
+
+void test('terrain stays clear across actual Kubatura pavement and retaining triangle interiors', () => {
+  const { colors } = renderedCity();
+  const land = surfaceProbe(colors.get('82966d') ?? []);
+  const failures = [];
+  let probes = 0,
+    retainingProbes = 0;
+  for (const color of ['535b5e', '68787a', 'a99880', 'baaa92'])
+    for (const mesh of colors.get(color) ?? []) {
+      const p = mesh.geometry.attributes.position,
+        index = mesh.geometry.index;
+      const count = index?.count ?? p.count;
+      for (let i = 0; i < count; i += 3) {
+        const points = [0, 1, 2].map((j) =>
+          new THREE.Vector3()
+            .fromBufferAttribute(p, index ? index.getX(i + j) : i + j)
+            .applyMatrix4(mesh.matrixWorld),
+        );
+        const [a, b, c] = points;
+        const x = (a.x + b.x + c.x) / 3,
+          z = (a.z + b.z + c.z) / 3;
+        if (x < 896 || x > 1018 || z < -556 || z > -432) continue;
+        // Street sign poles share this colour but are not terrace pavement.
+        if (color === '68787a' && cityKubaturaTerraceDistance(x, z) > 0.001)
+          continue;
+        if (
+          Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x)) < 1e-7
+        )
+          continue;
+        // The centroid plus three near-edge interiors catch tall terrain
+        // wedges which centreline-only road probes cannot see.
+        for (const weights of [
+          [1 / 3, 1 / 3, 1 / 3],
+          [0.8, 0.1, 0.1],
+          [0.1, 0.8, 0.1],
+          [0.1, 0.1, 0.8],
+        ]) {
+          const sample = new THREE.Vector3();
+          points.forEach((point, j) =>
+            sample.addScaledVector(point, weights[j]),
+          );
+          const ground = Math.max(...land(sample.x, sample.z));
+          probes++;
+          if (color === 'a99880' || color === 'baaa92') retainingProbes++;
+          if (ground > sample.y + 0.02)
+            failures.push({
+              color,
+              x: sample.x,
+              z: sample.z,
+              burial: ground - sample.y,
+            });
+        }
+      }
+    }
+  assert.ok(
+    probes > 2000 && retainingProbes > 500,
+    'probe the full local paved area and curved wall faces',
+  );
+  assert.equal(
+    failures.length,
+    0,
+    JSON.stringify(failures.sort((a, b) => b.burial - a.burial).slice(0, 8)),
   );
 });
 

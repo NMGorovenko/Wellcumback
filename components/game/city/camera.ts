@@ -10,8 +10,9 @@ import {
   CITY_DECK_THICKNESS,
   cityGroundHeight,
   cityOverpassClearance,
-  citySurfacePose,
+  citySurfaceHeight,
 } from '../../../lib/game/city/surface.ts';
+import { forEachCityFoliageNear } from './foliage-occlusion.ts';
 
 export type CityCameraMode = 'drive' | 'cruise' | 'map' | 'faces';
 export const CITY_CAMERA_MODES: CityCameraMode[] = [
@@ -23,6 +24,7 @@ export const CITY_CAMERA_MODES: CityCameraMode[] = [
 
 type CameraPoint = { x: number; y: number; z: number };
 export type CityCameraOccluder = {
+  active?: boolean;
   minX: number;
   minY: number;
   minZ: number;
@@ -47,10 +49,14 @@ export type CityCameraSurface = {
 };
 const cityCameraSurface: CityCameraSurface = {
   heightAt: (x, z, car) =>
-    citySurfacePose(x, z, 0, car.elevation, car.surfaceId).elevation,
+    citySurfaceHeight(x, z, 0, car.elevation, car.surfaceId),
   ceilingAt: cityOverpassClearance,
   buildingBaseAt: cityGroundHeight,
 };
+// Clearance runs synchronously for each viewport; its second pass can reuse the
+// exact same terrain samples instead of selecting every bridge layer twice.
+const clearanceFloors = new Float64Array(241),
+  clearanceCeilings = new Float64Array(241);
 
 /** A perspective camera near roof height gives the street a distant vanishing
  * point. The boom opens gradually at speed; sideways motion leads the view
@@ -124,11 +130,11 @@ export function clearCityCruiseCamera(
     const x = car.x + (desired.x - car.x) * t,
       z = car.z + (desired.z - car.z) * t;
     const floor = surface.heightAt(x, z, car);
+    const ceiling = ceilingAt(x, z, floor);
+    clearanceFloors[i] = floor;
+    clearanceCeilings[i] = ceiling;
     eyeY = Math.max(eyeY, anchor.y + (floor + 0.55 - anchor.y) / t);
-    maximumY = Math.min(
-      maximumY,
-      anchor.y + (ceilingAt(x, z, floor) - anchor.y) / t,
-    );
+    maximumY = Math.min(maximumY, anchor.y + (ceiling - anchor.y) / t);
   }
   eyeY = Math.min(eyeY, maximumY);
   const delta = {
@@ -145,12 +151,9 @@ export function clearCityCruiseCamera(
   // If a hill and a bridge ceiling leave no unobstructed long boom, retract
   // before the first obstruction instead of jumping the camera onto the deck.
   for (let i = 1; i <= steps; i++) {
-    const t = i / steps,
-      x = anchor.x + delta.x * t,
-      z = anchor.z + delta.z * t;
+    const t = i / steps;
     const y = anchor.y + delta.y * t;
-    const floor = surface.heightAt(x, z, car);
-    if (y < floor + 0.35 || y > ceilingAt(x, z, floor)) {
+    if (y < clearanceFloors[i] + 0.35 || y > clearanceCeilings[i]) {
       closest = Math.max(0, (i - 1) / steps);
       break;
     }
@@ -203,10 +206,10 @@ export function clearCityCruiseCamera(
       maxZ: b.z + b.d / 2,
     });
   }
-  for (const crown of foliage) checkBox(crown);
-  if (closest === 1) return { ...desired, y: eyeY };
-  const fraction = Math.max(0, closest - 0.3 / Math.max(distance, 0.01));
-  if (fraction * Math.hypot(delta.x, delta.z) < 4.5)
+  const hardClosest = closest;
+  const margin = 0.3 / Math.max(distance, 0.01);
+  const hardFraction = Math.max(0, hardClosest - margin);
+  if (hardClosest < 1 && hardFraction * planar < 4.5)
     return {
       x: car.x,
       // A ceiling farther along the blocked boom must not discard the desired
@@ -217,6 +220,26 @@ export function clearCityCruiseCamera(
       ),
       z: car.z,
     };
+  closest = 1;
+  forEachCityFoliageNear(foliage, minX, minZ, maxX, maxZ, checkBox);
+  let foliageFraction = 1;
+  if (closest < 1) {
+    // Branches touching the car cannot supply a clear camera-to-car segment.
+    // Ease their influence away within one car length instead of switching to
+    // the overhead wall fallback; a tree impact keeps the road ahead in view.
+    const nearby = Math.min(1, (closest * planar) / 4.5);
+    const weight = nearby * nearby * (3 - 2 * nearby);
+    foliageFraction = Math.max(
+      Math.min(1, 4.5 / Math.max(planar, 0.01)),
+      1 - (1 - Math.max(0, closest - margin)) * weight,
+      delta.y > 0 ? Math.min(1, 1.25 / delta.y) : 0,
+    );
+  }
+  const fraction = Math.min(
+    hardClosest < 1 ? hardFraction : 1,
+    foliageFraction,
+  );
+  if (fraction === 1) return { ...desired, y: eyeY };
   return {
     x: anchor.x + delta.x * fraction,
     y: anchor.y + delta.y * fraction,

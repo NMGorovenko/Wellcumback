@@ -9,6 +9,7 @@ import {
 import type { RenderKit } from '../world/render-kit.ts';
 import { facadeText } from './facade-text.ts';
 import { addMallSurroundings } from './mall-surroundings.ts';
+import { createKubaturaTerrace } from './kubatura-terrace.ts';
 
 const white = '#e4dfd3',
   glass = '#386078',
@@ -643,6 +644,10 @@ export function mallParkingPropClear(
 
 export function createMallParking(kit: RenderKit, root: THREE.Group) {
   for (const p of CITY_PARKING) {
+    if (p.id === 'kubatura') {
+      createKubaturaTerrace(kit, root);
+      continue;
+    }
     const g = new THREE.Group();
     g.name = `parking:${p.id}`;
     g.position.set(p.x, 0, p.z);

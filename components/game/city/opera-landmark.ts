@@ -7,13 +7,13 @@ export function createTheatreSquareGround(kit: RenderKit, root: THREE.Group) {
   const g = new THREE.Group();
   g.name = 'theatre-square-paving';
   root.add(g);
-  kit.box(31, 0.03, 28, '#bab7a9', 115, 0.045, 141, g, 0);
-  for (let x = 100; x <= 130; x += 1.5)
-    kit.box(0.035, 0.01, 28, '#aaa99f', x, 0.07, 141, g, 0);
-  for (let z = 127.5; z <= 154.5; z += 1.5)
-    kit.box(31, 0.01, 0.035, '#aaa99f', 115, 0.071, z, g, 0);
-  for (const z of [128, 153.5])
-    kit.box(31, 0.018, 0.34, '#858c88', 115, 0.08, z, g, 0);
+  kit.box(48, 0.03, 46, '#bab7a9', 146, 0.045, 116, g, 0);
+  for (let x = 122; x <= 170; x += 2)
+    kit.box(0.035, 0.01, 46, '#aaa99f', x, 0.07, 116, g, 0);
+  for (let z = 93; z <= 139; z += 2)
+    kit.box(48, 0.01, 0.035, '#aaa99f', 146, 0.071, z, g, 0);
+  for (const x of [123, 169])
+    kit.box(0.34, 0.018, 46, '#858c88', x, 0.08, 116, g, 0);
 }
 
 /** Broad marble canopy, faceted glazing and the curved auditorium behind it.
@@ -21,12 +21,14 @@ export function createTheatreSquareGround(kit: RenderKit, root: THREE.Group) {
 export function createOperaLandmark(
   kit: RenderKit,
   root: THREE.Group,
-  b: CityBuilding,
+  footprint: CityBuilding,
 ) {
+  const b = { ...footprint, w: footprint.d, d: footprint.w };
   if (b.kind !== 'theatre') return false;
   const g = new THREE.Group();
   g.name = 'landmark:theatre';
   g.position.set(b.x, 0, b.z);
+  g.rotation.y = Math.PI / 2;
   root.add(g);
   const stone = '#d5d2c8',
     bright = '#e3e0d6',

@@ -26,6 +26,12 @@ import {
 
 const SKID_CAPACITY = 160,
   SMOKE_CAPACITY = 20;
+export type CityReviewCamera = {
+  position: { x: number; y: number; z: number };
+  look: { x: number; y: number; z: number };
+  fov: number;
+  shadowSize?: number;
+};
 /** Close driving camera follows the car and its travel path. The full
  * isometric map remains available through the existing overview toggle. */
 export default function CityScene({
@@ -34,16 +40,23 @@ export default function CityScene({
   cameraMode = 'drive',
   speechRef,
   onReady,
+  reviewCamera,
 }: {
   game: RefObject<CityState>;
   targetStop?: number;
   cameraMode?: CityCameraMode;
   speechRef: SpeechBubbleRef;
   onReady?: (ready: boolean) => void;
+  reviewCamera?: CityReviewCamera;
 }) {
   const host = useRef<HTMLDivElement>(null),
     selectedStop = useRef(targetStop);
   const mode = useRef(cameraMode);
+  const inspection = useRef<CityReviewCamera | undefined>(undefined);
+  useEffect(() => {
+    inspection.current =
+      process.env.NODE_ENV === 'development' ? reviewCamera : undefined;
+  }, [reviewCamera]);
   useEffect(() => {
     mode.current = cameraMode;
   }, [cameraMode]);
@@ -283,7 +296,7 @@ export default function CityScene({
             elevation: presented.elevation,
             pitch: presented.pitch,
           },
-          dt = s.paused ? 0 : Math.min((now - last) / 1000, 0.05);
+          dt = s.paused ? 0 : Math.max(0, Math.min((now - last) / 1000, 0.05));
         last = now;
         const discontinuity =
           s.elapsed < lastElapsed ||
@@ -295,7 +308,11 @@ export default function CityScene({
         }
         lastElapsed = s.elapsed;
         lastTravelRevision = s.travelRevision ?? 0;
-        const cameraDelta = Math.min((now - lastCameraTime) / 1000, 0.05);
+        city.destruction.update(s.damage, s.elapsed);
+        const cameraDelta = Math.max(
+          0,
+          Math.min((now - lastCameraTime) / 1000, 0.05),
+        );
         lastCameraTime = now;
         cameraHeading = discontinuity
           ? s.heading
@@ -382,6 +399,25 @@ export default function CityScene({
           activeCamera = cruiseCamera;
           scene.fog = cruiseFog;
         } else scene.fog = null;
+        const review = inspection.current;
+        if (review) {
+          cruiseCamera.position.set(
+            review.position.x,
+            review.position.y,
+            review.position.z,
+          );
+          projected.set(review.look.x, review.look.y, review.look.z);
+          // Keep the authored landmark frame usable in a narrow review panel.
+          cruiseCamera.position
+            .sub(projected)
+            .multiplyScalar(Math.max(1, 16 / (9 * aspect)))
+            .add(projected);
+          cruiseCamera.lookAt(projected);
+          cruiseCamera.fov = review.fov;
+          cruiseCamera.updateProjectionMatrix();
+          activeCamera = cruiseCamera;
+          scene.fog = null;
+        }
         previousMode = mode.current;
         car.update(s, dt, mode.current === 'faces');
         car.root.rotation.order = 'YXZ';
@@ -396,7 +432,6 @@ export default function CityScene({
           !!line,
           car.passengers,
         );
-        city.destruction.update(s.damage, s.elapsed);
         city.update(
           s.elapsed,
           selectedStop.current,
@@ -409,11 +444,13 @@ export default function CityScene({
         // A city-sized shadow frustum wastes resolution. Follow the presented car
         // in every street view and turn shadows off for the multi-kilometre map.
         // Snap in light space so asphalt shadows do not shimmer as the car moves.
-        const shadowSize = mode.current === 'cruise' ? 45 : 32;
-        sun.castShadow = mode.current !== 'map';
+        const shadowSize =
+          review?.shadowSize ?? (mode.current === 'cruise' ? 45 : 32);
+        sun.castShadow = !!review || mode.current !== 'map';
         sun.shadow.autoUpdate = sun.castShadow;
         const texel = (shadowSize * 2) / sun.shadow.mapSize.x;
-        projected.set(s.x, presented.elevation, s.z);
+        if (review) projected.set(review.look.x, review.look.y, review.look.z);
+        else projected.set(s.x, presented.elevation, s.z);
         const shadowX = projected.dot(shadowRight),
           shadowY = projected.dot(shadowUp);
         projected.addScaledVector(

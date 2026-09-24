@@ -6,6 +6,7 @@ import { createMallLandmark } from './mall-landmarks.ts';
 import { facadeText } from './facade-text.ts';
 import { createOrbitaLandmark } from './orbita-landmark.ts';
 import { createDonerLandmark } from './doner-landmark.ts';
+import { createYaryginPalace } from './yarygin-palace.ts';
 
 /** Landmark masses use the same parcels as collision, with details kept inside. */
 export function createDistrictLandmark(
@@ -16,7 +17,8 @@ export function createDistrictLandmark(
   if (createMallLandmark(kit, root, b)) return true;
   if (createOrbitaLandmark(kit, root, b)) return true;
   if (createDonerLandmark(kit, root, b)) return true;
-  if (!['ikit', 'udachny', 'arena'].includes(b.kind ?? '')) return false;
+  if (createYaryginPalace(kit, root, b)) return true;
+  if (!['ikit', 'udachny'].includes(b.kind ?? '')) return false;
   const g = new THREE.Group();
   g.name = `landmark:${b.kind}`;
   g.position.set(b.x, 0, b.z);
@@ -196,11 +198,6 @@ export function createDistrictLandmark(
     );
     for (const x of [-0.4, -0.36, -0.16])
       box(0.9, 1.2, 0.07, glass, b.w * x, b.h * 0.33, b.d * 0.44 + 0.06);
-  } else if (b.kind === 'arena') {
-    const arena = kit.cylinder(1, 1, b.h, '#aebec1', 0, b.h / 2, 0, g);
-    arena.scale.set(b.w * 0.48, 1, b.d * 0.48);
-    box(b.w * 0.8, 0.75, b.d * 0.75, '#6e7e82', 0, b.h, 0);
-    sign('ПЛАТИНУМ АРЕНА', 12, b.h + 1.4, 0);
   } else {
     for (const side of [-1, 1]) {
       box(5.2, 3, 6.5, '#c3b192', side * 3, 1.5, 0);

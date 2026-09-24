@@ -55,6 +55,38 @@ function assertCoupeVisible(car, desired, clear, look) {
   );
 }
 
+void test('entering close branches retains a rear street view without a discontinuous overhead fallback', () => {
+  const car = { x: 0, z: 0, elevation: 0 };
+  const desired = { x: 0, y: 4.5, z: 16 };
+  const surface = {
+    heightAt: () => 0,
+    ceilingAt: () => null,
+    buildingBaseAt: () => 0,
+  };
+  let previous;
+  for (let z = 9; z >= -2; z -= 0.05) {
+    const crown = {
+      minX: -1.4,
+      maxX: 1.4,
+      minY: 1.4,
+      maxY: 6,
+      minZ: z,
+      maxZ: z + 2.8,
+    };
+    const clear = clearCityCruiseCamera(desired, car, [], surface, [crown]);
+    assert.ok(
+      clear.z >= 4.5 && clear.y <= desired.y,
+      'a branch never selects the above-car wall fallback',
+    );
+    if (previous)
+      assert.ok(
+        Math.hypot(clear.y - previous.y, clear.z - previous.z) < 0.4,
+        'camera clearance eases continuously as the car enters the branches',
+      );
+    previous = clear;
+  }
+});
+
 void test('a fixed crown crossing the portrait boom retracts the eye even when its endpoint is outside foliage', () => {
   // Preserve the reported pose and a representative obstruction independently of
   // generated tree placement. A clear eye alone does not imply a clear boom.

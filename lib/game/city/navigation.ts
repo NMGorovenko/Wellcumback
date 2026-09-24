@@ -2,6 +2,7 @@ import {
   cityRoadHeight,
   cityRoadsConnect,
   cityGroundHeight,
+  cityKubaturaTerraceDistance,
 } from './surface.ts';
 import {
   CITY_BOUNDS,
@@ -216,7 +217,8 @@ export function cityNavigationRoute(
       [start, target].every(
         (p) =>
           Math.abs(p.x - lot.x) <= lot.w / 2 &&
-          Math.abs(p.z - lot.z) <= lot.d / 2,
+          Math.abs(p.z - lot.z) <= lot.d / 2 &&
+          (lot.id !== 'kubatura' || cityKubaturaTerraceDistance(p.x, p.z) < -1),
       ),
     )
   )

@@ -176,11 +176,210 @@ function unflattenedGround(x: number, z: number) {
   const h = naturalHeight(x, z);
   return inCityWater(x, z) ? h : Math.max(0.5, h - trenchDepth(x, z));
 }
+const kubaturaBuilding = cityBuildings.find((b) => b.kind === 'kubatura')!;
+const kubaturaParking = CITY_PARKING.find((p) => p.id === 'kubatura')!;
+const kubaturaEntry = cityRoads.find((r) => r.id === 'kubatura-forecourt:0')!;
+const kubaturaQuay = cityRoads.find((r) => r.id === 'left-quay:10')!;
+const kubaturaBridgeApproach = cityRoads.find(
+  (r) => r.id === 'oktyabrsky-left:0',
+)!;
+// The real parking terrace has a curved retaining edge above a lower drive.
+// Cut the compressed lot inland of both the quay and bridge approach so no
+// public lane is lifted by a rectangular parking slab. These are artistic metres.
+const kubaturaRectangle = [
+  {
+    x: kubaturaParking.x - kubaturaParking.w / 2 - 2,
+    z: kubaturaBuilding.z - kubaturaBuilding.d / 2 - 2,
+  },
+  {
+    x: kubaturaParking.x + kubaturaParking.w / 2 + 2,
+    z: kubaturaBuilding.z - kubaturaBuilding.d / 2 - 2,
+  },
+  {
+    x: kubaturaParking.x + kubaturaParking.w / 2 + 2,
+    z: kubaturaParking.z + kubaturaParking.d / 2 + 2,
+  },
+  {
+    x: kubaturaParking.x - kubaturaParking.w / 2 - 2,
+    z: kubaturaParking.z + kubaturaParking.d / 2 + 2,
+  },
+];
+let clippedKubatura = kubaturaRectangle;
+for (const road of [kubaturaQuay, kubaturaBridgeApproach]) {
+  const dx = road.to.x - road.from.x,
+    dz = road.to.z - road.from.z,
+    size = Math.hypot(dx, dz);
+  const side = (p: CityPoint) =>
+    (dx * (p.z - road.from.z) - dz * (p.x - road.from.x)) / size +
+    road.width / 2 +
+    3.5;
+  const points: CityPoint[] = [];
+  for (let i = 0; i < clippedKubatura.length; i++) {
+    const a = clippedKubatura[i],
+      b = clippedKubatura[(i + 1) % clippedKubatura.length],
+      sa = side(a),
+      sb = side(b);
+    if (sa <= 0) points.push(a);
+    if (sa < 0 !== sb < 0) {
+      const t = sa / (sa - sb);
+      points.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+    }
+  }
+  clippedKubatura = points;
+}
+const kubaturaOutline = clippedKubatura.flatMap((point, i, points) => {
+  const previous = points[(i + points.length - 1) % points.length],
+    next = points[(i + 1) % points.length],
+    radius = Math.min(4, length(previous, point) / 4, length(point, next) / 4),
+    a = {
+      x: point.x + ((previous.x - point.x) * radius) / length(previous, point),
+      z: point.z + ((previous.z - point.z) * radius) / length(previous, point),
+    },
+    b = {
+      x: point.x + ((next.x - point.x) * radius) / length(next, point),
+      z: point.z + ((next.z - point.z) * radius) / length(next, point),
+    };
+  return Array.from({ length: 5 }, (_, j) => {
+    const t = j / 4,
+      u = 1 - t;
+    return {
+      x: u * u * a.x + 2 * u * t * point.x + t * t * b.x,
+      z: u * u * a.z + 2 * u * t * point.z + t * t * b.z,
+    };
+  });
+});
+export const CITY_KUBATURA_TERRACE = {
+  outline: kubaturaOutline,
+  height: unflattenedGround(kubaturaParking.x, kubaturaParking.z) + 4.5,
+  rise: 4.5,
+  entry: kubaturaEntry,
+  arrival: { x: kubaturaParking.x, z: kubaturaParking.z },
+};
+const kubaturaEdges = kubaturaOutline.map((a, i, points) => {
+  const b = points[(i + 1) % points.length],
+    l = length(a, b);
+  return { x: a.x, z: a.z, nx: (b.z - a.z) / l, nz: -(b.x - a.x) / l };
+});
+/** Positive outside, negative inside the same convex outline used by rendering. */
+export function cityKubaturaTerraceDistance(x: number, z: number) {
+  let gap = -Infinity;
+  for (const edge of kubaturaEdges)
+    gap = Math.max(gap, (x - edge.x) * edge.nx + (z - edge.z) * edge.nz);
+  return gap;
+}
+function kubaturaHeight(x: number, z: number, ground: number) {
+  if (
+    x < kubaturaEntry.from.x - 16 ||
+    x > kubaturaParking.x + kubaturaParking.w / 2 + 8 ||
+    z < kubaturaBuilding.z - kubaturaBuilding.d / 2 - 8 ||
+    z > kubaturaEntry.from.z + 18
+  )
+    return ground;
+  const gap = cityKubaturaTerraceDistance(x, z),
+    weight = 1 - smooth(Math.max(0, gap) / 3);
+  let h = ground + (CITY_KUBATURA_TERRACE.height - ground) * weight;
+  const point = projection({ x, z }, kubaturaEntry.from, kubaturaEntry.to),
+    entryGap = Math.hypot(x - point.x, z - point.z),
+    entryLength = length(kubaturaEntry.from, kubaturaEntry.to);
+  if (entryGap < kubaturaEntry.width / 2 + 6) {
+    // A broad clear mouth shares the junction's height. The continuous ramp
+    // reaches the level arrival area without an invisible step at the lot edge.
+    const rise = smooth((point.t * entryLength - 12) / (entryLength - 12)),
+      ramp = ground + (CITY_KUBATURA_TERRACE.height - ground) * rise;
+    h += (ramp - h) * (1 - smooth((entryGap - kubaturaEntry.width / 2) / 6));
+  }
+  return h;
+}
+type KubaturaRetainingEdge = {
+  p: CityPoint;
+  q: CityPoint;
+  nx: number;
+  nz: number;
+  topA: number;
+  topB: number;
+  lowA: number;
+  lowB: number;
+};
+let kubaturaRetainingEdges: KubaturaRetainingEdge[] | undefined;
+/** Shared solid geometry: only exposed front/right edges, with a generous
+ * opening around the entry. Lazily sample after the city's height caches exist. */
+export function cityKubaturaRetainingEdges() {
+  if (kubaturaRetainingEdges) return kubaturaRetainingEdges;
+  const edges: KubaturaRetainingEdge[] = [];
+  const outline = CITY_KUBATURA_TERRACE.outline;
+  const minZ = Math.min(...outline.map((p) => p.z));
+  outline.forEach((a, i) => {
+    const b = outline[(i + 1) % outline.length],
+      dx = b.x - a.x,
+      dz = b.z - a.z,
+      size = Math.hypot(dx, dz),
+      nx = dz / size,
+      nz = -dx / size;
+    if ((a.z + b.z) / 2 < minZ + 4 || nx < -0.3) return;
+    const steps = Math.max(1, Math.ceil(size / 3));
+    for (let j = 0; j < steps; j++) {
+      const p = { x: a.x + (dx * j) / steps, z: a.z + (dz * j) / steps },
+        q = {
+          x: a.x + (dx * (j + 1)) / steps,
+          z: a.z + (dz * (j + 1)) / steps,
+        },
+        x = (p.x + q.x) / 2,
+        z = (p.z + q.z) / 2;
+      if (
+        distanceToRoad(x, z, kubaturaEntry) < kubaturaEntry.width / 2 + 8 ||
+        cityRoads.some((r) => distanceToRoad(x, z, r) < r.width / 2 + 2)
+      )
+        continue;
+      const topA = cityGroundHeight(p.x, p.z),
+        topB = cityGroundHeight(q.x, q.z),
+        lowA = Math.max(
+          topA - 6,
+          cityGroundHeight(p.x + nx * 3.5, p.z + nz * 3.5),
+        ),
+        lowB = Math.max(
+          topB - 6,
+          cityGroundHeight(q.x + nx * 3.5, q.z + nz * 3.5),
+        );
+      if (Math.min(topA - lowA, topB - lowB) >= 0.6)
+        edges.push({ p, q, nx, nz, topA, topB, lowA, lowB });
+    }
+  });
+  return (kubaturaRetainingEdges = edges);
+}
+export function cityKubaturaWallBlocked(x: number, z: number, radius: number) {
+  if (
+    x < kubaturaParking.x - kubaturaParking.w / 2 - 8 ||
+    x > kubaturaParking.x + kubaturaParking.w / 2 + 8 ||
+    z < kubaturaBuilding.z - kubaturaBuilding.d / 2 - 8 ||
+    z > kubaturaParking.z + kubaturaParking.d / 2 + 8
+  )
+    return false;
+  return cityKubaturaRetainingEdges().some(({ p, q, nx, nz }) => {
+    const dx = q.x - p.x,
+      dz = q.z - p.z,
+      size = Math.hypot(dx, dz),
+      along = ((x - p.x) * dx + (z - p.z) * dz) / size,
+      across = (x - p.x) * nx + (z - p.z) * nz;
+    // Circular vehicle probes against the exact 3 m-wide sloped support,
+    // including rounded corner contact rather than oversized bounding boxes.
+    return (
+      Math.hypot(
+        Math.max(0, -along, along - size),
+        Math.max(0, -across, across - 3),
+      ) < radius
+    );
+  });
+}
 // Cached parcel centres keep building foundations level without doing hundreds
 // of analytic height evaluations for each road wheel or terrain-grid vertex.
 const parcels = [
-  ...cityBuildings.map((b) => ({ ...b, blend: 12 })),
-  ...CITY_PARKING.map((p) => ({ ...p, blend: 30 })),
+  ...cityBuildings
+    .filter((b) => b.kind !== 'kubatura')
+    .map((b) => ({ ...b, blend: 12 })),
+  ...CITY_PARKING.filter((p) => p.id !== 'kubatura').map((p) => ({
+    ...p,
+    blend: 30,
+  })),
 ].map((p) => ({ ...p, height: unflattenedGround(p.x, p.z) }));
 const parcelCells = new Map<string, typeof parcels>();
 for (const p of parcels)
@@ -230,7 +429,7 @@ export function cityGroundHeight(x: number, z: number) {
       if (h > ceiling) h += (ceiling - h) * (1 - smooth(gap / 20));
     }
   }
-  return h;
+  return kubaturaHeight(x, z, h);
 }
 const nikoApproach = cityRoads.filter((r) =>
   r.id.startsWith('nikolaevsky-left:'),
@@ -412,6 +611,17 @@ function selectSurface(
     return cost(a) + endCost(a) - cost(b) - endCost(b);
   });
   return candidates[0];
+}
+/** Height-only sampling avoids calculating wheel pitch for camera clearance. */
+export function citySurfaceHeight(
+  x: number,
+  z: number,
+  heading: number,
+  previousHeight?: number,
+  previousSurfaceId?: string,
+) {
+  return selectSurface(x, z, heading, previousHeight, previousSurfaceId)
+    .elevation;
 }
 export function citySurfacePose(
   x: number,

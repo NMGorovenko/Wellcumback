@@ -22,8 +22,41 @@ import {
   CITY_DECK_THICKNESS,
   cityRoadHeight,
   citySurfacePose,
+  citySurfaceHeight,
   cityOverpassClearance,
 } from '../lib/game/city/surface.ts';
+
+void test('camera samples each terrain point once while height-only queries preserve selected bridge layers', () => {
+  let heights = 0,
+    ceilings = 0;
+  clearCityCruiseCamera({ x: 0, y: 4.5, z: 16 }, { x: 0, z: 0 }, [], {
+    heightAt: () => {
+      heights++;
+      return 0;
+    },
+    ceilingAt: () => {
+      ceilings++;
+      return null;
+    },
+    buildingBaseAt: () => 0,
+  });
+  assert.equal(
+    heights,
+    21,
+    'twenty boom samples and one endpoint height, with no repeated terrain pass',
+  );
+  assert.equal(ceilings, 20);
+  for (const road of cityRoads.filter((r) => r.bridge || r.layer === 'lower')) {
+    const x = (road.from.x + road.to.x) / 2,
+      z = (road.from.z + road.to.z) / 2,
+      y = cityRoadHeight(road, x, z),
+      id = `road:${road.id}`;
+    assert.equal(
+      citySurfaceHeight(x, z, 0, y, id),
+      citySurfacePose(x, z, 0, y, id).elevation,
+    );
+  }
+});
 
 void test('one, two and three views preserve framing when the road rises by 60m', () => {
   for (const count of [1, 2, 3])

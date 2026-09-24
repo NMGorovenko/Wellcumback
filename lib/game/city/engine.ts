@@ -14,7 +14,11 @@ import {
   resetVehiclePresentation,
 } from './vehicle-presentation.ts';
 import { stepCar, type CarInput, type VehicleTuning } from './car-physics.ts';
-import { citySurfacePose, cityRoadHeight } from './surface.ts';
+import {
+  citySurfacePose,
+  cityRoadHeight,
+  cityKubaturaWallBlocked,
+} from './surface.ts';
 import { freshPowertrain, type PowertrainState } from './powertrain.ts';
 import { resolveDrive, type DriveAxes } from '../input/drive.ts';
 import {
@@ -132,6 +136,7 @@ export function cityBlocked(
   elevation?: number,
   damage?: CityDamage,
 ) {
+  if (cityKubaturaWallBlocked(x, z, RADIUS)) return true;
   if (
     x < CITY_BOUNDS.minX + RADIUS ||
     x > CITY_BOUNDS.maxX - RADIUS ||

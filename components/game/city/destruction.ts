@@ -89,16 +89,19 @@ export function createCityDestruction(kit: RenderKit, root: THREE.Group) {
   const transform = new THREE.Matrix4(),
     matrix = new THREE.Matrix4(),
     bounds = new THREE.Box3();
+  const dirty = new Set<THREE.InstancedMesh>();
   return {
     update(damage: CityDamage | undefined, time: number) {
       const marks = damage?.marks ?? '';
       if (marks !== previous) {
         for (let id = 0; id < Math.max(marks.length, previous.length); id++)
-          if (marks[id] !== previous[id]) active.add(id);
+          // Padding an initial/high-index hit with '.' does not repair every
+          // preceding rail and tree or dirty all their instance buffers.
+          if ((marks[id] ?? '.') !== (previous[id] ?? '.')) active.add(id);
         previous = marks;
       }
       if (!active.size) return;
-      const dirty = new Set<THREE.InstancedMesh>();
+      dirty.clear();
       for (const id of active) {
         const object = breakableObjects[id],
           entries = parts.get(id);
@@ -122,12 +125,11 @@ export function createCityDestruction(kit: RenderKit, root: THREE.Group) {
               : 0;
           rotation.setFromAxisAngle(axis, (tree ? 1.32 : 1.52) * fall + bounce);
           pivot.set(object.x, object.y + (tree ? 0.15 : 0.24), object.z);
-          transform
-            .makeTranslation(pivot.x, pivot.y, pivot.z)
-            .multiply(new THREE.Matrix4().makeRotationFromQuaternion(rotation))
-            .multiply(
-              new THREE.Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z),
-            );
+          transform.makeRotationFromQuaternion(rotation);
+          const e = transform.elements;
+          e[12] = pivot.x - (e[0] * pivot.x + e[4] * pivot.y + e[8] * pivot.z);
+          e[13] = pivot.y - (e[1] * pivot.x + e[5] * pivot.y + e[9] * pivot.z);
+          e[14] = pivot.z - (e[2] * pivot.x + e[6] * pivot.y + e[10] * pivot.z);
           if (!tree) {
             transform.elements[12] += Math.sin(direction) * fall * 0.6;
             transform.elements[14] += Math.cos(direction) * fall * 0.6;
@@ -136,20 +138,31 @@ export function createCityDestruction(kit: RenderKit, root: THREE.Group) {
         for (const part of entries) {
           matrix.multiplyMatrices(transform, part.base);
           part.mesh.setMatrixAt(part.index, matrix);
+          // A struck tree changes one transform in a city-wide instance buffer.
+          // Retain pending ranges when a batch is culled; Three clears them only
+          // after uploading, so a later visible frame still receives every edit.
+          const attribute = part.mesh.instanceMatrix,
+            start = part.index * 16;
+          if (
+            !attribute.updateRanges.some(
+              (range) =>
+                range.start <= start && range.start + range.count >= start + 16,
+            )
+          )
+            attribute.addUpdateRange(start, 16);
           dirty.add(part.mesh);
           const occluder = part.mesh.userData.cityTreeOccluders?.[part.index];
           if (occluder) {
+            occluder.active = direction === null;
             if (!part.mesh.geometry.boundingBox)
               part.mesh.geometry.computeBoundingBox();
             bounds.copy(part.mesh.geometry.boundingBox!).applyMatrix4(matrix);
-            Object.assign(occluder, {
-              minX: bounds.min.x,
-              minY: bounds.min.y,
-              minZ: bounds.min.z,
-              maxX: bounds.max.x,
-              maxY: bounds.max.y,
-              maxZ: bounds.max.z,
-            });
+            occluder.minX = bounds.min.x;
+            occluder.minY = bounds.min.y;
+            occluder.minZ = bounds.min.z;
+            occluder.maxX = bounds.max.x;
+            occluder.maxY = bounds.max.y;
+            occluder.maxZ = bounds.max.z;
           }
         }
         if (t >= 1 || direction === null) active.delete(id);

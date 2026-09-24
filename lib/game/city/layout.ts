@@ -465,13 +465,15 @@ export const cityRoads: CityRoad[] = [
     ],
     16,
   ),
-  ...road(
+  ...projectedRoad(
     'karl-marx',
     [
-      { x: -780, z: 80 },
-      { x: -380, z: 120 },
-      { x: 80, z: 140 },
-      { x: 360, z: 145 },
+      { x: -390, z: 56 },
+      { x: -190, z: 80 },
+      { x: 0, z: 80 },
+      { x: 90, z: 78 },
+      { x: 180, z: 74 },
+      { x: 300, z: 62 },
     ],
     17,
   ),
@@ -528,13 +530,14 @@ export const cityRoads: CityRoad[] = [
     ],
     14,
   ),
-  ...road(
+  ...projectedRoad(
     'veynbauma',
     [
-      { x: 360, z: 145 },
-      { x: 370, z: 0 },
-      { x: 330, z: -100 },
-      { x: 330, z: -310 },
+      BRIDGES[1].points[0],
+      { x: 180, z: 115 },
+      { x: 180, z: 74 },
+      compactCityPoint({ x: 330, z: -100 }),
+      compactCityPoint({ x: 330, z: -310 }),
     ],
     18,
   ),
@@ -1032,13 +1035,14 @@ export const cityBuildings: CityBuilding[] = [
   { kind: 'doner', x: -677, z: 386, w: 14, d: 8, h: 4.2, color: '#544b3b' },
   {
     kind: 'bobrovy-log',
-    x: CITY_BOBROVY_LOG.base.x + 32,
-    z: CITY_BOBROVY_LOG.base.z + 41,
-    w: 31,
-    d: 29,
-    h: 11,
+    x: -838,
+    z: 1268,
+    w: 72,
+    d: 30,
+    h: 16,
     color: '#d7d5c5',
   },
+  { kind: 'bobrovy-log', x: -742, z: 1276, w: 36, d: 36, h: 7, color: '#d7d5c5' },
   { kind: 'kvant', x: -70, z: -168, w: 54, d: 32, h: 22, color: '#6592aa' },
   landmark('borisova', 55.992306, 92.795672, 26, 28, 48, '#d8d8cd'),
   landmark('ikit', 55.994336, 92.797027, 48, 18, 13.5, '#d6cfb4'),
@@ -1047,17 +1051,17 @@ export const cityBuildings: CityBuilding[] = [
   landmark('komsomoll', 56.019849, 92.900873, 90, 40, 23, '#d8d9cf'),
   landmark('kubatura', 56.037233, 92.934533, 70, 38, 18, '#d8d9cf'),
   landmark('pushkin', 56.011344, 92.865642, 25, 15, 7, '#c8bdad'),
-  { kind: 'apollo', x: 113, z: 137, w: 2, d: 2, h: 8, color: '#7b817e' },
+  { kind: 'apollo', x: 151, z: 100, w: 2, d: 2, h: 8, color: '#7b817e' },
   {
     kind: 'theatre-fountain',
-    x: 105,
-    z: 144,
+    x: 142,
+    z: 116,
     w: 9.9,
     d: 9.9,
     h: 2.9,
     color: '#7b817e',
   },
-  landmark('theatre', 56.008645, 92.868542, 30, 16, 6, '#d4d2b7'),
+  landmark('theatre', 56.008645, 92.868542, 16, 30, 6, '#d4d2b7'),
   landmark('museum', 56.00735, 92.872592, 23, 10, 6, '#ba815b'),
   landmark('frank', 56.011079, 92.856719, 22, 14, 7.8, '#c6a496'),
   landmark('pho', 56.013714, 92.852395, 19, 12, 5.8, '#d7c4a2'),
@@ -1072,7 +1076,8 @@ export const cityBuildings: CityBuilding[] = [
   },
   {
     kind: 'city-clock',
-    ...compactCityPoint({ x: 245, z: 90 }),
+    x: 214,
+    z: 101,
     w: 8,
     d: 8,
     h: 14,
@@ -1099,21 +1104,24 @@ export const cityBuildings: CityBuilding[] = [
 // instead of squeezing a building across the now shorter street network.
 for (const [kind, x, z] of [
   ['ikit', -800, 390],
-  ['museum', 150, 144],
+  ['museum', 214, 132],
   ['arena', 110, 300],
   ['planeta', 645, -1005],
   ['komsomoll', 600, -220],
-  ['kubatura', 1005, -550],
+  ['kubatura', 960, -532],
+  ['fresco', 204, 44],
+  ['pushkin', 69, 42],
 ] as const)
   Object.assign(
     cityBuildings.find((b) => b.kind === kind)!,
     { x, z },
   );
+cityBuildings.find((b) => b.kind === 'frank')!.z = 28;
 export const CITY_PARKING = [
   { id: 'bobrovy-log', x: -838, z: 1224, w: 68, d: 30 },
   { id: 'kvant', x: -70, z: -125, w: 70, d: 28 },
   { id: 'komsomoll', x: 600, z: -166, w: 130, d: 52 },
-  { id: 'kubatura', x: 1010, z: -494, w: 90, d: 62 },
+  { id: 'kubatura', x: 965, z: -476, w: 90, d: 62 },
   { id: 'planeta', x: 645, z: -931, w: 165, d: 58 },
 ];
 for (const parking of CITY_PARKING) {
@@ -1137,7 +1145,11 @@ for (const parking of CITY_PARKING) {
       [
         connection,
         ...(parking.id === 'komsomoll' ? [{ x: 530, z: -166 }] : []),
-        { x: parking.x, z: parking.z },
+        // End the raised Kubatura ramp inland of the lower quay; the final
+        // metres to the unchanged arrival point are level parking pavement.
+        parking.id === 'kubatura'
+          ? { x: parking.x - 10, z: parking.z - 6 }
+          : { x: parking.x, z: parking.z },
       ],
       14,
     ),

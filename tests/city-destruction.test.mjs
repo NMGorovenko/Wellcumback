@@ -19,7 +19,15 @@ import { cityBarriers } from '../lib/game/city/barriers.ts';
 import { createBridgeRails } from '../components/game/city/bridge-rails.ts';
 import { createNeighbourhoodGreenery } from '../components/game/city/neighbourhoods.ts';
 import { createCityDestruction } from '../components/game/city/destruction.ts';
-import { collectCityFoliage } from '../components/game/city/foliage-occlusion.ts';
+import {
+  collectCityFoliage,
+  forEachCityFoliageNear,
+} from '../components/game/city/foliage-occlusion.ts';
+import {
+  cityCruiseCamera,
+  cityCameraFocus,
+  clearCityCruiseCamera,
+} from '../components/game/city/camera.ts';
 import { liftScenery } from '../components/game/city/relief.ts';
 import { cityGroundHeight } from '../lib/game/city/surface.ts';
 import { RenderKit } from '../components/game/world/render-kit.ts';
@@ -124,7 +132,7 @@ void test('bounded damage history preserves old wrecks and validates network sna
   assert.equal(validRaceState(race), false);
 });
 
-void test('instanced rails and trees animate, settle, restore and reuse all resources', () => {
+void test('instanced rails and trees animate, settle, restore and reuse all resources', (t) => {
   const scene = new THREE.Scene(),
     kit = new RenderKit(scene),
     root = new THREE.Group();
@@ -136,14 +144,98 @@ void test('instanced rails and trees animate, settle, restore and reuse all reso
     createNeighbourhoodGreenery(kit, trees);
     liftScenery(kit, trees, cityGroundHeight);
     const view = createCityDestruction(kit, root);
-    collectCityFoliage(root);
+    const crowns = collectCityFoliage(root);
     const trunk = root.getObjectByName('neighbourhood-tree-trunks');
     const base = new THREE.Matrix4();
     trunk.getMatrixAt(0, base);
     const counts = [kit.geometries.size, kit.materials.size];
+    const versions = new Map();
+    root.traverse((mesh) => {
+      if (mesh.isInstancedMesh) versions.set(mesh, mesh.instanceMatrix.version);
+    });
+    const tree = breakableObjects[cityBarriers.length];
+    const car = {
+      x: tree.x,
+      z: tree.z,
+      elevation: tree.y,
+      heading: 0,
+      speed: 0,
+      vx: 0,
+      vz: 0,
+    };
+    const camera = cityCruiseCamera(car, 16 / 9);
+    const checkTreeCamera = () => {
+      const eye = clearCityCruiseCamera(
+        camera.position,
+        car,
+        [],
+        undefined,
+        crowns,
+      );
+      assert.ok(
+        eye.y <= camera.position.y + 0.01,
+        'entering a real crown does not lift the camera over the car',
+      );
+      assert.ok(
+        Math.hypot(eye.x - car.x, eye.z - car.z) >= 4.5,
+        'the road view retains a rear boom',
+      );
+      const focus = cityCameraFocus(camera.look, camera.position, eye, car);
+      assert.ok(
+        car.z - focus.z > 5,
+        'the real-tree camera keeps its forward road lookahead',
+      );
+    };
+    checkTreeCamera();
     const damage = freshCityDamage();
     strikeCityObject(damage, cityBarriers.length, 20, 0, 1);
+    view.update(damage, 1);
+    checkTreeCamera();
+    const changed = [...versions]
+      .filter(([mesh, version]) => mesh.instanceMatrix.version !== version)
+      .map(([mesh]) => mesh);
+    assert.equal(
+      changed.length,
+      2,
+      'first tree hit changes its trunk and crown, without rewriting padded intact rails',
+    );
+    assert.ok(
+      changed.every(
+        (mesh) =>
+          mesh.instanceMatrix.updateRanges.length === 1 &&
+          mesh.instanceMatrix.updateRanges[0].count === 16,
+      ),
+    );
+    const crownMesh = changed.find((mesh) => mesh !== trunk);
+    const crown = crownMesh.userData.cityTreeOccluders[0];
+    assert.equal(
+      crown.active,
+      false,
+      'fallen branches stop forcing camera clearance on the impact frame',
+    );
+    t.diagnostic(
+      JSON.stringify({
+        fullInstanceBufferBytes: changed.reduce(
+          (sum, mesh) => sum + mesh.instanceMatrix.array.byteLength,
+          0,
+        ),
+        changedInstanceBytes: changed.reduce(
+          (sum, mesh) =>
+            sum +
+            mesh.instanceMatrix.updateRanges.reduce(
+              (n, range) => n + range.count * 4,
+              0,
+            ),
+          0,
+        ),
+      }),
+    );
     view.update(damage, 1.8);
+    checkTreeCamera();
+    assert.ok(
+      changed.every((mesh) => mesh.instanceMatrix.updateRanges.length === 1),
+      'culled batches retain bounded pending edits until the renderer uploads them',
+    );
     const falling = new THREE.Matrix4();
     trunk.getMatrixAt(0, falling);
     assert.notDeepEqual(falling.elements, base.elements);
@@ -154,6 +246,33 @@ void test('instanced rails and trees animate, settle, restore and reuse all reso
     for (let n = 0; n < 100; n++) view.update(damage, 10 + n);
     assert.deepEqual([kit.geometries.size, kit.materials.size], counts);
     view.update(freshCityDamage(), 0);
+    assert.equal(
+      crown.active,
+      true,
+      'restored crowns participate in camera clearance again',
+    );
+    const nearby = [];
+    forEachCityFoliageNear(
+      crowns,
+      tree.x - 12,
+      tree.z - 12,
+      tree.x + 12,
+      tree.z + 12,
+      (box) => nearby.push(box),
+    );
+    assert.ok(
+      nearby.includes(crown),
+      'restored bounds remain discoverable in their original spatial cell',
+    );
+    assert.equal(
+      new Set(nearby).size,
+      nearby.length,
+      'a crown spanning multiple cells is visited once',
+    );
+    assert.ok(
+      nearby.length < crowns.length / 10,
+      'camera work samples local trees instead of the full city',
+    );
     trunk.getMatrixAt(0, falling);
     assert.deepEqual(falling.elements, base.elements);
     // A newly joined renderer reaches the same pose from a serialized snapshot.

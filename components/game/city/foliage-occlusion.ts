@@ -1,6 +1,71 @@
 import * as THREE from 'three';
 import type { CityCameraOccluder } from './camera.ts';
 
+const cellSize = 32;
+type Entry = { crown: CityCameraOccluder; visited: number };
+const indices = new WeakMap<
+  readonly CityCameraOccluder[],
+  { cells: Map<string, Entry[]>; revision: number; count: number }
+>();
+
+/** Collected crowns stay in their original cells: falling crowns stop blocking
+ * the camera, and restoring a tree returns it to its original bounds. */
+function indexFoliage(crowns: CityCameraOccluder[]) {
+  const cells = new Map<string, Entry[]>();
+  for (const crown of crowns) {
+    const entry = { crown, visited: 0 };
+    for (
+      let x = Math.floor(crown.minX / cellSize);
+      x <= Math.floor(crown.maxX / cellSize);
+      x++
+    )
+      for (
+        let z = Math.floor(crown.minZ / cellSize);
+        z <= Math.floor(crown.maxZ / cellSize);
+        z++
+      ) {
+        const key = `${x}:${z}`,
+          entries = cells.get(key) ?? [];
+        entries.push(entry);
+        cells.set(key, entries);
+      }
+  }
+  indices.set(crowns, { cells, revision: 0, count: crowns.length });
+}
+
+/** Visit only cells crossed by the camera boom, without allocating a result
+ * array or duplicate set on each frame. Plain caller-provided arrays also work. */
+export function forEachCityFoliageNear(
+  crowns: readonly CityCameraOccluder[],
+  minX: number,
+  minZ: number,
+  maxX: number,
+  maxZ: number,
+  visit: (crown: CityCameraOccluder) => void,
+) {
+  const index = indices.get(crowns);
+  if (!index || index.count !== crowns.length) {
+    for (const crown of crowns) if (crown.active !== false) visit(crown);
+    return;
+  }
+  const revision = ++index.revision;
+  for (
+    let x = Math.floor(minX / cellSize);
+    x <= Math.floor(maxX / cellSize);
+    x++
+  )
+    for (
+      let z = Math.floor(minZ / cellSize);
+      z <= Math.floor(maxZ / cellSize);
+      z++
+    )
+      for (const entry of index.cells.get(`${x}:${z}`) ?? []) {
+        if (entry.visited === revision) continue;
+        entry.visited = revision;
+        if (entry.crown.active !== false) visit(entry.crown);
+      }
+}
+
 /** Capture the actual lifted crowns before material batching removes their
  * individual meshes. Instanced trees stay instanced; this adds no draw calls. */
 export function collectCityFoliage(root: THREE.Object3D): CityCameraOccluder[] {
@@ -22,7 +87,7 @@ export function collectCityFoliage(root: THREE.Object3D): CityCameraOccluder[] {
       )
     )
       return;
-    object.geometry.computeBoundingBox();
+    if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
     const count = object instanceof THREE.InstancedMesh ? object.count : 1;
     for (let i = 0; i < count; i++) {
       matrix.copy(object.matrixWorld);
@@ -46,5 +111,6 @@ export function collectCityFoliage(root: THREE.Object3D): CityCameraOccluder[] {
       }
     }
   });
+  indexFoliage(crowns);
   return crowns;
 }

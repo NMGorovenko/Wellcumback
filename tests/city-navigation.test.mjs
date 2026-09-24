@@ -21,6 +21,11 @@ import {
   zoomCityMap,
 } from '../lib/game/city/navigation.ts';
 import { presentedVehicle } from '../lib/game/city/vehicle-presentation.ts';
+import {
+  CITY_KUBATURA_TERRACE,
+  cityKubaturaTerraceDistance,
+  cityKubaturaWallBlocked,
+} from '../lib/game/city/surface.ts';
 
 void test('GPS reaches every destination along connected roads, including both island crossings', () => {
   const start = cityStops[0];
@@ -178,7 +183,7 @@ void test('minimap keeps distant destinations on its edge and zoom remains ancho
   assert.ok(zoomCityMap(view, 0).width >= 400);
 });
 
-void test('arriving at a stop clears the GPS line and parking departures never detour around the road graph', () => {
+void test('arrival clears GPS and accessible parking departures stay direct while raised edges use the entry', () => {
   for (const stop of cityStops) {
     const arrival = cityTravelArrival(stop.id);
     const route = cityNavigationRoute(arrival, stop);
@@ -213,10 +218,57 @@ void test('arriving at a stop clears the GPS line and parking departures never d
         z: Math.round(arrival.z / cell) * cell,
       };
       const route = cityNavigationRoute(start, stop);
-      assert.ok(
-        cityRouteLength(route) <=
-          Math.hypot(start.x - stop.x, start.z - stop.z) + 0.01,
+      assert.deepEqual(
+        route[0],
+        start,
+        'snapped origins still retain their real position',
       );
+      assert.deepEqual([route.at(-1).x, route.at(-1).z], [stop.x, stop.z]);
+      if (
+        id === 'kubatura' &&
+        cityKubaturaTerraceDistance(start.x, start.z) > 0
+      ) {
+        // The old 25 m grid point now lies in the real retaining face, below
+        // the raised lot. It must not demand a shortcut through that wall.
+        assert.equal(cityCarBlocked(start.x, start.z, arrival.heading), true);
+        assert.ok(
+          route.some(
+            (p) =>
+              Math.hypot(
+                p.x - CITY_KUBATURA_TERRACE.entry.from.x,
+                p.z - CITY_KUBATURA_TERRACE.entry.from.z,
+              ) < 0.25,
+          ),
+          'the lower side returns through the actual open entry',
+        );
+        assert.ok(
+          cityRouteLength(route) >
+            Math.hypot(start.x - stop.x, start.z - stop.z) + 20,
+        );
+        // After projecting the impossible legacy origin onto a street, the
+        // complete remaining route must avoid the physical wall footprint.
+        for (let i = 2; i < route.length; i++) {
+          const a = route[i - 1],
+            b = route[i];
+          const steps = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z));
+          for (let step = 0; step <= steps; step++)
+            assert.equal(
+              cityKubaturaWallBlocked(
+                a.x + ((b.x - a.x) * step) / steps,
+                a.z + ((b.z - a.z) * step) / steps,
+                0.85,
+              ),
+              false,
+              'return route crosses the retaining wall',
+            );
+        }
+      } else {
+        assert.ok(
+          cityRouteLength(route) <=
+            Math.hypot(start.x - stop.x, start.z - stop.z) + 0.01,
+          `${id}: accessible parking origin must keep its direct route`,
+        );
+      }
     }
   }
 });
