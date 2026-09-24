@@ -26,6 +26,28 @@ import {
   cityOverpassClearance,
 } from '../lib/game/city/surface.ts';
 
+function nikolaevskyCrossing() {
+  const lower = cityRoads.find((r) => r.id === 'left-quay:3');
+  for (const upper of cityRoads.filter((r) => r.bridge === 'nikolaevsky')) {
+    const ax = lower.to.x - lower.from.x,
+      az = lower.to.z - lower.from.z,
+      bx = upper.to.x - upper.from.x,
+      bz = upper.to.z - upper.from.z,
+      dx = upper.from.x - lower.from.x,
+      dz = upper.from.z - lower.from.z,
+      determinant = ax * bz - az * bx;
+    const t = (dx * bz - dz * bx) / determinant,
+      u = (dx * az - dz * ax) / determinant;
+    if (t > 0 && t < 1 && u > 0 && u < 1)
+      return {
+        lower,
+        upper,
+        point: { x: lower.from.x + t * ax, z: lower.from.z + t * az },
+      };
+  }
+  assert.fail('the bridge and lower quay must physically cross');
+}
+
 void test('camera samples each terrain point once while height-only queries preserve selected bridge layers', () => {
   let heights = 0,
     ceilings = 0;
@@ -211,17 +233,7 @@ void test('height and pitch interpolate from authoritative state and JSON restor
 });
 
 void test('real Nikolaevsky crossing keeps all three views on the chosen bridge layer', () => {
-  const lower = cityRoads.find((r) => r.id === 'left-quay:3');
-  const upper = cityRoads.find((r) => r.id === 'bridge-nikolaevsky:0');
-  const ax = lower.to.x - lower.from.x,
-    az = lower.to.z - lower.from.z,
-    bx = upper.to.x - upper.from.x,
-    bz = upper.to.z - upper.from.z;
-  const t =
-    ((upper.from.x - lower.from.x) * bz - (upper.from.z - lower.from.z) * bx) /
-    (ax * bz - az * bx);
-  assert.ok(t > 0 && t < 1, 'the routes physically cross');
-  const point = { x: lower.from.x + t * ax, z: lower.from.z + t * az };
+  const { lower, upper, point } = nikolaevskyCrossing();
   assert.ok(
     cityRoadHeight(upper, point.x, point.z) -
       cityRoadHeight(lower, point.x, point.z) >
@@ -373,18 +385,19 @@ void test('Nordschleife skid marks follow the rear wheel height and pitch withou
 });
 
 void test('city drift effects sample the same upper or lower deck as their racer', () => {
-  for (const id of ['left-quay:3', 'bridge-nikolaevsky:0']) {
-    const road = cityRoads.find((r) => r.id === id),
-      x = -716.6666666666666,
-      z = 448.8333333333333,
+  const { lower, upper, point } = nikolaevskyCrossing();
+  const markHeights = [];
+  for (const road of [lower, upper]) {
+    const { x, z } = point,
       heading = Math.atan2(road.to.x - road.from.x, road.from.z - road.to.z);
     const pose = citySurfacePose(
       x,
       z,
       heading,
       cityRoadHeight(road, x, z),
-      `road:${id}`,
+      `road:${road.id}`,
     );
+    assert.equal(pose.surfaceId, `road:${road.id}`);
     const car = {
       ...freshCity(),
       ...pose,
@@ -409,23 +422,31 @@ void test('city drift effects sample the same upper or lower deck as their racer
         (o) => o.isInstancedMesh && o.count === 1600,
       );
       const matrix = new THREE.Matrix4();
-      marks.getMatrixAt(0, matrix);
-      const expected = citySurfacePose(
-        matrix.elements[12],
-        matrix.elements[14],
-        heading,
-        pose.elevation,
-        pose.surfaceId,
-      );
-      assert.ok(
-        Math.abs(matrix.elements[13] - expected.elevation - 0.105) < 1e-4,
-      );
-      assert.ok(
-        matrix.elements[13] > 30,
-        'drift marks are not left at sea level',
-      );
+      const wheelHeights = [];
+      for (const wheel of [0, 1]) {
+        marks.getMatrixAt(wheel, matrix);
+        const expected = citySurfacePose(
+          matrix.elements[12],
+          matrix.elements[14],
+          heading,
+          pose.elevation,
+          pose.surfaceId,
+        );
+        assert.equal(expected.surfaceId, `road:${road.id}`);
+        assert.ok(
+          Math.abs(matrix.elements[13] - expected.elevation - 0.105) < 1e-4,
+          'each drift mark follows its road instead of sea level',
+        );
+        wheelHeights.push(matrix.elements[13]);
+      }
+      markHeights.push(wheelHeights);
     } finally {
       kit.dispose();
     }
   }
+  for (const wheel of [0, 1])
+    assert.ok(
+      markHeights[1][wheel] - CITY_DECK_THICKNESS - markHeights[0][wheel] > 8,
+      'upper and lower skid marks preserve the actual underpass clearance',
+    );
 });

@@ -1,3 +1,7 @@
+import { createCityArt } from './city-art.ts';
+import { KACHA_TERRAIN_HOLES } from '../../../lib/game/city/kacha.ts';
+import { createKachaRiver } from './kacha-river.ts';
+import { createNikolaevskyDetails } from './nikolaevsky-details.ts';
 import { createTheatreSquareGround } from './opera-landmark.ts';
 import { createCityDestruction } from './destruction.ts';
 import type { CityDamage } from '../../../lib/game/city/destruction.ts';
@@ -32,6 +36,7 @@ import {
   CITY_DECK_THICKNESS,
   CITY_KUBATURA_TERRACE,
   cityGroundHeight,
+  cityGroundRoadHeight,
   cityKubaturaRetainingEdges,
   cityRoadHeight,
   cityRoadLayer,
@@ -39,6 +44,8 @@ import {
 } from '../../../lib/game/city/surface.ts';
 import {
   convexPieces,
+  createDrapedEdgeStitcher,
+  createTerrainSeamMaterial,
   drapedSurface,
   liftScenery,
   terrainTiles,
@@ -180,6 +187,7 @@ export function* buildCityEnvironment(
   const { minX, maxX, minZ, maxZ } = CITY_BOUNDS;
   const width = maxX - minX;
   const water = createYeniseyWater(kit);
+  const terrainEdges = createDrapedEdgeStitcher();
   const groundSurfaceHoles = roadSurfaceOutlines(
     cityRoads.filter(
       (r) =>
@@ -193,6 +201,7 @@ export function* buildCityEnvironment(
   // asphalt roads. Cutting their exact footprints also removes coarse shore
   // triangles that otherwise rise through the ramp or hide the retaining face.
   groundSurfaceHoles.push(
+    ...KACHA_TERRAIN_HOLES.flatMap((outline) => convexPieces(outline)),
     ...BOBROVY_TERRAIN_FOOTPRINTS,
     CITY_KUBATURA_TERRACE.outline,
     ...cityKubaturaRetainingEdges().map(({ p, q, nx, nz }) => [
@@ -219,9 +228,15 @@ export function* buildCityEnvironment(
       ground ? groundSurfaceHoles : [],
     );
     mesh.name = ground ? 'city-relief-ground' : 'city-water';
+    if (ground) terrainEdges.add(mesh.geometry);
     if (!ground) mesh.material = water.material;
     return mesh;
   }
+  createKachaRiver(kit, root, {
+    roads: cityRoads,
+    roadHeight: cityRoadHeight,
+    waterMaterial: water.material,
+  });
   const roadSample = (roads: readonly CityRoad[]) => (x: number, z: number) => {
     let nearest = roads[0],
       best = Infinity;
@@ -241,6 +256,8 @@ export function* buildCityEnvironment(
   const terrainMaterial = kit.material('#ffffff').clone();
   terrainMaterial.vertexColors = true;
   kit.materials.add(terrainMaterial);
+  const terrainSeamMaterial = createTerrainSeamMaterial(terrainMaterial);
+  kit.materials.add(terrainSeamMaterial);
   const banks = [
     [
       { x: minX, z: minZ },
@@ -294,9 +311,62 @@ export function* buildCityEnvironment(
       new THREE.Float32BufferAttribute(colors, 3),
     );
   }
+  function closeTerrainEdges(mesh: THREE.Mesh) {
+    terrainEdges.add(mesh.geometry);
+    const geometry = terrainEdges.stitch(mesh.geometry);
+    if (!geometry.attributes.position.count) {
+      geometry.dispose();
+      return;
+    }
+    const seams = kit.mesh(geometry, terrainSeamMaterial, root);
+    shadeTerrain(seams);
+    seams.material = terrainSeamMaterial;
+    seams.name = 'city-relief-seams';
+    // Boundary faces share a shader and can merge by district. Main ground
+    // tiles keep their smaller independent frustum bounds.
+    seams.userData.noCityBatch = false;
+    seams.castShadow = false;
+  }
+  const detailedTerrainBounds = [
+    ...cityRoads.map((road) => ({
+      minX: Math.min(road.from.x, road.to.x) - 64,
+      maxX: Math.max(road.from.x, road.to.x) + 64,
+      minZ: Math.min(road.from.z, road.to.z) - 64,
+      maxZ: Math.max(road.from.z, road.to.z) + 64,
+    })),
+    ...cityBuildings.map((building) => ({
+      minX: building.x - building.w / 2 - 32,
+      maxX: building.x + building.w / 2 + 32,
+      minZ: building.z - building.d / 2 - 32,
+      maxZ: building.z + building.d / 2 + 32,
+    })),
+    ...BOBROVY_TERRAIN_FOOTPRINTS.map((outline) => ({
+      minX: Math.min(...outline.map((p) => p.x)),
+      maxX: Math.max(...outline.map((p) => p.x)),
+      minZ: Math.min(...outline.map((p) => p.z)),
+      maxZ: Math.max(...outline.map((p) => p.z)),
+    })),
+    { minX: -1500, maxX: -560, minZ: 180, maxZ: 650 },
+  ];
   for (const [bank, outline] of banks.entries()) {
-    const tiles = [...terrainTiles(convexPieces(outline))];
+    const tiles = [...terrainTiles(convexPieces(outline), 320)];
     for (const [index, pieces] of tiles.entries()) {
+      const points = pieces.flat();
+      const bounds = {
+        minX: Math.min(...points.map((p) => p.x)),
+        maxX: Math.max(...points.map((p) => p.x)),
+        minZ: Math.min(...points.map((p) => p.z)),
+        maxZ: Math.max(...points.map((p) => p.z)),
+      };
+      // Keep existing detail through engineered shoulders, buildings and the
+      // main cliffs. Empty outer terraces need fewer planar terrain triangles.
+      const detailed = detailedTerrainBounds.some(
+        (area) =>
+          area.minX < bounds.maxX &&
+          area.maxX > bounds.minX &&
+          area.minZ < bounds.maxZ &&
+          area.maxZ > bounds.minZ,
+      );
       const mesh = drapedSurface(
         kit,
         root,
@@ -304,10 +374,11 @@ export function* buildCityEnvironment(
         '#82966d',
         cityGroundHeight,
         0,
-        8,
+        detailed ? 8 : 16,
         groundSurfaceHoles,
       );
       shadeTerrain(mesh);
+      closeTerrainEdges(mesh);
       if (index % 4 === 0)
         yield {
           label: bank
@@ -353,6 +424,7 @@ export function* buildCityEnvironment(
         groundSurfaceHoles,
       );
       shadeTerrain(shore);
+      closeTerrainEdges(shore);
     }
     yield {
       label: 'Склоны у Енисея',
@@ -433,7 +505,7 @@ export function* buildCityEnvironment(
       roads,
       layer === 'ground' ? ROUNDABOUT : undefined,
     );
-    const sample = layer === 'raised' ? roadSample(roads) : cityGroundHeight;
+    const sample = layer === 'raised' ? roadSample(roads) : cityGroundRoadHeight;
     const asphalt = drapedSurface(
       kit,
       root,
@@ -442,6 +514,8 @@ export function* buildCityEnvironment(
       sample,
       0.065,
       layer === 'raised' ? 1 : 3,
+      [],
+      layer === 'raised' ? Infinity : 0.06,
     );
     asphalt.name = `city-asphalt:${layer}`;
     const otherRoads = cityRoads.filter(
@@ -469,9 +543,23 @@ export function* buildCityEnvironment(
       '#b9b9af',
       sample,
       0.14,
-      layer === 'raised' ? 1 : 3,
+      layer === 'raised' ? 1 : 6,
+      [],
+      layer === 'raised' ? Infinity : 0.06,
     );
     curbs.name = `city-curbs:${layer}`;
+    const edgeStitcher =
+      layer === 'raised' ? createDrapedEdgeStitcher() : terrainEdges;
+    edgeStitcher.add(asphalt.geometry);
+    const seamMaterial = kit.material('#b9b9af');
+    seamMaterial.side = THREE.DoubleSide;
+    const seams = kit.mesh(
+      edgeStitcher.stitch(curbs.geometry),
+      seamMaterial,
+      root,
+    );
+    seams.name = `city-curb-seams:${layer}`;
+    seams.castShadow = false;
   }
   yield { label: 'Мосты через Енисей', progress: 0.49 };
   let paintIndex = 0;
@@ -580,8 +668,8 @@ export function* buildCityEnvironment(
         kit.mesh(geometry, underside.material, root);
       }
     }
-    if (r.bridge === 'nikolaevsky' || r.bridge === 'oktyabrsky') {
-      const beamColor = r.bridge === 'nikolaevsky' ? '#6d8593' : '#6f8282';
+    if (r.bridge === 'oktyabrsky') {
+      const beamColor = '#6f8282';
       for (let along = 0; along < length; along += 8)
         for (const side of [-1, 1]) {
           const end = Math.min(length, along + 8),
@@ -646,7 +734,11 @@ export function* buildCityEnvironment(
         }
       }
     }
-    for (let along = 18; along < length - 8; along += 32) {
+    for (
+      let along = 18;
+      r.bridge !== 'nikolaevsky' && along < length - 8;
+      along += 32
+    ) {
       const x = r.from.x + (dx * along) / length,
         z = r.from.z + (dz * along) / length;
       const lowerRoad = cityRoads.some(
@@ -688,6 +780,7 @@ export function* buildCityEnvironment(
   }
   yield { label: 'Ограждения мостов', progress: 0.51 };
   createBridgeRails(kit, root);
+  createNikolaevskyDetails(kit, root);
   yield { label: 'Кольцевые развязки', progress: 0.515 };
   for (const roundabout of CITY_ROUNDABOUTS) {
     const ringRoot = new THREE.Group();
@@ -757,7 +850,8 @@ export function* buildCityEnvironment(
     const root = new THREE.Group();
     root.position.y = cityGroundHeight(building.x, building.z);
     cityRoot.add(root);
-    if (building.kind === 'bobrovy-log') continue; // Built with the lift stations below.
+    if (building.kind === 'bobrovy-log' || building.kind === 'city-art')
+      continue; // Built with the lift stations below.
     const { x, z, w, d, h, color } = building;
     if (createCentreLandmark(kit, root, building)) continue;
     if (createDistrictLandmark(kit, root, building)) continue;
@@ -862,6 +956,7 @@ export function* buildCityEnvironment(
   createSiberianRidges(kit, root);
   const bobrovyLog = createBobrovyLog(kit, root);
   const destruction = createCityDestruction(kit, root);
+  createCityArt(kit, root);
   const cameraOccluders = collectCityFoliage(root);
   yield { label: 'Подготовка поездки', progress: 0.82 };
   for (const part of batchCity(kit, root))

@@ -95,7 +95,7 @@ void test('bridge surfaces stay continuous off the centre line at their transver
         if (previous !== null)
           assert.ok(
             Math.abs(y - previous) < 0.050001,
-            `${road.id} lane${offset} jumps ${y - previous}m`,
+            `${road.id} lane${offset} at ${x},${z} jumps ${y - previous}m`,
           );
         previous = y;
       }
@@ -104,11 +104,12 @@ void test('bridge surfaces stay continuous off the centre line at their transver
   assert.equal(
     cityCarBlocked(CITY_SPAWN.x, CITY_SPAWN.z, CITY_SPAWN.heading),
     false,
-    'raised ramp must meet the starting street',
+    'the Orbita access must keep the spawn clear',
   );
 });
 void test('Kirenskogo–Baykitskaya roundabout is a real drivable loop in both directions, beside IKIT and Doner', () => {
   const ring = CITY_STUD_ROUNDABOUT;
+  const radius = (ring.innerRadius + ring.outerRadius) / 2;
   assert.equal(cityBlocked(ring.x, ring.z), true);
   assert.ok(cityBuildings.find((b) => b.kind === 'ikit').z > ring.z);
   const doner = cityBuildings.find((b) => b.kind === 'doner');
@@ -116,8 +117,8 @@ void test('Kirenskogo–Baykitskaya roundabout is a real drivable loop in both d
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   for (const direction of [1, -1]) {
     const points = Array.from({ length: 33 }, (_, i) => ({
-      x: ring.x + 23 * Math.sin((direction * i * Math.PI) / 16),
-      z: ring.z + 23 * Math.cos((direction * i * Math.PI) / 16),
+      x: ring.x + radius * Math.sin((direction * i * Math.PI) / 16),
+      z: ring.z + radius * Math.cos((direction * i * Math.PI) / 16),
     }));
     const car = {
       ...freshCity(),

@@ -3,7 +3,7 @@ import type { CityBuilding } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { facadeText } from './facade-text.ts';
 
-/** Pale Orbita towers with the broad curved balcony glazing visible from the river. */
+/** The address is a connected block; neighbouring phases retain tower silhouettes. */
 export function createOrbitaLandmark(
   kit: RenderKit,
   root: THREE.Group,
@@ -27,6 +27,145 @@ export function createOrbitaLandmark(
     orange = '#e97b3d',
     glass = '#6e949e',
     frame = '#b6c1c0';
+  if (b.kind === 'borisova') {
+    const floors = b.floors ?? 17;
+    const wallTop = b.h * 0.96;
+    const base = b.h * 0.035;
+    const glazingHeight = wallTop - base - b.h * 0.035;
+    // The long rear section joins two returns around an open river-facing court.
+    // All parts remain inside the parcel: the courtyard is not a separate tower.
+    box(b.w * 0.94, wallTop, b.d * 0.35, white, 0, wallTop / 2, -b.d * 0.295);
+    for (const side of [-1, 1])
+      box(
+        b.w * 0.2,
+        wallTop,
+        b.d * 0.9,
+        white,
+        side * b.w * 0.37,
+        wallTop / 2,
+        0,
+      );
+    const field = (x: number, z: number, width: number) => {
+      const bay = box(
+        width,
+        glazingHeight,
+        b.d * 0.025,
+        glass,
+        x,
+        base + glazingHeight / 2,
+        z,
+      );
+      bay.name = 'borisova:shallow-glazing';
+      for (let level = 0; level <= floors; level++) {
+        const y = base + (level * glazingHeight) / floors;
+        box(width + 0.06, 0.1, 0.08, frame, x, y, z + b.d * 0.013);
+        if (level % 2 === 0)
+          box(width, 0.075, 0.085, orange, x, y - 0.11, z + b.d * 0.013);
+      }
+      for (let column = 0; column <= 5; column++)
+        box(
+          0.065,
+          glazingHeight,
+          0.09,
+          frame,
+          x - width / 2 + (column * width) / 5,
+          base + glazingHeight / 2,
+          z + b.d * 0.014,
+        );
+    };
+    for (const x of [-0.205, -0.07, 0.07, 0.205])
+      field(x * b.w, -b.d * 0.106, b.w * 0.12);
+    for (const side of [-1, 1]) {
+      field(side * b.w * 0.37, b.d * 0.45, b.w * 0.165);
+      // Open balcony stacks break up the long glass facade.
+      const x = side * b.w * 0.142;
+      box(
+        b.w * 0.04,
+        glazingHeight,
+        0.08,
+        '#566567',
+        x,
+        base + glazingHeight / 2,
+        -b.d * 0.117,
+      );
+      for (let floor = 0; floor < floors; floor++) {
+        const y = base + (floor * glazingHeight) / floors;
+        box(b.w * 0.048, 0.14, b.d * 0.045, '#c0c4be', x, y, -b.d * 0.094);
+        box(b.w * 0.044, 0.38, 0.08, '#d2d4cd', x, y + 0.38, -b.d * 0.071);
+      }
+      box(
+        b.w * 0.018,
+        wallTop,
+        0.075,
+        orange,
+        side * b.w * 0.455,
+        wallTop / 2,
+        b.d * 0.453,
+      );
+      // Windows on the return walls keep the oblique bridge view legible.
+      for (let floor = 0; floor < floors; floor++)
+        for (const z of [-0.32, -0.1, 0.12, 0.34])
+          box(
+            0.055,
+            (glazingHeight / floors) * 0.62,
+            b.d * 0.105,
+            glass,
+            side * b.w * 0.471,
+            base + ((floor + 0.5) * glazingHeight) / floors,
+            z * b.d,
+          );
+      box(
+        b.w * 0.2,
+        b.h * 0.015,
+        b.d * 0.905,
+        orange,
+        side * b.w * 0.37,
+        wallTop - b.h * 0.018,
+        0,
+      );
+    }
+    box(
+      b.w * 0.94,
+      b.h * 0.015,
+      b.d * 0.354,
+      orange,
+      0,
+      wallTop - b.h * 0.018,
+      -b.d * 0.295,
+    );
+    for (const x of [-0.36, 0, 0.36]) {
+      box(
+        b.w * 0.105,
+        b.h * 0.04,
+        b.d * 0.21,
+        white,
+        x * b.w,
+        b.h * 0.98,
+        -b.d * 0.295,
+      );
+      box(
+        b.w * 0.108,
+        0.15,
+        b.d * 0.215,
+        orange,
+        x * b.w,
+        b.h - 0.075,
+        -b.d * 0.295,
+      );
+    }
+    box(b.w * 0.97, 0.24, b.d * 0.96, '#c8bdad', 0, 0.12, 0);
+    facadeText(
+      kit,
+      g,
+      'БОРИСОВА, 30',
+      '#4b5657',
+      b.w * 0.15,
+      -b.w * 0.37,
+      2.5,
+      b.d * 0.469,
+    );
+    return true;
+  }
   const bodyFront = b.d * 0.29,
     floors = b.floors ?? Math.max(11, Math.round(b.h / 2.7));
   box(b.w * 0.9, b.h * 0.97, b.d * 0.74, white, 0, b.h * 0.485, -b.d * 0.08);
@@ -143,15 +282,6 @@ export function createOrbitaLandmark(
       const y = 1.3 + (floor * (b.h * 0.9)) / floors;
       for (const column of [-0.31, -0.09, 0.12]) {
         box(
-          0.055,
-          1.4,
-          b.d * 0.105,
-          '#bcc5c1',
-          side * (b.w * 0.45 + 0.028),
-          y,
-          b.d * column,
-        );
-        box(
           0.062,
           1.15,
           b.d * 0.082,
@@ -176,16 +306,5 @@ export function createOrbitaLandmark(
   box(b.w * 0.13, 0.45, 0.08, orange, -b.w * 0.195, b.h * 0.985, b.d * 0.086);
   box(b.w * 0.96, 0.24, b.d * 0.96, '#c8bdad', 0, 0.12, 0);
   box(b.w * 0.11, 1.8, 0.08, '#40545a', 0, 0.98, bodyFront + 0.1);
-  if (b.kind === 'borisova')
-    facadeText(
-      kit,
-      g,
-      'БОРИСОВА, 30',
-      '#4b5657',
-      b.w * 0.3,
-      0,
-      2.8,
-      bodyFront + 0.13,
-    );
   return true;
 }

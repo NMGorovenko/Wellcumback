@@ -71,7 +71,7 @@ void test('four central streets form long separate parallel corridors with usabl
   const campus = cityBuildings.find((b) => b.kind === 'university');
   assert.ok(cityGroundHeight(campus.x, campus.z) > 50);
   assert.ok(
-    cityGroundHeight(-760, 139.45454545454544) > 40,
+    cityGroundHeight(-1040, 95) > 40,
     'Svobodny stays on the western hill',
   );
   assert.ok(
@@ -96,7 +96,7 @@ void test('Studgorodok descends onto Dubrovinskogo and physically passes beneath
     let next = 1,
       under = 0,
       maxStep = 0;
-    for (let frame = 0; frame < 180 * 60 && next < points.length; frame++) {
+    for (let frame = 0; frame < 270 * 60 && next < points.length; frame++) {
       const p = points[next],
         dx = p.x - car.x,
         dz = p.z - car.z,
@@ -140,31 +140,35 @@ void test('Studgorodok descends onto Dubrovinskogo and physically passes beneath
     );
   }
   const start = CITY_ROUTES.studDubrovinsky[0];
-  const lower = { x: -650, z: 430.5 };
+  const quay = cityRoads.find((r) => r.id === 'left-quay:3');
+  const lower = {
+    x: quay.from.x + (quay.to.x - quay.from.x) * 0.45,
+    z: quay.from.z + (quay.to.z - quay.from.z) * 0.45,
+  };
   const route = cityNavigationRoute(start, {
     ...lower,
     ...citySurfacePose(lower.x, lower.z, 0, cityGroundHeight(lower.x, lower.z)),
   });
   assert.ok(
-    cityRouteLength(route) < 350,
+    cityRouteLength(route) < 1600,
     'GPS enters lower embankment without climbing the upper bridge',
   );
   assert.ok(
-    route.slice(1).some((end, i) => {
-      // Graph nodes are only junctions. Removing a spurious side street
-      // leaves one longer quay edge, still passing beneath the bridge.
-      const p = { x: (route[i].x + end.x) / 2, z: (route[i].z + end.z) / 2 };
-      return (
-        p.x > -750 &&
-        p.x < -660 &&
-        distanceToRoad(
-          p.x,
-          p.z,
-          cityRoads.find((r) => r.id === 'left-quay:3'),
-        ) < 0.1
-      );
-    }),
-    'a route segment follows the actual lower quay through the underpass',
+    route.some((p) => Math.hypot(p.x + 577, p.z - 381) < 0.1),
+    'GPS reaches the low quay through the eastern interchange loop',
+  );
+  assert.ok(
+    route
+      .slice(1)
+      .some(
+        (end, i) =>
+          distanceToRoad(
+            (route[i].x + end.x) / 2,
+            (route[i].z + end.z) / 2,
+            quay,
+          ) < 0.1,
+      ),
+    'the final route follows the actual lower embankment',
   );
 });
 void test('Kvant is the fourteenth reachable stop with a clear forecourt and exit', () => {

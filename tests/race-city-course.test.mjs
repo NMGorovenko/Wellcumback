@@ -19,6 +19,12 @@ import {
   distanceToRoad,
   inCityWater,
 } from '../lib/game/city/layout.ts';
+import {
+  CITY_KACHA_CROSSINGS,
+  onKachaStreetDeck,
+} from '../lib/game/city/kacha-decks.ts';
+import { inKachaWater, sampleKacha } from '../lib/game/city/kacha.ts';
+import { cityRoadHeight, citySurfacePose } from '../lib/game/city/surface.ts';
 
 const wrap = (value) => Math.atan2(Math.sin(value), Math.cos(value));
 const carRadius = 0.85;
@@ -32,6 +38,31 @@ function bodyOnRoad(x, z, heading) {
     );
   });
 }
+function bodyAboveDryRoadOrKachaDeck(
+  x,
+  z,
+  heading,
+  elevation = citySurfacePose(x, z, heading).elevation,
+) {
+  return [-1.2, 0, 1.2].every((offset) => {
+    const px = x + Math.sin(heading) * offset,
+      pz = z - Math.cos(heading) * offset;
+    if (!inCityWater(px, pz, carRadius)) return true;
+    // The circuit clips the new Kacha crossing at the eastern junction. The
+    // complete car must fit a finite physical bridge and its actual height;
+    // this does not grant permission to drive on arbitrary river/road overlap.
+    return (
+      inKachaWater(px, pz, carRadius) &&
+      elevation > sampleKacha(px, pz).waterHeight + 1.8 &&
+      cityRoads.some(
+        (road) =>
+          onKachaStreetDeck(road, px, pz) &&
+          distanceToRoad(px, pz, road) < road.width / 2 - carRadius &&
+          Math.abs(elevation - cityRoadHeight(road, px, pz)) < 0.35,
+      )
+    );
+  });
+}
 function ready(vehicleId = 'mustang') {
   const state = freshRace();
   state.racers[0].vehicleId = vehicleId;
@@ -40,12 +71,41 @@ function ready(vehicleId = 'mustang') {
   return state;
 }
 
-void test('city circuit remains on asphalt with a clear car body in both lanes, away from water and buildings', () => {
+void test('the Kacha exception rejects open water and an incorrect bridge elevation', () => {
+  const span = CITY_KACHA_CROSSINGS.find(
+    (crossing) => crossing.road.id === 'perensona-kacha:0',
+  );
+  assert.ok(span);
+  const heading = Math.atan2(span.nz, span.nx);
+  const deckHeight = cityRoadHeight(span.road, span.x, span.z);
+  assert.equal(
+    bodyAboveDryRoadOrKachaDeck(span.x, span.z, heading, deckHeight),
+    true,
+  );
+  assert.equal(
+    bodyAboveDryRoadOrKachaDeck(span.x, span.z, heading, deckHeight + 10),
+    false,
+  );
+  assert.equal(
+    bodyAboveDryRoadOrKachaDeck(
+      span.x,
+      span.z,
+      heading,
+      sampleKacha(span.x, span.z).bedHeight,
+    ),
+    false,
+  );
+  assert.equal(bodyAboveDryRoadOrKachaDeck(-300, -308, 0), false);
+  assert.equal(carBlocked(course, -300, -308, 0), true);
+});
+
+void test('city circuit remains on asphalt with a clear car body in both lanes and crosses water only on physical Kacha decks', () => {
   assert.ok(
     course.length > 1300 && course.length < 1800,
     `party circuit grew to ${course.length}m`,
   );
   assert.deepEqual(course.points[0], course.points.at(-1));
+  let bridgeSamples = 0;
   for (let distance = 0; distance < course.length; distance += 1) {
     const p = course.sample(distance),
       heading = headingAt(p);
@@ -61,13 +121,17 @@ void test('city circuit remains on asphalt with a clear car body in both lanes, 
         false,
         `body blocked at ${distance}m, lane ${lane}`,
       );
-      assert.equal(
-        inCityWater(x, z, carRadius),
-        false,
-        `water at ${distance}m`,
+      assert.ok(
+        bodyAboveDryRoadOrKachaDeck(x, z, heading),
+        `unbridged water at ${distance}m, lane ${lane}`,
       );
+      if (inCityWater(x, z, carRadius)) bridgeSamples++;
     }
   }
+  assert.ok(
+    bridgeSamples > 0,
+    'the circuit actually exercises the new river crossing',
+  );
 });
 
 void test('all nine city grid slots face the straight start gate and cross it with ordinary throttle', () => {
@@ -205,6 +269,7 @@ for (const vehicleId of ['mustang', 'amg-gt'])
   void test(`${vehicleId}: ordinary driving completes all three city laps below ten minutes`, (t) => {
     const state = ready(vehicleId),
       racer = state.racers[0];
+    let bridgeFrames = 0;
     for (let frame = 0; frame < 60 * 600 && state.phase !== 'result'; frame++) {
       tickRace(
         state,
@@ -216,7 +281,16 @@ for (const vehicleId of ['mustang', 'amg-gt'])
         carBlocked(course, racer.car.x, racer.car.z, racer.car.heading),
         false,
       );
-      assert.equal(inCityWater(racer.car.x, racer.car.z, carRadius), false);
+      assert.ok(
+        bodyAboveDryRoadOrKachaDeck(
+          racer.car.x,
+          racer.car.z,
+          racer.car.heading,
+          racer.car.elevation,
+        ),
+        `unbridged water at ${state.elapsed.toFixed(2)}s`,
+      );
+      if (inCityWater(racer.car.x, racer.car.z, carRadius)) bridgeFrames++;
       if (frame % 3 === 0)
         assert.ok(
           bodyOnRoad(racer.car.x, racer.car.z, racer.car.heading),
@@ -231,6 +305,7 @@ for (const vehicleId of ['mustang', 'amg-gt'])
     );
     assert.equal(racer.passedGates, course.gates.length * 3 + 1);
     assert.equal(racer.respawns, 0);
+    assert.ok(bridgeFrames > 0, 'normal race steering crosses above Kacha');
     t.diagnostic(
       `Three city laps: ${racer.finishTime.toFixed(2)} s, no respawns`,
     );

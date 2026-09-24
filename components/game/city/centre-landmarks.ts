@@ -1,3 +1,4 @@
+import { createPushkinMonument } from './pushkin-monument.ts';
 import {
   createOperaLandmark,
   createTheatreSquareProp,
@@ -20,6 +21,7 @@ export function createCentreLandmark(
     createTheatreSquareProp(kit, root, b)
   )
     return true;
+  if (createPushkinMonument(kit, root, b)) return true;
   if (createKvantLandmark(kit, root, b)) return true;
   if (
     !['museum', 'pushkin', 'theatre', 'pho', 'frank', 'fresco'].includes(

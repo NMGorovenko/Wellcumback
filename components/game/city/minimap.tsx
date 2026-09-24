@@ -1,6 +1,10 @@
 'use client';
 import { memo } from 'react';
 import {
+  KACHA_CHANNEL_OUTLINE,
+  KACHA_CORRIDOR_OUTLINE,
+} from '@/lib/game/city/kacha';
+import {
   cityNavigationRoute,
   cityRouteLength,
   minimapTarget,
@@ -39,6 +43,14 @@ export const MapStreets = memo(function MapStreets() {
         fill="#263e36"
       />
       <polygon points={river} fill="#418399" />
+      <polygon
+        points={KACHA_CORRIDOR_OUTLINE.map((p) => `${p.x},${p.z}`).join(' ')}
+        fill="#afad95"
+      />
+      <polygon
+        points={KACHA_CHANNEL_OUTLINE.map((p) => `${p.x},${p.z}`).join(' ')}
+        fill="#418399"
+      />
       {CITY_ISLANDS.map((i) => (
         <polygon
           key={i.id}

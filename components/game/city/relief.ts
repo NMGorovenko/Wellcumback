@@ -37,6 +37,7 @@ export function drapedGeometry(
   offset = 0,
   cell = 12,
   holes: readonly Polygon[] = [],
+  maxHeightError = Infinity,
 ) {
   const vertices: number[] = [],
     uv: number[] = [];
@@ -44,15 +45,51 @@ export function drapedGeometry(
   const subtract = holes.length
     ? createRoadPolygonSubtractor(holes)
     : undefined;
-  function emit(p: CityPoint) {
+  function height(p: CityPoint) {
     const key = `${p.x.toFixed(6)}:${p.z.toFixed(6)}`;
     let height = heights.get(key);
     if (height === undefined) {
       height = heightAt(p.x, p.z);
       heights.set(key, height);
     }
-    vertices.push(p.x, height + offset, p.z);
+    return height;
+  }
+  function emit(p: CityPoint) {
+    vertices.push(p.x, height(p) + offset, p.z);
     uv.push(p.x / 10, p.z / 10);
+  }
+  function triangle(a: CityPoint, b: CityPoint, c: CityPoint, depth = 0) {
+    const area = (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
+    if (Math.abs(area) < 1e-7) return;
+    if (Number.isFinite(maxHeightError) && depth < 3) {
+      const points = [a, b, c];
+      const center = { x: (a.x + b.x + c.x) / 3, z: (a.z + b.z + c.z) / 3 };
+      const edge: CityPoint[] = [];
+      let refine =
+        Math.abs(height(center) - (height(a) + height(b) + height(c)) / 3) >
+        maxHeightError;
+      for (let i = 0; i < 3; i++) {
+        const p = points[i],
+          q = points[(i + 1) % 3];
+        edge.push(p);
+        const mid = { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
+        // Both triangles sharing a curved edge make the same midpoint choice.
+        if (
+          Math.abs(height(mid) - (height(p) + height(q)) / 2) > maxHeightError
+        ) {
+          edge.push(mid);
+          refine = true;
+        }
+      }
+      if (refine) {
+        for (let i = 0; i < edge.length; i++)
+          triangle(center, edge[i], edge[(i + 1) % edge.length], depth + 1);
+        return;
+      }
+    }
+    emit(a);
+    emit(area > 0 ? c : b);
+    emit(area > 0 ? b : c);
   }
   for (const polygon of polygons) {
     const minX = Math.floor(Math.min(...polygon.map((p) => p.x)) / cell),
@@ -78,14 +115,7 @@ export function drapedGeometry(
         const pieces = subtract ? subtract(points) : [points];
         for (const piece of pieces)
           for (let i = 1; i < piece.length - 1; i++) {
-            const a = piece[0],
-              b = piece[i],
-              c = piece[i + 1];
-            const area = (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
-            if (Math.abs(area) < 1e-7) continue;
-            emit(a);
-            emit(area > 0 ? c : b);
-            emit(area > 0 ? b : c);
+            triangle(piece[0], piece[i], piece[i + 1]);
           }
       }
     }
@@ -147,14 +177,172 @@ export function drapedSurface(
   offset = 0,
   cell = 12,
   holes: readonly Polygon[] = [],
+  maxHeightError = Infinity,
 ) {
   const mesh = kit.mesh(
-    drapedGeometry(polygons, heightAt, offset, cell, holes),
+    drapedGeometry(polygons, heightAt, offset, cell, holes, maxHeightError),
     kit.material(color),
     parent,
   );
   mesh.castShadow = false;
   return mesh;
+}
+
+type SurfaceEdge = {
+  ax: number;
+  ay: number;
+  az: number;
+  bx: number;
+  by: number;
+  bz: number;
+};
+
+/** Seam vertices already carry the neighbouring ground's natural normal.
+ * A back-facing vertical join must keep that normal instead of turning the
+ * upward terrain lighting downward when Three renders its second side. */
+export function createTerrainSeamMaterial(terrain: THREE.MeshStandardMaterial) {
+  const material = terrain.clone();
+  material.side = THREE.DoubleSide;
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <normal_fragment_begin>',
+      THREE.ShaderChunk.normal_fragment_begin.replace(
+        'normal *= faceDirection;',
+        '// Keep the shared terrain normal on either side of a seam.',
+      ),
+    );
+  };
+  material.customProgramCacheKey = () => 'city-terrain-seam-natural-normal-v1';
+  return material;
+}
+
+function surfaceBoundary(geometry: THREE.BufferGeometry) {
+  const positions = geometry.attributes.position;
+  const index = geometry.index;
+  const edges = new Map<string, { edge: SurfaceEdge; count: number }>();
+  for (let i = 0; i < (index?.count ?? positions.count); i += 3)
+    for (let side = 0; side < 3; side++) {
+      const a = index ? index.getX(i + side) : i + side;
+      const b = index ? index.getX(i + ((side + 1) % 3)) : i + ((side + 1) % 3);
+      const edge = {
+        ax: positions.getX(a),
+        ay: positions.getY(a),
+        az: positions.getZ(a),
+        bx: positions.getX(b),
+        by: positions.getY(b),
+        bz: positions.getZ(b),
+      };
+      const ka = `${edge.ax}:${edge.az}`,
+        kb = `${edge.bx}:${edge.bz}`;
+      const key = ka < kb ? `${ka}/${kb}` : `${kb}/${ka}`;
+      const existing = edges.get(key);
+      if (existing) existing.count++;
+      else edges.set(key, { edge, count: 1 });
+    }
+  return [...edges.values()]
+    .filter(({ count }) => count === 1)
+    .map(({ edge }) => edge);
+}
+
+/** Join coincident footprints with their actual rendered boundary heights.
+ * Different grids, or a cutout adding a vertex to only one side of a terrain
+ * grid edge, leave unmatched linear triangle edges in 3D. These narrow vertical
+ * faces seal the tessellation gap and curb rise without moving either mesh. */
+export function createDrapedEdgeStitcher() {
+  const cell = 16;
+  const bins = new Map<string, SurfaceEdge[]>();
+  function visit(edge: SurfaceEdge, callback: (key: string) => void) {
+    for (
+      let x = Math.floor((Math.min(edge.ax, edge.bx) - 0.001) / cell);
+      x <= Math.floor((Math.max(edge.ax, edge.bx) + 0.001) / cell);
+      x++
+    )
+      for (
+        let z = Math.floor((Math.min(edge.az, edge.bz) - 0.001) / cell);
+        z <= Math.floor((Math.max(edge.az, edge.bz) + 0.001) / cell);
+        z++
+      )
+        callback(`${x}:${z}`);
+  }
+  return {
+    add(geometry: THREE.BufferGeometry) {
+      for (const edge of surfaceBoundary(geometry))
+        visit(edge, (key) => {
+          const entries = bins.get(key) ?? [];
+          entries.push(edge);
+          bins.set(key, entries);
+        });
+    },
+    stitch(geometry: THREE.BufferGeometry) {
+      const vertices: number[] = [];
+      const joined = new Set<string>();
+      const identity = (edge: SurfaceEdge) =>
+        [`${edge.ax}:${edge.ay}:${edge.az}`, `${edge.bx}:${edge.by}:${edge.bz}`]
+          .sort()
+          .join('/');
+      for (const edge of surfaceBoundary(geometry)) {
+        const candidates = new Set<SurfaceEdge>();
+        visit(edge, (key) => {
+          for (const other of bins.get(key) ?? []) candidates.add(other);
+        });
+        const dx = edge.bx - edge.ax,
+          dz = edge.bz - edge.az;
+        const length = Math.hypot(dx, dz);
+        if (length < 0.0001) continue;
+        for (const other of candidates) {
+          const crossA = (other.ax - edge.ax) * dz - (other.az - edge.az) * dx;
+          const crossB = (other.bx - edge.ax) * dz - (other.bz - edge.az) * dx;
+          // Float32 world coordinates can differ by a fraction of a millimetre.
+          if (Math.max(Math.abs(crossA), Math.abs(crossB)) > length * 0.001)
+            continue;
+          const ta =
+            ((other.ax - edge.ax) * dx + (other.az - edge.az) * dz) /
+            length ** 2;
+          const tb =
+            ((other.bx - edge.ax) * dx + (other.bz - edge.az) * dz) /
+            length ** 2;
+          if (Math.abs(tb - ta) < 1e-8) continue;
+          const from = Math.max(0, Math.min(ta, tb));
+          const to = Math.min(1, Math.max(ta, tb));
+          if ((to - from) * length < 0.0001) continue;
+          const point = (t: number, terrain: boolean) => [
+            edge.ax + dx * t,
+            terrain
+              ? other.ay + (other.by - other.ay) * ((t - ta) / (tb - ta))
+              : edge.ay + (edge.by - edge.ay) * t,
+            edge.az + dz * t,
+          ];
+          const a = point(from, false),
+            b = point(to, false);
+          const c = point(to, true),
+            d = point(from, true);
+          if (Math.max(Math.abs(a[1] - d[1]), Math.abs(b[1] - c[1])) < 0.0001)
+            continue;
+          const pair = [identity(edge), identity(other)].sort().join('|');
+          if (joined.has(pair)) continue;
+          joined.add(pair);
+          const span = (to - from) * length;
+          if (Math.abs(b[1] - c[1]) * span > 2e-8)
+            vertices.push(...a, ...b, ...c);
+          if (Math.abs(a[1] - d[1]) * span > 2e-8)
+            vertices.push(...a, ...c, ...d);
+        }
+      }
+      const result = new THREE.BufferGeometry();
+      result.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(vertices, 3),
+      );
+      const uv: number[] = [];
+      for (let i = 0; i < vertices.length; i += 3)
+        uv.push(vertices[i] / 10, vertices[i + 2] / 10);
+      result.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      result.computeVertexNormals();
+      result.computeBoundingBox();
+      result.computeBoundingSphere();
+      return result;
+    },
+  };
 }
 
 /** Lift scenery before material batching. Rigid objects keep vertical walls;

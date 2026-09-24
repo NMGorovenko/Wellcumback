@@ -17,15 +17,21 @@ import {
   citySurfacePose,
 } from '../lib/game/city/surface.ts';
 
-const street = cityRoads.find((r) => r.id === 'svobodny-mira-9maya:0');
+const street = cityRoads.filter((r) => r.id.startsWith('baykitskaya:')).at(-1);
+const spawnStreet = cityRoads
+  .filter((r) => r.id.startsWith('kirenskogo-south:'))
+  .at(-1);
 const ramp = cityRoads.find((r) => r.id === 'nikolaevsky-left:0');
 const close = (actual, expected, note) =>
   assert.ok(Math.abs(actual - expected) < 1e-7, note);
 
 void test('an upper car keeps its layer through the rounded approach joint beyond either segment axis', () => {
   const road = cityRoads.find((r) => r.id === 'bridge-nikolaevsky:0');
-  const origin = { x: -721.8055772620131, z: 425.10159615295345 };
-  const heading = -0.9728415260122579;
+  const heading = Math.atan2(road.to.x - road.from.x, road.from.z - road.to.z);
+  const origin = {
+    x: road.from.x + Math.cos(heading) * 4,
+    z: road.from.z + Math.sin(heading) * 4,
+  };
   const elevation = cityRoadHeight(road, origin.x, origin.z);
   for (const dx of [-0.1, 0, 0.1])
     for (const dz of [-0.1, 0, 0.1]) {
@@ -63,9 +69,9 @@ void test('an upper car keeps its layer through the rounded approach joint beyon
   assert.ok(Math.hypot(car.x - origin.x, car.z - origin.z) > 3);
 });
 
-void test('fresh city, reset and JSON rejoin start on top of the shared fork from their first frame', () => {
-  close(CITY_SPAWN.x, -769, 'fix the junction, not the spawn location');
-  close(CITY_SPAWN.z, 432.9636363636364, 'keep the original start');
+void test('fresh city, reset and JSON rejoin start on the Orbita access from their first frame', () => {
+  assert.ok(distanceToRoad(CITY_SPAWN.x, CITY_SPAWN.z, spawnStreet) < 1);
+  assert.ok(distanceToRoad(CITY_SPAWN.x, CITY_SPAWN.z, ramp) > 100);
   const fresh = freshCity();
   const reset = freshCity();
   Object.assign(reset, { x: -700, z: 490, elevation: 0, surfaceId: 'ground' });
@@ -73,8 +79,8 @@ void test('fresh city, reset and JSON rejoin start on top of the shared fork fro
   for (const car of [fresh, reset, JSON.parse(JSON.stringify(fresh))]) {
     close(
       car.elevation,
-      cityRoadHeight(ramp, car.x, car.z),
-      'the car cannot start inside the slab',
+      cityRoadHeight(spawnStreet, car.x, car.z),
+      'the car starts on the actual courtyard access',
     );
     const before = structuredClone(car);
     for (let frame = 0; frame < 120; frame++) tickCity(car, 1 / 60, new Set());
@@ -95,23 +101,24 @@ void test('fresh city, reset and JSON rejoin start on top of the shared fork fro
           car.z -
           Math.cos(car.heading) * forward +
           Math.sin(car.heading) * side;
-        if (distanceToRoad(x, z, ramp) <= ramp.width / 2)
-          close(
-            cityRoadHeight(ramp, x, z),
-            cityGroundHeight(x, z),
-            'the complete car body clears the slab',
-          );
+        assert.ok(distanceToRoad(x, z, spawnStreet) <= spawnStreet.width / 2);
+        close(
+          cityRoadHeight(spawnStreet, x, z),
+          cityGroundHeight(x, z),
+          'the complete car body starts on the ground access',
+        );
       }
   }
 });
 
-void test('all cross-sections of the starting street share the raised fork height', () => {
+void test('all cross-sections of the Baykitskaya entry share the raised approach height', () => {
   const dx = street.to.x - street.from.x,
     dz = street.to.z - street.from.z;
   const length = Math.hypot(dx, dz);
   let checked = 0;
-  for (let along = 0; along <= length; along += 0.5)
-    for (let side = -10; side <= 10; side += 0.5) {
+  const checkedSides = new Set();
+  for (let along = 0; along <= length; along += 0.25)
+    for (let side = -street.width / 2; side <= street.width / 2; side += 0.25) {
       const x = street.from.x + (dx * along) / length - (dz * side) / length;
       const z = street.from.z + (dz * along) / length + (dx * side) / length;
       if (distanceToRoad(x, z, ramp) > ramp.width / 2) continue;
@@ -121,17 +128,26 @@ void test('all cross-sections of the starting street share the raised fork heigh
         'no partial basement at the branch',
       );
       checked++;
+      checkedSides.add(side);
     }
-  assert.ok(checked > 1000);
+  assert.ok(checked > 1000, 'the complete fork receives dense coverage');
+  assert.ok(checkedSides.has(-street.width / 2));
+  assert.ok(checkedSides.has(street.width / 2));
 });
 
-void test('normal driving traverses the original spawn in both directions on all street lanes', () => {
+void test('normal driving traverses the Baykitskaya approach junction in both directions on all lanes', () => {
   const dx = street.to.x - street.from.x,
     dz = street.to.z - street.from.z;
   const length = Math.hypot(dx, dz),
     heading = Math.atan2(dx, -dz);
   for (const direction of [-1, 1])
-    for (const side of [-7, -3, 0, 3, 7]) {
+    for (const side of [
+      -street.width / 2 + 2,
+      -street.width / 4,
+      0,
+      street.width / 4,
+      street.width / 2 - 2,
+    ]) {
       const along = direction > 0 ? 1 : length - 1;
       const car = {
         ...freshCity(),
@@ -159,7 +175,7 @@ void test('normal driving traverses the original spawn in both directions on all
         assert.equal(
           car.bumps,
           0,
-          `street lane ${side}, direction ${direction}`,
+          `street lane ${side}, direction ${direction} at ${car.x},${car.z} on ${car.surfaceId}`,
         );
       }
       assert.ok(

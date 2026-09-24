@@ -61,6 +61,8 @@ export function createStreetDetails(
       lamp(x, riverBankZ(x, side) + side * 2.5, 0);
     }
   for (const road of cityRoads) {
+    // Nikolaevsky has tall deck-anchored masts in its own bridge group.
+    if (road.bridge === 'nikolaevsky') continue;
     const dx = road.to.x - road.from.x,
       dz = road.to.z - road.from.z,
       len = Math.hypot(dx, dz),

@@ -137,13 +137,13 @@ async function guest() {
 }
 
 void test('invite codes are ASCII and Unicode SDP round-trips; malformed codes and packet fields are rejected', () => {
-  assert.equal(NETWORK_VERSION, 6);
-  assert.equal(NETWORK_CHANNEL, 'wellcum-city-v6');
-  assert.match(offer, /^WCB6\.[A-Za-z0-9+/=]+$/);
+  assert.equal(NETWORK_VERSION, 7);
+  assert.equal(NETWORK_CHANNEL, 'wellcum-city-v7');
+  assert.match(offer, /^WCB7\.[A-Za-z0-9+/=]+$/);
   assert.equal(decodeInvite(`  ${offer}\n`, 'offer').sdp, SDP);
   assert.throws(() => decodeInvite(answer, 'offer'));
-  assert.throws(() => decodeInvite('WCB6.%%%', 'offer'));
-  assert.throws(() => decodeInvite('WCB6.' + 'a'.repeat(60000), 'offer'));
+  assert.throws(() => decodeInvite('WCB7.%%%', 'offer'));
+  assert.throws(() => decodeInvite('WCB7.' + 'a'.repeat(60000), 'offer'));
   assert.equal(readPeerPacket(JSON.stringify(input(1, ['KeyE']))), null);
   assert.equal(
     readPeerPacket(JSON.stringify({ ...input(1), epoch: -1 })),
@@ -187,15 +187,15 @@ const legacyInvite = (version, type) =>
   );
 const mismatch = /Версии игры различаются\. Обновите игру/;
 
-for (const version of [1, 2, 3, 4, 5])
-  void test(`version 6 invites reject v${version} offers and answers before applying remote descriptions`, async () => {
+for (const version of [1, 2, 3, 4, 5, 6])
+  void test(`version 7 invites reject v${version} offers and answers before applying remote descriptions`, async () => {
     assert.deepEqual(decodeInvite(offer, 'offer'), {
-      version: 6,
+      version: 7,
       type: 'offer',
       sdp: SDP,
     });
     assert.deepEqual(decodeInvite(answer, 'answer'), {
-      version: 6,
+      version: 7,
       type: 'answer',
       sdp: SDP,
     });
@@ -203,7 +203,7 @@ for (const version of [1, 2, 3, 4, 5])
       const old = legacyInvite(version, type);
       assert.throws(() => decodeInvite(old, type), mismatch);
       assert.throws(
-        () => decodeInvite(old.replace(`WCB${version}.`, 'WCB6.'), type),
+        () => decodeInvite(old.replace(`WCB${version}.`, 'WCB7.'), type),
         mismatch,
       );
     }
@@ -223,7 +223,7 @@ void test('old packets cannot route snapshots or reserve sequence numbers in a c
   const channel = await guest(),
     local = freshCity();
   const remote = { ...freshCity(), x: 0, z: 0, speed: 3 };
-  for (const version of [1, 2, 3, 4, 5]) {
+  for (const version of [1, 2, 3, 4, 5, 6]) {
     assert.equal(
       readPeerPacket(JSON.stringify({ ...input(10), version })),
       null,
@@ -251,7 +251,7 @@ void test('v1, v2 and v3 data channels cannot take the current v5 connection', a
   });
   await peer.answer(offer);
   const connection = last();
-  for (const version of [1, 2, 3, 4, 5]) {
+  for (const version of [1, 2, 3, 4, 5, 6]) {
     const channel = connection.addChannel(`wellcum-city-v${version}`);
     assert.equal(channel.readyState, 'closed');
     assert.notEqual(statuses.at(-1), 'connected');

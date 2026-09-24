@@ -7,6 +7,7 @@ import {
   CITY_PARKING,
 } from '../lib/game/city/layout.ts';
 import {
+  CITY_DECK_THICKNESS,
   cityGroundHeight,
   cityRoadHeight,
   citySurfacePose,
@@ -28,9 +29,31 @@ import {
   readPeerPacket,
 } from '../lib/game/network/protocol.ts';
 
-const upper = cityRoads.find((r) => r.id === 'bridge-nikolaevsky:0');
 const lower = cityRoads.find((r) => r.id === 'left-quay:3');
-const crossing = { x: -716.6666666666666, z: 448.8333333333333 };
+function segmentCrossing(a, b) {
+  const ax = a.to.x - a.from.x,
+    az = a.to.z - a.from.z;
+  const bx = b.to.x - b.from.x,
+    bz = b.to.z - b.from.z;
+  const determinant = ax * bz - az * bx;
+  if (Math.abs(determinant) < 1e-9) return null;
+  const dx = b.from.x - a.from.x,
+    dz = b.from.z - a.from.z;
+  const t = (dx * bz - dz * bx) / determinant;
+  const u = (dx * az - dz * ax) / determinant;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1
+    ? { x: a.from.x + ax * t, z: a.from.z + az * t }
+    : null;
+}
+const upper = cityRoads.find(
+  (r) => r.bridge === 'nikolaevsky' && segmentCrossing(r, lower),
+);
+assert.ok(
+  upper,
+  'the lower embankment must physically cross the Nikolaevsky span',
+);
+const crossing = segmentCrossing(upper, lower);
+const groundedEntry = cityRoads.find((r) => r.id === 'nikolaevsky-left:0').from;
 const heading = (r) => Math.atan2(r.to.x - r.from.x, r.from.z - r.to.z);
 const poseOn = (road, x, z) => ({
   elevation: cityRoadHeight(road, x, z),
@@ -72,7 +95,7 @@ void test('city elevations preserve western terraces, low centre, and bounded sl
       assert.ok(Number.isFinite(y));
       assert.ok(
         Math.abs(y - previous) / (length / steps) < 0.2,
-        `${road.id} grade at ${t}`,
+        `${road.id} grade ${Math.abs(y - previous) / (length / steps)} at ${x},${z} (t=${t})`,
       );
       previous = y;
     }
@@ -80,21 +103,31 @@ void test('city elevations preserve western terraces, low centre, and bounded sl
 });
 
 void test('overlapping approach and bridge deck polygons sample exactly the same raised surface', () => {
-  const approach = cityRoads.find((r) => r.id === 'nikolaevsky-left:1');
-  for (const p of [
-    { x: -731.2235962822898, z: 435.415978978298 },
-    { x: -724.0430003679386, z: 437.4839112533941 },
-  ])
+  const approach = cityRoads
+    .filter((r) => r.id.startsWith('nikolaevsky-left:'))
+    .at(-1);
+  const firstSpan = cityRoads.find((r) => r.id === 'bridge-nikolaevsky:0');
+  assert.deepEqual(approach.to, firstSpan.from);
+  const angle = heading(firstSpan);
+  for (const side of [-6, 0, 6]) {
+    const p = {
+      x: approach.to.x + Math.cos(angle) * side,
+      z: approach.to.z + Math.sin(angle) * side,
+    };
     assert.equal(
       cityRoadHeight(approach, p.x, p.z),
-      cityRoadHeight(upper, p.x, p.z),
+      cityRoadHeight(firstSpan, p.x, p.z),
     );
+  }
 });
 
 void test('Nikolaevsky remembers upper and lower surfaces at the same x/z, including a JSON snapshot', () => {
   const above = poseOn(upper, crossing.x, crossing.z),
     below = poseOn(lower, crossing.x, crossing.z);
-  assert.ok(above.elevation - below.elevation > 8);
+  assert.ok(
+    above.elevation - CITY_DECK_THICKNESS - below.elevation > 8,
+    'more than eight metres remain beneath the actual deck slab',
+  );
   assert.equal(cityRoadsConnect(upper, lower, crossing.x, crossing.z), false);
   assert.equal(cityOverpassClearance(crossing.x, crossing.z), above.elevation);
   for (const [road, expected] of [
@@ -178,7 +211,9 @@ void test('leaving the edge of an elevated deck is blocked rather than teleporti
 });
 
 void test('uphill load reduces acceleration and downhill load increases it without idle creep', () => {
-  const road = cityRoads.find((r) => r.id === 'left-quay:1');
+  // The riverside quay now follows the low shelf. Svobodny carries the
+  // sustained terrace incline needed to compare uphill and downhill load.
+  const road = cityRoads.find((r) => r.id === 'svobodny-mira-9maya:2');
   const mid = {
     x: (road.from.x + road.to.x) / 2,
     z: (road.from.z + road.to.z) / 2,
@@ -205,7 +240,11 @@ void test('uphill load reduces acceleration and downhill load increases it witho
 });
 
 void test('terrain motion survives pause, JSON rejoin, network copy, and canonical fast travel', () => {
-  const car = carOn(lower, { x: crossing.x - 10, z: crossing.z + 2.75 });
+  const h = heading(lower);
+  const car = carOn(lower, {
+    x: crossing.x - Math.sin(h) * 10,
+    z: crossing.z + Math.cos(h) * 10,
+  });
   for (let i = 0; i < 10; i++) tickCity(car, 1 / 60, new Set(['KeyW']));
   car.paused = true;
   const frozen = JSON.stringify(car);
@@ -252,8 +291,10 @@ void test('navigation never joins the two stacked Nikolaevsky roads', () => {
     'same x/z on another deck requires the actual road approach',
   );
   assert.ok(
-    route.some((p) => Math.hypot(p.x + 775, p.z - 444.6363636363636) < 0.1),
-    'route returns to the grounded approach at Studgorodok',
+    route.some(
+      (p) => Math.hypot(p.x - groundedEntry.x, p.z - groundedEntry.z) < 0.1,
+    ),
+    'route returns to the grounded Nikolaevsky avenue junction',
   );
   assert.ok(
     cityRouteLength(route) < 4000,
@@ -262,9 +303,7 @@ void test('navigation never joins the two stacked Nikolaevsky roads', () => {
 });
 
 void test('building centres and nearby footprint corners remain level while roads stay smooth', () => {
-  const building =
-    cityBuildings.find((b) => b.id === 'borisova-30') ??
-    cityBuildings.find((b) => b.x < -750 && b.x > -900 && b.w > 15);
+  const building = cityBuildings.find((b) => b.kind === 'borisova');
   assert.ok(building);
   const y = cityGroundHeight(building.x, building.z);
   for (const dx of [-0.45, 0.45])
@@ -306,7 +345,14 @@ void test('street entries, island exits and all three complete bridges are driva
         road('nikolaevsky-left:0').from,
         ...ends(chain('nikolaevsky-left')),
         ...ends(spans('nikolaevsky')),
-        { x: -515, z: 659.56 },
+        {
+          x:
+            road('nikolaevsky-right:0').from.x +
+            Math.sin(heading(road('nikolaevsky-right:0'))) * 20,
+          z:
+            road('nikolaevsky-right:0').from.z -
+            Math.cos(heading(road('nikolaevsky-right:0'))) * 20,
+        },
       ],
     ],
     [
@@ -426,6 +472,9 @@ void test('Nikolaevsky deck is continuous across the transverse bisector of ever
     const dx = (b.to.x - b.from.x) / bl - (a.to.x - a.from.x) / al,
       dz = (b.to.z - b.from.z) / bl - (a.to.z - a.from.z) / al,
       l = Math.hypot(dx, dz);
+    // Collinear span parts have no transverse turn bisector. Their ordinary
+    // centre and lane continuity is covered by the full bridge traversal.
+    if (l < 1e-9) continue;
     for (const radius of [2, 5, 8]) {
       const x = p.x + (dx / l) * radius,
         z = p.z + (dz / l) * radius;

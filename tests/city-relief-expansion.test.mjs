@@ -48,9 +48,30 @@ void test('Bobrovy Log is appended without changing existing destination indexes
   assert.equal(cityCarBlocked(car.x, car.z, car.heading), false);
 });
 void test('street name distinguishes the deck from Dubrovinskogo underneath it', () => {
-  const point = { x: -716.666666666, z: 448.833333333 };
-  const upper = cityRoads.find((r) => r.id === 'bridge-nikolaevsky:0');
   const lower = cityRoads.find((r) => r.id === 'left-quay:3');
+  let upper, point;
+  for (const road of cityRoads.filter((r) => r.bridge === 'nikolaevsky')) {
+    const ax = lower.to.x - lower.from.x,
+      az = lower.to.z - lower.from.z,
+      bx = road.to.x - road.from.x,
+      bz = road.to.z - road.from.z,
+      dx = road.from.x - lower.from.x,
+      dz = road.from.z - lower.from.z,
+      determinant = ax * bz - az * bx;
+    const t = (dx * bz - dz * bx) / determinant,
+      u = (dx * az - dz * ax) / determinant;
+    if (!(t > 0 && t < 1 && u > 0 && u < 1)) continue;
+    upper = road;
+    point = { x: lower.from.x + t * ax, z: lower.from.z + t * az };
+    break;
+  }
+  assert.ok(upper && point, 'the bridge and lower quay physically cross');
+  assert.ok(
+    cityRoadHeight(upper, point.x, point.z) -
+      cityRoadHeight(lower, point.x, point.z) >
+      8,
+    'street names are checked on two separate levels',
+  );
   assert.equal(
     currentCityStreet({
       ...point,

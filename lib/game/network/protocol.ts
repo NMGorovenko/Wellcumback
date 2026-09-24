@@ -7,7 +7,7 @@ import {
 import { CITY_BOUNDS, cityStops } from '../city/layout.ts';
 import type { DriveAxes } from '../input/drive.ts';
 import type { CityState } from '../city/engine.ts';
-export const NETWORK_VERSION = 6;
+export const NETWORK_VERSION = 7;
 export const NETWORK_CHANNEL = `wellcum-city-v${NETWORK_VERSION}`;
 const VERSION_MISMATCH =
   'Версии игры различаются. Обновите игру у обоих игроков и создайте новое приглашение.';

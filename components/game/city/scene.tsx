@@ -103,7 +103,7 @@ export default function CityScene({
       renderer.shadowMap.type = THREE.PCFShadowMap;
       renderer.domElement.setAttribute(
         'aria-label',
-        'Красный Mustang с Никитой, Яриком и Ромой на вечерней карте Красноярска: Енисей, три моста и жилые кварталы.',
+        'Красный Mustang с Никитой, Яриком и Ромой на вечерней карте Красноярска: Енисей и Кача, мосты, террасы и жилые кварталы.',
       );
       element.appendChild(renderer.domElement);
       teardown = () => {

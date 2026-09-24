@@ -14,10 +14,10 @@ import { createDistrictLandmark } from '../components/game/city/district-landmar
 import { createYeniseySign } from '../components/game/city/yenisey-sign.ts';
 import { liftScenery } from '../components/game/city/relief.ts';
 
-void test('the Orbita group and Doner fit their collision parcels without moving Borisova or IKIT', () => {
+void test('the Orbita group and Doner fit their collision parcels inside the geographic neighbourhood', () => {
   const kit = new RenderKit(new THREE.Scene());
   try {
-    assert.equal(cityBuildings.filter((b) => b.kind === 'orbita').length, 3);
+    assert.equal(cityBuildings.filter((b) => b.kind === 'orbita').length, 4);
     for (const b of cityBuildings.filter((b) =>
       ['borisova', 'orbita', 'doner'].includes(b.kind),
     )) {
@@ -57,20 +57,40 @@ void test('Orbita balcony glazing is curved and exposed ahead of the wall, with 
       const root = new THREE.Group();
       createDistrictLandmark(kit, root, b);
       root.updateMatrixWorld(true);
-      const ray = new THREE.Raycaster(
-        new THREE.Vector3(
-          b.x + b.w * (0.225 + 0.17 * Math.sin(0.3)),
-          b.h * 0.514,
-          b.z + b.d,
-        ),
-        new THREE.Vector3(0, 0, -1),
-      );
-      const hit = ray.intersectObject(root, true)[0];
-      assert.equal(hit?.object.name, 'orbita:curved-balconies');
-      assert.ok(
-        hit.point.z > b.z + b.d * 0.39,
-        'glass projects substantially beyond the structural wall',
-      );
+      if (b.kind === 'orbita') {
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(
+            b.x + b.w * (0.225 + 0.17 * Math.sin(0.3)),
+            b.h *
+              (0.025 +
+                (0.93 *
+                  (Math.floor(Math.max(11, Math.round(b.h / 2.7)) / 2) + 0.5)) /
+                  Math.max(11, Math.round(b.h / 2.7))),
+            b.z + b.d,
+          ),
+          new THREE.Vector3(0, 0, -1),
+        );
+        const hit = ray.intersectObject(root, true)[0];
+        assert.equal(hit?.object.name, 'orbita:curved-balconies');
+        assert.ok(
+          hit.point.z > b.z + b.d * 0.39,
+          'glass projects substantially beyond the structural wall',
+        );
+      } else {
+        assert.ok(
+          root.getObjectsByProperty('name', 'borisova:shallow-glazing')
+            .length >= 6,
+        );
+        const courtRay = new THREE.Raycaster(
+          new THREE.Vector3(b.x, b.h * 0.5, b.z + b.d),
+          new THREE.Vector3(0, 0, -1),
+        );
+        const courtHit = courtRay.intersectObject(root, true)[0];
+        assert.ok(
+          courtHit.point.z < b.z,
+          'connected rear slab leaves the river-facing court open',
+        );
+      }
       root.traverse((o) => {
         if (o.isMesh)
           triangles +=
@@ -79,8 +99,8 @@ void test('Orbita balcony glazing is curved and exposed ahead of the wall, with 
       });
     }
     assert.ok(
-      triangles < 22000,
-      `${triangles} triangles across four Orbita buildings`,
+      triangles < 28000,
+      `${triangles} triangles across five Orbita buildings`,
     );
   } finally {
     kit.dispose();

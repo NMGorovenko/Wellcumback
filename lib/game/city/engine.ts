@@ -1,3 +1,4 @@
+import { onKachaStreetDeck, cityKachaRailBlocked } from './kacha-decks.ts';
 import {
   cityBreakablesAt,
   breakableObjects,
@@ -138,6 +139,16 @@ export function cityBlocked(
 ) {
   if (cityKubaturaWallBlocked(x, z, RADIUS)) return true;
   if (
+    cityKachaRailBlocked(
+      x,
+      z,
+      elevation ?? citySurfacePose(x, z, 0).elevation,
+      RADIUS,
+      cityRoadHeight,
+    )
+  )
+    return true;
+  if (
     x < CITY_BOUNDS.minX + RADIUS ||
     x > CITY_BOUNDS.maxX - RADIUS ||
     z < CITY_BOUNDS.minZ + RADIUS ||
@@ -147,7 +158,9 @@ export function cityBlocked(
   if (
     inCityWater(x, z, RADIUS) &&
     !cityRoads.some(
-      (r) => r.bridge && distanceToRoad(x, z, r) < r.width / 2 - RADIUS,
+      (r) =>
+        (r.bridge || onKachaStreetDeck(r, x, z)) &&
+        distanceToRoad(x, z, r) < r.width / 2 - RADIUS,
     )
   )
     return true;

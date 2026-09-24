@@ -1,12 +1,20 @@
 import {
+  inKachaWater,
+  inKachaCorridor,
+  KACHA_HALF_WIDTH,
+  KACHA_BANK_WIDTH,
+  nearKacha,
+  sampleKacha,
+} from './kacha.ts';
+import { createRoadGrading } from './road-grading.ts';
+import { cityNaturalLandHeight } from './terrain.ts';
+import {
   CITY_PARKING,
   cityBuildings,
   cityRoads,
   distanceToRoad,
   inCityWater,
   onCityIsland,
-  riverBankZ,
-  riverZ,
   type CityPoint,
   type CityRoad,
 } from './layout.ts';
@@ -34,30 +42,7 @@ function projection(p: CityPoint, a: CityPoint, b: CityPoint) {
 }
 /** Art-directed relative heights, not surveyed elevations. Western terraces
  * stand above the old centre; the right bank rises behind the waterfront. */
-function landHeight(x: number, z: number) {
-  if (z < riverZ(x)) {
-    const inland = Math.max(0, riverBankZ(x, -1) - z);
-    const west = 1 - smooth((x + 650) / 400);
-    const terrace =
-      6 +
-      58 * Math.exp(-(((x + 1150) / 650) ** 2) - ((z - 450) / 850) ** 2) +
-      5 * Math.exp(-(((x - 700) / 850) ** 2) - ((z + 1150) / 850) ** 2) +
-      10 * Math.exp(-(((x + 880) / 120) ** 2) - ((z - 370) / 240) ** 2) +
-      32 * Math.exp(-(((x + 60) / 520) ** 2) - ((z + 1470) / 430) ** 2) +
-      9 * Math.exp(-(((x - 850) / 480) ** 2) - ((z + 1050) / 500) ** 2);
-    // A high western terrace ends at the river, rather than carrying its
-    // full elevation to a vertical extrusion at the waterline. Quay roads
-    // remain above the toe; the short final escarpment is outside the lanes.
-    return 3 + (terrace - 3) * (1 - west * (1 - smooth(inland / 4)));
-  }
-  return (
-    7 +
-    28 * Math.exp(-(((x - 700) / 900) ** 2) - ((z - 900) / 500) ** 2) +
-    12 * Math.exp(-(((x + 900) / 800) ** 2) - ((z - 1100) / 550) ** 2) +
-    112 * Math.exp(-(((x + 870) / 270) ** 2) - ((z - 1660) / 235) ** 2) +
-    46 * Math.exp(-(((x + 150) / 590) ** 2) - ((z - 1490) / 320) ** 2)
-  );
-}
+const landHeight = cityNaturalLandHeight;
 const bridgeGroups = [
   ...new Set(cityRoads.flatMap((r) => (r.bridge ? [r.bridge] : []))),
 ].map((id) => {
@@ -114,6 +99,10 @@ function bridgeHeight(id: string, x: number, z: number): number {
   const start = group.points[0],
     end = group.points.at(-1)!;
   let a = onCityIsland(start.x, start.z) ? 5 : landHeight(start.x, start.z);
+  if (id === 'nikolaevsky') {
+    const entry = cityRoads.find((r) => r.id === 'nikolaevsky-left:0')!.from;
+    a = landHeight(entry.x, entry.z);
+  }
   const b = onCityIsland(end.x, end.z) ? 5 : landHeight(end.x, end.z);
   if (id === 'tatyshev-ramp') a = bridgeHeight('oktyabrsky', start.x, start.z);
   const profile = (along: number) => {
@@ -121,13 +110,34 @@ function bridgeHeight(id: string, x: number, z: number): number {
     const deck = a + (b - a) * t + Math.sin(Math.PI * t) * 2;
     if (id === 'nikolaevsky' && group.total - along < 80) {
       const distance = Math.max(0, group.total - along);
-      const u = clamp((distance - 6) / 74);
       // First six metres share the approach street's complete cross-section.
-      // A Hermite transition then catches the deck with a bounded slope and
-      // the same derivative at the far end of the eighty-metre landing.
-      const eased = 80 * u * u * (2.075 - 1.075 * u);
-      const ground = cityGroundHeight(x, z);
-      return ground + (deck - ground) * (distance > 0 ? eased / distance : 0);
+      if (distance <= 6) return cityGroundHeight(x, z);
+      const last = group.roads.at(-1)!;
+      const span = length(last.from, last.to);
+      const dx = (last.to.x - last.from.x) / span;
+      const dz = (last.to.z - last.from.z) / span;
+      const landingX = x + dx * (distance - 6);
+      const landingZ = z + dz * (distance - 6);
+      const landing = cityGroundHeight(landingX, landingZ);
+      const landingSlope =
+        (cityGroundHeight(landingX - dx, landingZ - dz) -
+          cityGroundHeight(landingX + dx, landingZ + dz)) /
+        2;
+      const deckT = (group.total - 80) / group.total;
+      const farDeck = a + (b - a) * deckT + Math.sin(Math.PI * deckT) * 2;
+      const deckSlope =
+        -(b - a + 2 * Math.PI * Math.cos(Math.PI * deckT)) / group.total;
+      // Interpolate fixed landing and deck tangents. Sampling the ground at
+      // every point would imprint unrelated road grading seams on the deck.
+      const u = (distance - 6) / 74;
+      const u2 = u * u;
+      const u3 = u2 * u;
+      return (
+        (2 * u3 - 3 * u2 + 1) * landing +
+        (u3 - 2 * u2 + u) * 74 * landingSlope +
+        (-2 * u3 + 3 * u2) * farDeck +
+        (u3 - u2) * 74 * deckSlope
+      );
     }
     return deck;
   };
@@ -145,6 +155,7 @@ function bridgeHeight(id: string, x: number, z: number): number {
   return elevation / totalWeight;
 }
 function naturalHeight(x: number, z: number) {
+  if (inKachaWater(x, z)) return sampleKacha(x, z).bedHeight;
   if (inCityWater(x, z)) return -3;
   let h = onCityIsland(x, z) ? 5 : landHeight(x, z);
   // Low bridges blend into their islands and shore approaches. Nikолаевский
@@ -165,6 +176,7 @@ function naturalHeight(x: number, z: number) {
 }
 const lowerRoads = cityRoads.filter((r) => r.layer === 'lower');
 function trenchDepth(x: number, z: number) {
+  if (x < -560) return 0; // The western cliff already has a natural low shelf.
   const gap = Math.min(
     ...lowerRoads.map((r) =>
       Math.max(0, distanceToRoad(x, z, r) - r.width / 2),
@@ -176,6 +188,27 @@ function unflattenedGround(x: number, z: number) {
   const h = naturalHeight(x, z);
   return inCityWater(x, z) ? h : Math.max(0.5, h - trenchDepth(x, z));
 }
+function kachaRoadMinimum(x: number, z: number) {
+  if (!nearKacha(x, z, 125)) return undefined;
+  const river = sampleKacha(x, z);
+  // Keep the full bank clearance through the crossing, then taper the floor
+  // into its approaches. An abrupt corridor cutoff creates a vertical step
+  // when an outside lane crosses the boundary between graph samples.
+  const floor =
+    river.bankHeight +
+    0.22 -
+    Math.max(0, river.distance - KACHA_HALF_WIDTH - KACHA_BANK_WIDTH - 1) * 0.1;
+  // Ordinary land is at least 0.5m, so this cutoff is below its surface.
+  return floor > 0 ? floor : undefined;
+}
+const gradedGround = createRoadGrading(
+  cityRoads,
+  (x, z) =>
+    inKachaCorridor(x, z, 1)
+      ? sampleKacha(x, z).bankHeight + 0.22
+      : unflattenedGround(x, z),
+  kachaRoadMinimum,
+);
 const kubaturaBuilding = cityBuildings.find((b) => b.kind === 'kubatura')!;
 const kubaturaParking = CITY_PARKING.find((p) => p.id === 'kubatura')!;
 const kubaturaEntry = cityRoads.find((r) => r.id === 'kubatura-forecourt:0')!;
@@ -398,6 +431,10 @@ for (const p of parcels)
       list.push(p);
       parcelCells.set(key, list);
     }
+const approachOrigin = cityRoads.find(
+  (r) => r.id === 'nikolaevsky-left:0',
+)!.from;
+const approachLevel = landHeight(approachOrigin.x, approachOrigin.z);
 export function cityGroundHeight(x: number, z: number) {
   let h = unflattenedGround(x, z);
   const roadGap = Math.min(
@@ -429,6 +466,28 @@ export function cityGroundHeight(x: number, z: number) {
       if (h > ceiling) h += (ceiling - h) * (1 - smooth(gap / 20));
     }
   }
+  const onParcel = (
+    parcelCells.get(`${Math.floor(x / 100)}:${Math.floor(z / 100)}`) ?? []
+  ).some(
+    (p) =>
+      p.blend === 12 &&
+      Math.abs(x - p.x) <= p.w / 2 &&
+      Math.abs(z - p.z) <= p.d / 2,
+  );
+  if (!onParcel && !inCityWater(x, z)) h = gradedGround(x, z, h);
+  // Excavation beneath the upper avenue: its surveyed-style bluff profile
+  // must not protrude through a separately levelled viaduct approach.
+  // This only removes earth; it never lifts the lower underpass to the deck.
+  const approachRoads = nearbyRoads(x, z).filter((r) =>
+    r.id.startsWith('nikolaevsky-left:'),
+  );
+  for (const r of approachRoads) {
+    const gap = Math.max(0, distanceToRoad(x, z, r) - r.width / 2 - 2);
+    if (gap < 8) {
+      const ceiling = approachLevel;
+      if (h > ceiling) h += (ceiling - h) * (1 - smooth(gap / 8));
+    }
+  }
   return kubaturaHeight(x, z, h);
 }
 const nikoApproach = cityRoads.filter((r) =>
@@ -436,7 +495,7 @@ const nikoApproach = cityRoads.filter((r) =>
 );
 const approachStart = nikoApproach[0].from,
   approachEnd = nikoApproach.at(-1)!.to;
-const junctionStreet = cityRoads.find((r) => r.id === 'svobodny-mira-9maya:0')!;
+const junctionStreet = cityRoads.find((r) => r.id === 'baykitskaya:2')!;
 const approachLength = nikoApproach.reduce(
   (s, r) => s + length(r.from, r.to),
   0,
@@ -476,8 +535,8 @@ function nikolaevskyHeight(x: number, z: number) {
     wb = Math.exp(-(bridgeGap * bridgeGap - min) / 64);
   const deck =
     (approach * wa + bridgeHeight('nikolaevsky', x, z) * wb) / (wa + wb);
-  // The whole starting fork shares Svobodny's ground, not just its centre
-  // vertex. Continue upward from the nearest street edge at a bounded grade;
+  // The whole starting fork shares Baykitskaya's ground, not just its centre
+  // vertex. Continue from the nearest street edge at a bounded grade;
   // the far deck and the actual underpass retain their separate elevations.
   const centre = projection({ x, z }, junctionStreet.from, junctionStreet.to);
   const gap = length(centre, { x, z });
@@ -490,16 +549,21 @@ function nikolaevskyHeight(x: number, z: number) {
     x: centre.x + (x - centre.x) * inside,
     z: centre.z + (z - centre.z) * inside,
   };
-  const ceiling =
-    cityGroundHeight(edge.x, edge.z) +
-    Math.max(0, gap - junctionStreet.width / 2 - 0.75) * 0.14;
-  return Math.min(deck, ceiling);
+  const edgeHeight = cityGroundHeight(edge.x, edge.z);
+  const rise = Math.max(0, gap - junctionStreet.width / 2 - 0.75) * 0.14;
+  return clamp(deck, edgeHeight - rise, edgeHeight + rise);
+}
+/** Ground streets keep their engineered road bed across the Kacha channel;
+ * terrain itself retains the river bed below the small street bridges. */
+export function cityGroundRoadHeight(x: number, z: number): number {
+  const ground = cityGroundHeight(x, z);
+  return inKachaWater(x, z) ? gradedGround(x, z, ground) : ground;
 }
 export function cityRoadHeight(road: CityRoad, x: number, z: number): number {
   if (road.bridge === 'nikolaevsky' || road.id.startsWith('nikolaevsky-left:'))
     return nikolaevskyHeight(x, z);
   if (road.bridge) return bridgeHeight(road.bridge, x, z);
-  return cityGroundHeight(x, z);
+  return cityGroundRoadHeight(x, z);
 }
 const roadCells = new Map<string, CityRoad[]>();
 for (const r of cityRoads)

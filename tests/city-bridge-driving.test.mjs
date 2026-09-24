@@ -26,35 +26,29 @@ function streetCar(point, angle, speed = 0) {
   };
 }
 
-void test('both lanes enter the Nikolaevsky left ramp from the street without falling under its deck', () => {
+void test('both lanes steer from Baykitskaya onto the Nikolaevsky left ramp without falling under its deck', () => {
   const ramp = cityRoads.find((r) => r.id === 'nikolaevsky-left:0');
-  const tangent = unit(ramp.from, ramp.to);
+  const street = cityRoads
+    .filter((r) => r.id.startsWith('baykitskaya:'))
+    .at(-1);
+  const incoming = unit(street.from, street.to);
+  const outgoing = unit(ramp.from, ramp.to);
+  const centre = [
+    {
+      x: street.to.x - incoming.x * 36,
+      z: street.to.z - incoming.z * 36,
+    },
+    ramp.from,
+    { x: ramp.to.x - outgoing.x * 6, z: ramp.to.z - outgoing.z * 6 },
+  ];
   for (const offset of offsets) {
-    const start = {
-      x: ramp.from.x - tangent.x * 8 - tangent.z * offset,
-      z: ramp.from.z - tangent.z * 8 + tangent.x * offset,
-    };
-    const car = streetCar(start, heading(ramp.from, ramp.to), 8);
-    assert.ok(!car.surfaceId.includes('nikolaevsky'), 'start on the street');
-    let largestStep = 0;
-    for (let frame = 0; frame < 361; frame++) {
-      const previousHeight = car.elevation;
-      const contact = stepCityCar(
-        car,
-        { throttle: 0.18, steer: 0, handbrake: false },
-        1 / 60,
-      );
-      assert.equal(contact.worldContact, false, `left lane ${offset}`);
-      largestStep = Math.max(
-        largestStep,
-        Math.abs(car.elevation - previousHeight),
-      );
-    }
-    assert.ok(distance(car, start) > 40, `left lane ${offset} stalled`);
-    assert.ok(largestStep < 0.15, `left lane ${offset}: ${largestStep}m step`);
+    const points = lanePoints(centre, offset);
+    const car = streetCar(points[0], heading(points[0], points[1]));
+    assert.equal(car.surfaceId, `road:${street.id}`, 'start on Baykitskaya');
+    driveLane(car, points, `left lane ${offset}`);
     assert.ok(
       Math.abs(car.elevation - cityRoadHeight(ramp, car.x, car.z)) < 0.05,
-      `left lane ${offset} selected ground below the deck`,
+      `left lane ${offset} at ${car.x},${car.z} selected ${car.surfaceId} at ${car.elevation}, deck ${cityRoadHeight(ramp, car.x, car.z)}`,
     );
     assert.match(car.surfaceId, /^road:nikolaevsky-left:/);
   }
@@ -90,6 +84,56 @@ function lanePoints(points, offset) {
   return result;
 }
 
+function driveLane(car, points, label) {
+  let cursor = 0,
+    largestStep = 0;
+  for (let frame = 0; frame < 30 * 60; frame++) {
+    if (distance(car, points.at(-1)) < 2) break;
+    let nearest = cursor,
+      best = Infinity;
+    for (
+      let i = Math.max(0, cursor - 3);
+      i < Math.min(points.length, cursor + 22);
+      i++
+    ) {
+      const gap = distance(car, points[i]);
+      if (gap < best) {
+        best = gap;
+        nearest = i;
+      }
+    }
+    cursor = Math.max(cursor, nearest);
+    const target =
+      points[
+        Math.min(points.length - 1, cursor + Math.round(3 + car.speed * 0.3))
+      ];
+    const difference = heading(car, target) - car.heading;
+    const angle = Math.atan2(Math.sin(difference), Math.cos(difference));
+    const forward =
+      car.vx * Math.sin(car.heading) - car.vz * Math.cos(car.heading);
+    const desired =
+      Math.min(8, Math.sqrt(7 * distance(car, points.at(-1)))) *
+      Math.max(0.2, Math.cos(angle));
+    const previousHeight = car.elevation;
+    const contact = stepCityCar(
+      car,
+      {
+        throttle: clamp((desired - forward) * 0.35, -1, 1),
+        steer: clamp(angle * 2, -1, 1),
+        handbrake: false,
+      },
+      1 / 60,
+    );
+    assert.equal(contact.worldContact, false, `${label} at ${car.x},${car.z}`);
+    largestStep = Math.max(
+      largestStep,
+      Math.abs(car.elevation - previousHeight),
+    );
+  }
+  assert.ok(distance(car, points.at(-1)) < 2, `${label} stalled`);
+  assert.ok(largestStep < 0.15, `${label}: ${largestStep}m step`);
+}
+
 void test('both lanes turn from the right approach onto the Nikolaevsky deck using normal steering', () => {
   const approach = cityRoads.find((r) => r.id === 'nikolaevsky-right:0');
   const span = cityRoads.filter((r) => r.bridge === 'nikolaevsky').at(-1);
@@ -104,53 +148,7 @@ void test('both lanes turn from the right approach onto the Nikolaevsky deck usi
     const points = lanePoints(centre, offset);
     const car = streetCar(points[0], heading(points[0], points[1]));
     assert.equal(car.surfaceId, 'road:nikolaevsky-right:0');
-    let cursor = 0,
-      largestStep = 0;
-    for (let frame = 0; frame < 30 * 60; frame++) {
-      if (distance(car, points.at(-1)) < 2) break;
-      let nearest = cursor,
-        best = Infinity;
-      for (
-        let i = Math.max(0, cursor - 3);
-        i < Math.min(points.length, cursor + 22);
-        i++
-      ) {
-        const gap = distance(car, points[i]);
-        if (gap < best) {
-          best = gap;
-          nearest = i;
-        }
-      }
-      cursor = Math.max(cursor, nearest);
-      const target =
-        points[
-          Math.min(points.length - 1, cursor + Math.round(3 + car.speed * 0.3))
-        ];
-      const difference = heading(car, target) - car.heading;
-      const angle = Math.atan2(Math.sin(difference), Math.cos(difference));
-      const forward =
-        car.vx * Math.sin(car.heading) - car.vz * Math.cos(car.heading);
-      const desired =
-        Math.min(8, Math.sqrt(7 * distance(car, points.at(-1)))) *
-        Math.max(0.2, Math.cos(angle));
-      const previousHeight = car.elevation;
-      const contact = stepCityCar(
-        car,
-        {
-          throttle: clamp((desired - forward) * 0.35, -1, 1),
-          steer: clamp(angle * 2, -1, 1),
-          handbrake: false,
-        },
-        1 / 60,
-      );
-      assert.equal(contact.worldContact, false, `right lane ${offset}`);
-      largestStep = Math.max(
-        largestStep,
-        Math.abs(car.elevation - previousHeight),
-      );
-    }
-    assert.ok(distance(car, points.at(-1)) < 2, `right lane ${offset} stalled`);
-    assert.ok(largestStep < 0.15, `right lane ${offset}: ${largestStep}m step`);
+    driveLane(car, points, `right lane ${offset}`);
     assert.ok(
       Math.abs(car.elevation - cityRoadHeight(span, car.x, car.z)) < 0.05,
       `right lane ${offset} selected ground below the deck`,
