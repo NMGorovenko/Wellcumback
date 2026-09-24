@@ -5,6 +5,7 @@ import {
   cityRouteLength,
   minimapTarget,
 } from '@/lib/game/city/navigation';
+import { currentCityStreet } from '@/lib/game/city/street-names';
 import { Maximize2 } from 'lucide-react';
 import {
   BRIDGES,
@@ -106,7 +107,8 @@ export function MapCar({
   state,
   size,
 }: {
-  state: Pick<CityState, 'x' | 'z' | 'heading'>;
+  state: Pick<CityState, 'x' | 'z' | 'heading'> &
+    Partial<Pick<CityState, 'elevation'>>;
   size: number;
 }) {
   return (
@@ -129,7 +131,8 @@ export default function CityMinimap({
   target,
   onExpand,
 }: {
-  state: Pick<CityState, 'x' | 'z' | 'heading'>;
+  state: Pick<CityState, 'x' | 'z' | 'heading'> &
+    Partial<Pick<CityState, 'elevation'>>;
   target: number;
   onExpand: () => void;
 }) {
@@ -147,7 +150,7 @@ export default function CityMinimap({
       aria-keyshortcuts="M"
     >
       <span className="city-minimap-title">
-        <span>РЯДОМ С ТОБОЙ</span>
+        <span>{currentCityStreet(state) || 'РЯДОМ С ТОБОЙ'}</span>
         <span>
           С ↑ <Maximize2 size={11} />
         </span>

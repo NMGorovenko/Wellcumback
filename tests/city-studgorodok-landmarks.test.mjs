@@ -79,7 +79,7 @@ void test('Orbita balcony glazing is curved and exposed ahead of the wall, with 
       });
     }
     assert.ok(
-      triangles < 14000,
+      triangles < 22000,
       `${triangles} triangles across four Orbita buildings`,
     );
   } finally {

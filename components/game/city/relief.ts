@@ -109,6 +109,35 @@ export function convexPieces(points: Polygon): CityPoint[][] {
   );
 }
 
+/** Shared world-grid boundaries allow independent terrain tiles to be culled
+ * without cracks. Clip before tessellation so construction can yield per tile. */
+export function* terrainTiles(polygons: readonly Polygon[], size = 240) {
+  const all = polygons.flat();
+  const minX = Math.floor(Math.min(...all.map((p) => p.x)) / size);
+  const maxX = Math.floor(Math.max(...all.map((p) => p.x)) / size);
+  const minZ = Math.floor(Math.min(...all.map((p) => p.z)) / size);
+  const maxZ = Math.floor(Math.max(...all.map((p) => p.z)) / size);
+  for (let x = minX; x <= maxX; x++)
+    for (let z = minZ; z <= maxZ; z++) {
+      const pieces = polygons
+        .map((p) =>
+          clip(
+            clip(
+              clip(clip(p, 'x', x * size, true), 'x', (x + 1) * size, false),
+              'z',
+              z * size,
+              true,
+            ),
+            'z',
+            (z + 1) * size,
+            false,
+          ),
+        )
+        .filter((p) => p.length >= 3);
+      if (pieces.length) yield pieces;
+    }
+}
+
 export function drapedSurface(
   kit: RenderKit,
   parent: THREE.Object3D,

@@ -169,7 +169,10 @@ function renderedCity() {
     city.root.traverse((mesh) => {
       if (!mesh.isMesh || mesh.isInstancedMesh || Array.isArray(mesh.material))
         return;
-      const color = mesh.material.color?.getHexString();
+      const color =
+        mesh.name === 'city-relief-ground'
+          ? '82966d'
+          : mesh.material.color?.getHexString();
       const entries = colors.get(color) ?? [];
       entries.push(mesh);
       colors.set(color, entries);
@@ -236,9 +239,27 @@ function surfaceProbe(meshes, accept = () => true) {
   };
 }
 
+void test('at-grade bridge fork has no curb ribbon across the driving lane', () => {
+  const { colors } = renderedCity();
+  const curb = surfaceProbe(colors.get('b9b9af') ?? []);
+  assert.ok((colors.get('b9b9af') ?? []).length > 0);
+  const car = freshCity();
+  for (let x = car.x - 2; x <= car.x + 2; x += 0.5)
+    for (let z = car.z - 5; z <= car.z + 8; z += 0.5)
+      assert.equal(
+        curb(x, z).filter((y) => Math.abs(y - car.elevation) < 1).length,
+        0,
+        `curb blocks the fork at ${x},${z}`,
+      );
+});
+
 void test('actual terrain never covers the top asphalt across ground/lower roads and island bridge landings', () => {
   const { colors } = renderedCity();
   const asphalt = surfaceProbe(colors.get('535b5e') ?? []);
+  assert.ok(
+    (colors.get('82966d') ?? []).length > 30,
+    'probe real spatial terrain tiles',
+  );
   const land = surfaceProbe(colors.get('82966d') ?? []);
   const island = surfaceProbe(colors.get('708858') ?? [], (vertices) =>
     vertices.every(
@@ -392,8 +413,8 @@ void test('terrain batching retains only live geometry and frame updates allocat
     if (mesh.geometry) used.add(mesh.geometry);
   });
   assert.ok(
-    kit.geometries.size < 160,
-    'source terrain and prop geometries must be released after batching',
+    kit.geometries.size < 900,
+    `spatial terrain and material batches must stay bounded: ${kit.geometries.size}`,
   );
   for (const geometry of kit.geometries)
     assert.ok(used.has(geometry), 'unreferenced source geometry retained');

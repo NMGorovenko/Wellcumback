@@ -127,6 +127,42 @@ export function createOrbitaLandmark(
           );
       }
   }
+  // Side elevations also face the bridge approach. Recessed window columns
+  // and the orange corner band keep them from reading as blank concrete slabs.
+  for (const side of [-1, 1]) {
+    box(
+      0.08,
+      b.h * 0.88,
+      b.d * 0.035,
+      orange,
+      side * (b.w * 0.45 + 0.045),
+      b.h * 0.49,
+      b.d * 0.23,
+    );
+    for (let floor = 0; floor < floors; floor++) {
+      const y = 1.3 + (floor * (b.h * 0.9)) / floors;
+      for (const column of [-0.31, -0.09, 0.12]) {
+        box(
+          0.055,
+          1.4,
+          b.d * 0.105,
+          '#bcc5c1',
+          side * (b.w * 0.45 + 0.028),
+          y,
+          b.d * column,
+        );
+        box(
+          0.062,
+          1.15,
+          b.d * 0.082,
+          glass,
+          side * (b.w * 0.45 + 0.064),
+          y,
+          b.d * column,
+        );
+      }
+    }
+  }
   // A setback rooftop box and light parapet retain the stepped crown in silhouette.
   box(
     b.w * 0.32,

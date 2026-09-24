@@ -193,23 +193,24 @@ export function roadDashClear(
   z: number,
   halfLength = 1.15,
 ) {
+  const own = cityRoads.find((road) => road.id === roadId);
   return (
     !cityCrossings.some((c) => crossingContains(c, x, z, halfLength)) &&
     cityRoads.every((r) => {
-      const own = cityRoads.find((road) => road.id === roadId);
-      if (r.id === roadId || (own && !cityRoadsConnect(own, r, x, z)))
-        return true;
+      if (r.id === roadId) return true;
       const dx = r.to.x - r.from.x,
         dz = r.to.z - r.from.z;
       const length = Math.hypot(dx, dz);
       const along = ((x - r.from.x) * dx + (z - r.from.z) * dz) / length;
       const across =
         Math.abs(-(x - r.from.x) * dz + (z - r.from.z) * dx) / length;
-      return (
+      const outside =
         along < -halfLength ||
         along > length + halfLength ||
-        across > r.width / 2 + halfLength
-      );
+        across > r.width / 2 + halfLength;
+      // Most roads are kilometres away. Evaluate their height only when a
+      // footprint actually overlaps this dash; raised decks still stay distinct.
+      return outside || (!!own && !cityRoadsConnect(own, r, x, z));
     })
   );
 }

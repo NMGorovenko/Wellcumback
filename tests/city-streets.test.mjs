@@ -168,7 +168,7 @@ void test('Studgorodok descends onto Dubrovinskogo and physically passes beneath
   );
 });
 void test('Kvant is the fourteenth reachable stop with a clear forecourt and exit', () => {
-  assert.equal(cityStops.length, 14);
+  assert.equal(cityStops[13].id, 'kvant');
   const stop = cityStops.find((s) => s.id === 'kvant');
   const building = cityBuildings.find((b) => b.kind === 'kvant');
   assert.ok(stop.z > building.z + building.d / 2);

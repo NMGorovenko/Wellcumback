@@ -5,6 +5,7 @@ import {
   distanceToRoad,
   inCityWater,
   onCityIsland,
+  riverBankZ,
   riverZ,
   type CityPoint,
   type CityRoad,
@@ -34,16 +35,27 @@ function projection(p: CityPoint, a: CityPoint, b: CityPoint) {
 /** Art-directed relative heights, not surveyed elevations. Western terraces
  * stand above the old centre; the right bank rises behind the waterfront. */
 function landHeight(x: number, z: number) {
-  if (z < riverZ(x))
-    return (
+  if (z < riverZ(x)) {
+    const inland = Math.max(0, riverBankZ(x, -1) - z);
+    const west = 1 - smooth((x + 650) / 400);
+    const terrace =
       6 +
       58 * Math.exp(-(((x + 1150) / 650) ** 2) - ((z - 450) / 850) ** 2) +
-      5 * Math.exp(-(((x - 700) / 850) ** 2) - ((z + 1150) / 850) ** 2)
-    );
+      5 * Math.exp(-(((x - 700) / 850) ** 2) - ((z + 1150) / 850) ** 2) +
+      10 * Math.exp(-(((x + 880) / 120) ** 2) - ((z - 370) / 240) ** 2) +
+      32 * Math.exp(-(((x + 60) / 520) ** 2) - ((z + 1470) / 430) ** 2) +
+      9 * Math.exp(-(((x - 850) / 480) ** 2) - ((z + 1050) / 500) ** 2);
+    // A high western terrace ends at the river, rather than carrying its
+    // full elevation to a vertical extrusion at the waterline. Quay roads
+    // remain above the toe; the short final escarpment is outside the lanes.
+    return 3 + (terrace - 3) * (1 - west * (1 - smooth(inland / 4)));
+  }
   return (
     7 +
     28 * Math.exp(-(((x - 700) / 900) ** 2) - ((z - 900) / 500) ** 2) +
-    12 * Math.exp(-(((x + 900) / 800) ** 2) - ((z - 1100) / 550) ** 2)
+    12 * Math.exp(-(((x + 900) / 800) ** 2) - ((z - 1100) / 550) ** 2) +
+    112 * Math.exp(-(((x + 870) / 270) ** 2) - ((z - 1660) / 235) ** 2) +
+    46 * Math.exp(-(((x + 150) / 590) ** 2) - ((z - 1490) / 320) ** 2)
   );
 }
 const bridgeGroups = [
@@ -162,7 +174,7 @@ function trenchDepth(x: number, z: number) {
 }
 function unflattenedGround(x: number, z: number) {
   const h = naturalHeight(x, z);
-  return inCityWater(x, z) ? h : h - trenchDepth(x, z);
+  return inCityWater(x, z) ? h : Math.max(0.5, h - trenchDepth(x, z));
 }
 // Cached parcel centres keep building foundations level without doing hundreds
 // of analytic height evaluations for each road wheel or terrain-grid vertex.

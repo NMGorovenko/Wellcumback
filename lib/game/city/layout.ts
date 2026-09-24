@@ -15,13 +15,13 @@ function referenceGeo(lat: number, lon: number): CityPoint {
     z: -(lat - 56.01) * 111320 * CITY_METRE_SCALE,
   };
 }
-export const CITY_BOUNDS = { minX: -2500, maxX: 1750, minZ: -1750, maxZ: 1250 };
+export const CITY_BOUNDS = { minX: -2500, maxX: 1750, minZ: -1750, maxZ: 1650 };
 export const CITY_SCENERY_BOUNDS = {
   minX: -2570,
   maxX: 1820,
   minZ: -1820,
-  maxZ: 1320,
-  maxY: 115,
+  maxZ: 1720,
+  maxY: 195,
 };
 export const RIVER_HALF_WIDTH = 180;
 export const RIVER_SLOPE = 0.28;
@@ -304,6 +304,10 @@ export const CITY_STUD_ROUNDABOUT = {
   outerRadius: 30,
 };
 export const CITY_ROUNDABOUTS = [ROUNDABOUT, CITY_STUD_ROUNDABOUT] as const;
+export const CITY_BOBROVY_LOG = {
+  base: { x: -838, z: 1224 },
+  summit: { x: -895, z: 1600 },
+};
 export const CITY_YENISEY_SIGN = {
   x: -865,
   z: 455,
@@ -706,11 +710,75 @@ for (const r of cityRoads) {
   if (r.id.startsWith('nikolaevsky-left:') || r.bridge === 'nikolaevsky')
     r.layer = 'raised';
 }
+// Compressed Sibirskaya approach follows the Bazaikha valley south of the river.
+// A compact eastern petal of the north-bank Nikolaevsky interchange. It
+// descends around the upper approach and joins Dubrovinskogo underneath it.
+cityRoads.push(
+  ...projectedRoad(
+    'nikolaevsky-quay-loop',
+    [
+      { x: -760, z: 415.45454545454544 },
+      { x: -743, z: 406 },
+      { x: -714, z: 401 },
+      { x: -690, z: 409 },
+      { x: -676, z: 423 },
+      { x: -673, z: 438 },
+      { x: -685, z: 453 },
+      { x: -699, z: 455 },
+      { x: -710, z: 447 },
+    ],
+    11,
+  ),
+);
+const bobrovyJunction = { x: -838, z: 635.44 };
+cityRoads.push(
+  ...projectedRoad(
+    'sibirskaya',
+    [
+      bobrovyJunction,
+      { x: -915, z: 770 },
+      { x: -980, z: 925 },
+      { x: -965, z: 1060 },
+      { x: -905, z: 1160 },
+      CITY_BOBROVY_LOG.base,
+    ],
+    14,
+  ),
+);
 /** Semantic street labels use the actual road axes, never copied map anchors. */
 export const CITY_NAMED_STREETS: readonly {
   name: string;
   roadIds: readonly string[];
 }[] = [
+  {
+    name: 'Сибирская',
+    roadIds: cityRoads
+      .filter((r) => r.id.startsWith('sibirskaya:'))
+      .map((r) => r.id),
+  },
+  {
+    name: 'Академика Киренского',
+    roadIds: cityRoads
+      .filter((r) => r.id.startsWith('kirenskogo-'))
+      .map((r) => r.id),
+  },
+  {
+    name: 'Николаевский проспект',
+    roadIds: cityRoads
+      .filter(
+        (r) =>
+          r.id.startsWith('nikolaevsky-left:') || r.bridge === 'nikolaevsky',
+      )
+      .map((r) => r.id),
+  },
+  {
+    name: 'Свердловская',
+    roadIds: cityRoads
+      .filter(
+        (r) => r.id.startsWith('right-quay:') && Number(r.id.split(':')[1]) < 5,
+      )
+      .map((r) => r.id),
+  },
   {
     name: 'Свободный',
     roadIds: cityRoads
@@ -881,6 +949,7 @@ export const cityStops: (CityPoint & {
   ...compactCityPoint(p),
   mission: p.mission as CityMission | undefined,
 }));
+
 cityStops.push({
   id: 'kvant',
   x: -70,
@@ -888,6 +957,13 @@ cityStops.push({
   title: 'ТЦ «Квант»',
   subtitle: 'Красной Армии, 10 · центр',
   color: '#a3bed6',
+});
+cityStops.push({
+  id: 'bobrovy-log',
+  ...CITY_BOBROVY_LOG.base,
+  title: 'Бобровый лог',
+  subtitle: 'Сибирская, 92 · горнолыжные склоны',
+  color: '#b5d0aa',
 });
 const predmostnayaStop = cityStops.find((s) => s.id === 'predmostnaya')!;
 Object.assign(predmostnayaStop, { x: ROUNDABOUT.x + 48, z: ROUNDABOUT.z });
@@ -928,6 +1004,7 @@ export type CityBuilding = CityRect & {
     | 'pushkin'
     | 'kubatura'
     | 'kvant'
+    | 'bobrovy-log'
     | 'pho'
     | 'frank'
     | 'fresco';
@@ -951,6 +1028,15 @@ export const cityBuildings: CityBuilding[] = [
   { kind: 'orbita', x: -900, z: 420, w: 25, d: 18, h: 35, color: '#d8d8cd' },
   { kind: 'orbita', x: -920, z: 390, w: 18, d: 18, h: 42, color: '#d8d8cd' },
   { kind: 'doner', x: -677, z: 386, w: 14, d: 8, h: 4.2, color: '#544b3b' },
+  {
+    kind: 'bobrovy-log',
+    x: CITY_BOBROVY_LOG.base.x + 32,
+    z: CITY_BOBROVY_LOG.base.z + 41,
+    w: 31,
+    d: 29,
+    h: 11,
+    color: '#d7d5c5',
+  },
   { kind: 'kvant', x: -70, z: -168, w: 54, d: 32, h: 22, color: '#6592aa' },
   landmark('borisova', 55.992306, 92.795672, 26, 28, 48, '#d8d8cd'),
   landmark('ikit', 55.994336, 92.797027, 48, 18, 13.5, '#d6cfb4'),
@@ -1012,6 +1098,7 @@ for (const [kind, x, z] of [
     { x, z },
   );
 export const CITY_PARKING = [
+  { id: 'bobrovy-log', x: -838, z: 1224, w: 68, d: 30 },
   { id: 'kvant', x: -70, z: -125, w: 70, d: 28 },
   { id: 'komsomoll', x: 600, z: -166, w: 130, d: 52 },
   { id: 'kubatura', x: 1010, z: -494, w: 90, d: 62 },
@@ -1021,6 +1108,7 @@ for (const parking of CITY_PARKING) {
   const stop = cityStops.find((s) => s.id === parking.id)!;
   if (parking.id !== 'planeta')
     Object.assign(stop, { x: parking.x, z: parking.z });
+  if (parking.id === 'bobrovy-log') continue;
   const connection =
     parking.id === 'kvant'
       ? { x: -70, z: -103.30909090909091 }

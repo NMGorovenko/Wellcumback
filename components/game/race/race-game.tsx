@@ -155,6 +155,7 @@ export default function RaceGame({
 }) {
   const room = useRoom(),
     slot = online ? room.slot : 0;
+  const [sceneReady, setSceneReady] = useState(false);
   const canManage = !online || isRoomLeader(room.world, room.slot);
   const [view, setView] = useState<RaceState>(() =>
     online && roomWorld()?.scene === 'race'
@@ -175,7 +176,7 @@ export default function RaceGame({
     Pick<PadFrame, 'assignments' | 'unsupported'>
   >({ assignments: [], unsupported: [] });
   const { settings } = useControlSettings();
-  useRaceCues(sound, view, slot);
+  useRaceCues(sound && sceneReady, view, slot);
   const refresh = () => setView({ ...game.current });
   const pause = () => {
     if (['countdown', 'racing'].includes(game.current.phase)) {
@@ -274,18 +275,20 @@ export default function RaceGame({
       } else setView(next);
     },
     tick: (s, dt, _keys, _drive, inputs) =>
-      online
-        ? tickRoomRace(s, dt, inputs ?? [])
-        : tickRace(
-            s,
-            dt,
-            new Map(
-              s.racers
-                .filter((r) => r.memberSlot === slot)
-                .map((r, i) => [r.id, inputs![i]]),
+      !sceneReady
+        ? undefined
+        : online
+          ? tickRoomRace(s, dt, inputs ?? [])
+          : tickRace(
+              s,
+              dt,
+              new Map(
+                s.racers
+                  .filter((r) => r.memberSlot === slot)
+                  .map((r, i) => [r.id, inputs![i]]),
+              ),
+              raceCourse(s.trackId),
             ),
-            raceCourse(s.trackId),
-          ),
     onGamepads: (p) => {
       setPads(p);
       onGamepads?.(p);
@@ -358,6 +361,7 @@ export default function RaceGame({
           racer={r}
           enabled={
             sound &&
+            sceneReady &&
             r.finishTime === null &&
             !view.paused &&
             ['countdown', 'racing'].includes(view.phase)
@@ -369,6 +373,7 @@ export default function RaceGame({
         game={game}
         localIds={local.map((r) => r.id)}
         configuration={configuration}
+        onReady={setSceneReady}
       />
       {view.phase !== 'lobby' &&
         local.map((r, i) => (

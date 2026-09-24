@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   BRIDGES,
+  CITY_NAMED_STREETS,
   cityRoads,
   riverBankZ,
   CITY_BOUNDS,
@@ -8,6 +9,7 @@ import {
 } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { citySceneryFits, type CitySceneryPlacement } from './landmarks.ts';
+import { facadeText } from './facade-text.ts';
 import { cityCrossings } from '../../../lib/game/city/crossings.ts';
 
 /** One shared lens material keeps all scenic signals in caution mode. Scene
@@ -52,6 +54,9 @@ export function createStreetDetails(
   }
   for (const side of [-1, 1])
     for (let x = CITY_BOUNDS.minX + 10; x <= CITY_BOUNDS.maxX - 10; x += 110) {
+      // The western bank is an unpaved cliff; lights belong to its roads,
+      // not to a waterfront promenade embedded in the steep earth face.
+      if (side === -1 && x < -450) continue;
       if (BRIDGES.some((b) => Math.abs(x - b.x) < b.w / 2 + 4)) continue;
       lamp(x, riverBankZ(x, side) + side * 2.5, 0);
     }
@@ -68,6 +73,36 @@ export function createStreetDetails(
           z = road.from.z + (dz * t) / len + nz * side * (road.width / 2 + 1.5);
         lamp(x, z, Math.atan2(side * nz, -side * nx));
       }
+  }
+  for (const street of CITY_NAMED_STREETS) {
+    const road = cityRoads.find(
+      (r) =>
+        street.roadIds.includes(r.id) &&
+        !r.bridge &&
+        Math.hypot(r.to.x - r.from.x, r.to.z - r.from.z) > 55,
+    );
+    if (!road) continue;
+    const dx = road.to.x - road.from.x,
+      dz = road.to.z - road.from.z;
+    const length = Math.hypot(dx, dz),
+      nx = -dz / length,
+      nz = dx / length;
+    for (const t of [0.22, 0.7]) {
+      const x = road.from.x + dx * t + nx * (road.width / 2 + 4.5);
+      const z = road.from.z + dz * t + nz * (road.width / 2 + 4.5);
+      if (!clear(x, z, 3.5)) continue;
+      const sign = new THREE.Group();
+      sign.position.set(x, 0, z);
+      sign.rotation.y = Math.atan2(-nx, -nz);
+      sign.name = `street-name:${street.name}`;
+      root.add(sign);
+      kit.box(6.4, 1.1, 0.16, '#244e69', 0, 3.8, 0, sign, 0.03);
+      for (const side of [-1, 1])
+        kit.box(0.12, 4.3, 0.12, '#8b9795', side * 2.4, 2.15, 0, sign, 0);
+      facadeText(kit, sign, street.name, '#f2f2e2', 6, 0, 3.8, 0.09);
+      spots.push({ x, z, radius: 3.5 });
+      break;
+    }
   }
   // Painted zebra crossings are flush with the tarmac and cannot block a car.
   for (const c of cityCrossings) {

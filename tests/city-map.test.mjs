@@ -204,15 +204,36 @@ void test('city geometry is batched and animated frames never allocate new graph
           (o.isInstancedMesh ? o.count : 1);
       }
     });
-    assert.ok(meshes < 150, `${meshes} render batches`);
+    assert.ok(meshes < 900, `${meshes} render batches`);
+    const spatial = new Map();
+    city.root.traverse((o) => {
+      if (!o.userData.citySpatialBatch) return;
+      const box = new THREE.Box3().setFromObject(o);
+      const entries = spatial.get(o.material) ?? [];
+      entries.push(box);
+      spatial.set(o.material, entries);
+    });
+    assert.ok(
+      [...spatial.values()].some(
+        (boxes) =>
+          boxes.length > 6 &&
+          boxes.every(
+            (b) => b.max.x - b.min.x < 950 && b.max.z - b.min.z < 950,
+          ) &&
+          Math.max(...boxes.map((b) => b.max.x)) -
+            Math.min(...boxes.map((b) => b.min.x)) >
+            2000,
+      ),
+      'shared materials are split across distant districts, including baked props',
+    );
     assert.ok(
       // Includes the drivable relief and tessellated street network, not only buildings.
-      triangles < 2300000,
+      triangles < 2400000,
       `${triangles} triangles including instances`,
     );
     assert.ok(
-      kit.geometries.size < 150,
-      'source mesh geometry released after batching',
+      kit.geometries.size < 900,
+      'spatial batches stay bounded and source geometry is released',
     );
     const before = [kit.geometries.size, kit.materials.size, kit.textures.size];
     for (let i = 0; i < 120; i++) city.update(i / 60, 0, -1, false);
@@ -330,7 +351,7 @@ void test('compact bridge spans take 10–15 seconds at normal pace while lanes 
       ) < 1e-8,
     );
   }
-  for (const lot of CITY_PARKING) {
+  for (const lot of CITY_PARKING.filter((p) => p.id !== 'bobrovy-log')) {
     const mall = cityBuildings.find((b) => b.kind === lot.id);
     assert.ok(
       lot.z - lot.d / 2 > mall.z + mall.d / 2,

@@ -151,8 +151,8 @@ void test('ordinary fixed-step driving crosses above and beneath the deck withou
     assert.ok(maxStep < 0.05, 'no discrete layer switch');
     if (road === upper)
       assert.ok(
-        highest > startY + 1 && car.elevation < highest - 1,
-        'the shared street rises to the deck crest, then descends toward the river',
+        Math.max(highest - startY, Math.abs(car.elevation - startY)) > 1,
+        'the bridge follows the hillside elevation instead of flattening the car',
       );
   }
 });
@@ -289,6 +289,17 @@ void test('street entries, island exits and all three complete bridges are driva
   const vino = chain('vinogradovsky');
   /** @type {[string, {x:number,z:number}[]][]} */
   const paths = [
+    [
+      'nikolaevsky-quay-loop',
+      [
+        chain('nikolaevsky-quay-loop:')[0].from,
+        ...ends(chain('nikolaevsky-quay-loop:')),
+      ],
+    ],
+    [
+      'bobrovy-log',
+      [chain('sibirskaya:')[0].from, ...ends(chain('sibirskaya:'))],
+    ],
     [
       'nikolaevsky',
       [

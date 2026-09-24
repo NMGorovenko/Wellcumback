@@ -109,6 +109,7 @@ export default function CityHub({
   const canResume = canManage && (!shared || roomFresh());
   const isDriver = !shared || (room.world?.driver ?? 0) === room.slot;
   const [view, setView] = useState(freshCity);
+  const [sceneReady, setSceneReady] = useState(false);
   const [target, setTarget] = useState(0);
   const [mapOpen, setMapOpen] = useState(false);
   const mapOpenRef = useRef(false);
@@ -120,7 +121,7 @@ export default function CityHub({
     null,
   );
   const mapBusy = travel !== 'idle';
-  useCityAudio(sound && !mapOpen && !mapBusy, view);
+  useCityAudio(sound && sceneReady && !mapOpen && !mapBusy, view);
   const openMap = useCallback(() => {
     if (mapBusy) return;
     keys.current.clear();
@@ -455,6 +456,7 @@ export default function CityHub({
     game,
     keys,
     tick: (s, dt, input, axes) => {
+      if (!sceneReady) return;
       // The unused top face button changes only this client's camera, including
       // when another online player owns the wheel. Hotplug requires a release.
       const pad =
@@ -571,6 +573,7 @@ export default function CityHub({
           targetStop={target}
           cameraMode={cameraMode}
           speechRef={speechRef}
+          onReady={setSceneReady}
         />
         <SpeechBubble
           bubbleRef={speechRef}

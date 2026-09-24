@@ -32,16 +32,24 @@ import {
   cityRoadLayer,
   citySurfacePose,
 } from '../../../lib/game/city/surface.ts';
-import { convexPieces, drapedSurface, liftScenery } from './relief.ts';
+import {
+  convexPieces,
+  drapedSurface,
+  liftScenery,
+  terrainTiles,
+} from './relief.ts';
 import { createCityLandmarks } from './landmarks.ts';
 import { createStreetDetails, createStreetSignalLight } from './streets.ts';
 import { collectCityFoliage } from './foliage-occlusion.ts';
 import { createBridgeRails } from './bridge-rails.ts';
+import { createBobrovyLog } from './bobrovy-log.ts';
+import { createYeniseyWater } from './river-water.ts';
 import { createYeniseySign } from './yenisey-sign.ts';
 import { roadDashClear } from '../../../lib/game/city/crossings.ts';
 import {
   buildRoadSurfaces,
   roadSurfaceOutlines,
+  subtractRoadPolygons,
 } from '../../../lib/game/city/road-surfaces.ts';
 import { createEuropeMonument, createChapelCannon } from './monuments.ts';
 import {
@@ -54,21 +62,39 @@ import {
 
 /** Bake static boxes/windows into material groups once, including nested props.
  * Source geometries are released after merging, rather than retained per window. */
-function batchCity(kit: RenderKit, root: THREE.Group) {
+function* batchCity(kit: RenderKit, root: THREE.Group) {
   root.updateMatrixWorld(true);
-  const groups = new Map<THREE.Material, THREE.Mesh[]>();
+  const groups = new Map<
+    string,
+    { material: THREE.Material; meshes: THREE.Mesh[] }
+  >();
+  const point = new THREE.Vector3();
   root.traverse((object) => {
     if (
       !(object instanceof THREE.Mesh) ||
       object instanceof THREE.InstancedMesh ||
-      Array.isArray(object.material)
+      Array.isArray(object.material) ||
+      object.userData.noCityBatch
     )
       return;
-    const meshes = groups.get(object.material) ?? [];
-    meshes.push(object);
-    groups.set(object.material, meshes);
+    // Lifted props have baked world vertices and a zero object transform.
+    // Their geometry centre, not their pivot, identifies the spatial cell.
+    if (!object.geometry.boundingSphere)
+      object.geometry.computeBoundingSphere();
+    point
+      .copy(object.geometry.boundingSphere!.center)
+      .applyMatrix4(object.matrixWorld);
+    const key = `${object.material.uuid}:${Math.floor(point.x / 640)}:${Math.floor(point.z / 640)}:${object.castShadow}:${object.receiveShadow}`;
+    const group = groups.get(key) ?? {
+      material: object.material,
+      meshes: [] as THREE.Mesh[],
+    };
+    group.meshes.push(object);
+    groups.set(key, group);
   });
-  for (const [material, meshes] of groups) {
+  let done = 0;
+  for (const { material, meshes } of groups.values()) {
+    if (++done % 16 === 0) yield done / groups.size;
     if (meshes.length < 2) continue;
     const geometries = meshes.map((mesh) => {
       const geometry = mesh.geometry.index
@@ -84,7 +110,11 @@ function batchCity(kit: RenderKit, root: THREE.Group) {
       kit.geometries.delete(mesh.geometry);
       mesh.geometry.dispose();
     });
-    kit.mesh(merged, material, root);
+    const batch = kit.mesh(merged, material, root);
+    batch.userData.citySpatialBatch = true;
+    batch.castShadow = meshes[0].castShadow;
+    batch.receiveShadow = meshes[0].receiveShadow;
+    merged.computeBoundingSphere();
   }
 }
 function ribbon(
@@ -133,12 +163,18 @@ function ribbon(
   return mesh;
 }
 
-export function createCityEnvironment(kit: RenderKit) {
+export type CityLoadProgress = { label: string; progress: number };
+
+export function* buildCityEnvironment(
+  kit: RenderKit,
+): Generator<CityLoadProgress, CityEnvironment> {
+  yield { label: 'Берега Енисея', progress: 0.04 };
   const root = new THREE.Group();
   root.name = 'krasnoyarsk-city';
   kit.scene.add(root);
   const { minX, maxX, minZ, maxZ } = CITY_BOUNDS;
   const width = maxX - minX;
+  const water = createYeniseyWater(kit);
   const groundRoadHoles = roadSurfaceOutlines(
     cityRoads.filter(
       (r) =>
@@ -165,6 +201,7 @@ export function createCityEnvironment(kit: RenderKit) {
       ground ? groundRoadHoles : [],
     );
     mesh.name = ground ? 'city-relief-ground' : 'city-water';
+    if (!ground) mesh.material = water.material;
     return mesh;
   }
   const roadSample = (roads: readonly CityRoad[]) => (x: number, z: number) => {
@@ -183,12 +220,127 @@ export function createCityEnvironment(kit: RenderKit) {
     citySurfacePose(x, z, 0).elevation;
   const north = RIVER_SECTIONS.map((p) => ({ x: p.x, z: p.z - p.half }));
   const south = RIVER_SECTIONS.map((p) => ({ x: p.x, z: p.z + p.half }));
-  polygon(
-    [{ x: minX, z: minZ }, { x: maxX, z: minZ }, ...north.slice().reverse()],
-    0,
-    '#82966d',
-  );
-  polygon([...south, { x: maxX, z: maxZ }, { x: minX, z: maxZ }], 0, '#82966d');
+  const terrainMaterial = kit.material('#ffffff').clone();
+  terrainMaterial.vertexColors = true;
+  kit.materials.add(terrainMaterial);
+  const banks = [
+    [
+      { x: minX, z: minZ },
+      { x: maxX, z: minZ },
+      ...north.map((p) => ({ x: p.x, z: p.z - 24 })).reverse(),
+    ],
+    [...south, { x: maxX, z: maxZ }, { x: minX, z: maxZ }],
+  ];
+  function shadeTerrain(
+    mesh: THREE.Mesh<THREE.BufferGeometry, THREE.Material>,
+  ) {
+    mesh.name = 'city-relief-ground';
+    mesh.userData.noCityBatch = true;
+    mesh.material = terrainMaterial;
+    const pos = mesh.geometry.getAttribute('position');
+    const norm = mesh.geometry.getAttribute('normal');
+    const colors: number[] = [];
+    const shadeCache = new Map<
+      string,
+      { normal: THREE.Vector3; color: THREE.Color }
+    >();
+    const green = new THREE.Color('#82966d'),
+      rock = new THREE.Color('#a59c87');
+    for (let v = 0; v < pos.count; v++) {
+      const x = pos.getX(v),
+        z = pos.getZ(v),
+        key = `${x}:${z}`;
+      let entry = shadeCache.get(key);
+      if (!entry) {
+        const normal = new THREE.Vector3(
+          cityGroundHeight(x - 0.3, z) - cityGroundHeight(x + 0.3, z),
+          0.6,
+          cityGroundHeight(x, z - 0.3) - cityGroundHeight(x, z + 0.3),
+        ).normalize();
+        const steep = THREE.MathUtils.clamp((1 - normal.y) * 2.5, 0, 1);
+        const strata = 0.045 * Math.sin(pos.getY(v) * 0.64 + x * 0.018);
+        entry = {
+          normal,
+          color: green
+            .clone()
+            .lerp(rock, steep)
+            .multiplyScalar(1 + strata),
+        };
+        shadeCache.set(key, entry);
+      }
+      norm.setXYZ(v, entry.normal.x, entry.normal.y, entry.normal.z);
+      colors.push(entry.color.r, entry.color.g, entry.color.b);
+    }
+    mesh.geometry.setAttribute(
+      'color',
+      new THREE.Float32BufferAttribute(colors, 3),
+    );
+  }
+  for (const [bank, outline] of banks.entries()) {
+    const tiles = [...terrainTiles(convexPieces(outline))];
+    for (const [index, pieces] of tiles.entries()) {
+      const mesh = drapedSurface(
+        kit,
+        root,
+        pieces,
+        '#82966d',
+        cityGroundHeight,
+        0,
+        8,
+        groundRoadHoles,
+      );
+      shadeTerrain(mesh);
+      if (index % 4 === 0)
+        yield {
+          label: bank
+            ? 'Рельеф правого берега'
+            : 'Утёсы и террасы левого берега',
+          progress: 0.04 + bank * 0.09 + (0.09 * index) / tiles.length,
+        };
+    }
+  }
+  // Follow the shore with parallel contour rows. A world-aligned square grid
+  // crosses the steep escarpment at uneven offsets and produces saw teeth.
+  const contourInsets = [0, 0.7, 1.4, 2, 2.6, 3.3, 4, 8, 16, 24];
+  for (let i = 1; i < north.length; i++) {
+    const a = north[i - 1],
+      b = north[i];
+    const count = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 6);
+    for (let start = 0; start < count; start += 40) {
+      const quads: CityPoint[][] = [];
+      for (let j = start; j < Math.min(count, start + 40); j++) {
+        const at = (t: number, inset: number) => ({
+          x: a.x + (b.x - a.x) * t,
+          z: a.z + (b.z - a.z) * t - inset,
+        });
+        for (let k = 1; k < contourInsets.length; k++) {
+          const lo = contourInsets[k - 1],
+            hi = contourInsets[k];
+          quads.push([
+            at(j / count, lo),
+            at((j + 1) / count, lo),
+            at((j + 1) / count, hi),
+            at(j / count, hi),
+          ]);
+        }
+      }
+      const shore = drapedSurface(
+        kit,
+        root,
+        quads,
+        '#82966d',
+        cityGroundHeight,
+        0,
+        1e6,
+        groundRoadHoles,
+      );
+      shadeTerrain(shore);
+    }
+    yield {
+      label: 'Склоны у Енисея',
+      progress: 0.22 + (0.015 * i) / north.length,
+    };
+  }
   polygon([...north, ...south.slice().reverse()], -3, '#367f9e', false);
   for (const side of [-1, 1])
     for (let i = 0; i < RIVER_SECTIONS.length - 1; i++) {
@@ -201,22 +353,25 @@ export function createCityEnvironment(kit: RenderKit) {
         bankLength = Math.hypot(bankDx, bankDz);
       const nx = (-bankDz / bankLength) * 2.5,
         nz = (bankDx / bankLength) * 2.5;
-      drapedSurface(
-        kit,
-        root,
-        [
+      // The west bank is an earth escarpment. A pale paved ribbon sampled
+      // across this steep slope creates visible triangular teeth.
+      if (side === 1 || (a.x + b.x) / 2 > -450)
+        drapedSurface(
+          kit,
+          root,
           [
-            { x: from.x + nx, z: from.z + nz },
-            { x: to.x + nx, z: to.z + nz },
-            { x: to.x - nx, z: to.z - nz },
-            { x: from.x - nx, z: from.z - nz },
+            [
+              { x: from.x + nx, z: from.z + nz },
+              { x: to.x + nx, z: to.z + nz },
+              { x: to.x - nx, z: to.z - nz },
+              { x: from.x - nx, z: from.z - nz },
+            ],
           ],
-        ],
-        '#d4d2b7',
-        cityGroundHeight,
-        0.025,
-        4,
-      );
+          '#d4d2b7',
+          cityGroundHeight,
+          0.025,
+          4,
+        );
       const bankPositions: number[] = [],
         bankUVs: number[] = [];
       const segments = Math.ceil(bankLength / 8);
@@ -247,8 +402,14 @@ export function createCityEnvironment(kit: RenderKit) {
       bankMaterial.side = THREE.DoubleSide;
       kit.mesh(edge, bankMaterial, root);
     }
+  yield { label: 'Острова и набережные', progress: 0.24 };
   for (const island of CITY_ISLANDS) polygon(island.points, 0.027, '#708858');
+  let roadLayerIndex = 0;
   for (const layer of new Set(cityRoads.map(cityRoadLayer))) {
+    yield {
+      label: 'Дороги и развязки',
+      progress: 0.28 + roadLayerIndex++ * 0.07,
+    };
     const roads = cityRoads.filter((road) => cityRoadLayer(road) === layer);
     const surfaces = buildRoadSurfaces(
       roads,
@@ -265,10 +426,28 @@ export function createCityEnvironment(kit: RenderKit) {
       layer === 'raised' ? 1 : 3,
     );
     asphalt.name = `city-asphalt:${layer}`;
+    const otherRoads = cityRoads.filter(
+      (road) => cityRoadLayer(road) !== layer,
+    );
+    const joinedCurbs = surfaces.curbs
+      .flatMap((polygon) => [...terrainTiles([polygon], 6)].flat())
+      .flatMap((piece) => {
+        const x = piece.reduce((sum, p) => sum + p.x, 0) / piece.length;
+        const z = piece.reduce((sum, p) => sum + p.z, 0) / piece.length;
+        const level = sample(x, z);
+        const joining = otherRoads.filter(
+          (road) =>
+            distanceToRoad(x, z, road) < road.width / 2 + 7 &&
+            Math.abs(cityRoadHeight(road, x, z) - level) < 1.2,
+        );
+        return joining.length
+          ? subtractRoadPolygons([piece], roadSurfaceOutlines(joining))
+          : [piece];
+      });
     const curbs = drapedSurface(
       kit,
       root,
-      surfaces.curbs,
+      joinedCurbs,
       '#b9b9af',
       sample,
       0.14,
@@ -276,7 +455,14 @@ export function createCityEnvironment(kit: RenderKit) {
     );
     curbs.name = `city-curbs:${layer}`;
   }
+  yield { label: 'Мосты через Енисей', progress: 0.49 };
+  let paintIndex = 0;
   for (const road of cityRoads) {
+    if (paintIndex++ % 8 === 0)
+      yield {
+        label: 'Разметка дорог',
+        progress: 0.49 + (0.015 * paintIndex) / cityRoads.length,
+      };
     const dx = road.to.x - road.from.x,
       dz = road.to.z - road.from.z,
       length = Math.hypot(dx, dz);
@@ -307,9 +493,12 @@ export function createCityEnvironment(kit: RenderKit) {
       liftScenery(kit, paint, (px, pz) => cityRoadHeight(road, px, pz));
     }
   }
+  let spanIndex = 0;
   for (const r of cityRoads.filter(
     (r) => r.bridge || cityRoadLayer(r) === 'raised',
   )) {
+    if (spanIndex++ % 4 === 0)
+      yield { label: 'Пролёты и опоры мостов', progress: 0.507 };
     const dx = r.to.x - r.from.x,
       dz = r.to.z - r.from.z,
       length = Math.hypot(dx, dz);
@@ -373,25 +562,60 @@ export function createCityEnvironment(kit: RenderKit) {
         kit.mesh(geometry, underside.material, root);
       }
     }
+    if (r.bridge === 'nikolaevsky' || r.bridge === 'oktyabrsky') {
+      const beamColor = r.bridge === 'nikolaevsky' ? '#6d8593' : '#6f8282';
+      for (let along = 0; along < length; along += 8)
+        for (const side of [-1, 1]) {
+          const end = Math.min(length, along + 8),
+            t = (along + end) / 2;
+          const x = r.from.x + (dx * t) / length + side * nx * r.width * 0.32;
+          const z = r.from.z + (dz * t) / length + side * nz * r.width * 0.32;
+          const deck = cityRoadHeight(r, x, z);
+          if (deck - cityGroundHeight(x, z) < 4) continue;
+          const beam = kit.box(
+            0.65,
+            2.2,
+            end - along + 0.1,
+            beamColor,
+            x,
+            deck - 1.9,
+            z,
+            root,
+            0,
+          );
+          beam.rotation.y = Math.atan2(dx, dz);
+          const y0 = cityRoadHeight(
+            r,
+            r.from.x + (dx * along) / length,
+            r.from.z + (dz * along) / length,
+          );
+          const y1 = cityRoadHeight(
+            r,
+            r.from.x + (dx * end) / length,
+            r.from.z + (dz * end) / length,
+          );
+          beam.rotation.x = -Math.atan2(y1 - y0, end - along);
+        }
+    }
     if (r.bridge === 'kommunalny') {
-      for (let start = 2; start + 24 < length - 2; start += 32) {
+      for (let start = 2; start + 42 < length - 2; start += 48) {
         for (const side of [-1, 1]) {
           const arch = (u: number) => {
-            const t = start + u * 24;
+            const t = start + u * 42;
             const x = r.from.x + (dx * t) / length + side * nx * r.width * 0.4;
             const z = r.from.z + (dz * t) / length + side * nz * r.width * 0.4;
             const y =
               cityRoadHeight(r, x, z) -
               CITY_DECK_THICKNESS -
               0.65 -
-              4.2 * (2 * u - 1) ** 2;
+              6.0 * (2 * u - 1) ** 2;
             return new THREE.Vector3(x, y, z);
           };
           for (let step = 0; step < 16; step++)
             kit.rod(
               arch(step / 16),
               arch((step + 1) / 16),
-              0.34,
+              0.52,
               '#d4d2b7',
               root,
             );
@@ -418,9 +642,9 @@ export function createCityEnvironment(kit: RenderKit) {
       if (top - bottom < 0.75) continue;
       for (const side of [-1, 1])
         kit.box(
-          1.1,
+          r.bridge === 'nikolaevsky' ? 2.2 : 1.5,
           top - bottom,
-          1.6,
+          r.bridge === 'nikolaevsky' ? 3.2 : 2.4,
           '#a3aaa1',
           x + side * nx * r.width * 0.36,
           (top + bottom) / 2,
@@ -428,9 +652,25 @@ export function createCityEnvironment(kit: RenderKit) {
           root,
           0,
         );
+      if (r.bridge === 'nikolaevsky' && top - bottom > 6) {
+        const cap = kit.box(
+          r.width * 0.86,
+          1.1,
+          3.6,
+          '#a3aaa1',
+          x,
+          top - 1.4,
+          z,
+          root,
+          0,
+        );
+        cap.rotation.y = Math.atan2(dx, dz);
+      }
     }
   }
+  yield { label: 'Ограждения мостов', progress: 0.51 };
   createBridgeRails(kit, root);
+  yield { label: 'Кольцевые развязки', progress: 0.515 };
   for (const roundabout of CITY_ROUNDABOUTS) {
     const ringRoot = new THREE.Group();
     root.add(ringRoot);
@@ -491,9 +731,15 @@ export function createCityEnvironment(kit: RenderKit) {
   kit.materials.add(lit);
   const cityRoot = root;
   for (const [index, building] of cityBuildings.entries()) {
+    if (index % 20 === 0)
+      yield {
+        label: 'Кварталы Красноярска',
+        progress: 0.52 + (0.19 * index) / cityBuildings.length,
+      };
     const root = new THREE.Group();
     root.position.y = cityGroundHeight(building.x, building.z);
     cityRoot.add(root);
+    if (building.kind === 'bobrovy-log') continue; // Built with the lift stations below.
     const { x, z, w, d, h, color } = building;
     if (createCentreLandmark(kit, root, building)) continue;
     if (createDistrictLandmark(kit, root, building)) continue;
@@ -577,6 +823,7 @@ export function createCityEnvironment(kit: RenderKit) {
   }
   const props = new THREE.Group();
   root.add(props);
+  yield { label: 'Вывески и городские детали', progress: 0.73 };
   createCityParking(kit, props);
   createYeniseySign(kit, props);
   createNeighbourhoodGreenery(kit, props);
@@ -594,8 +841,11 @@ export function createCityEnvironment(kit: RenderKit) {
   );
   liftScenery(kit, props, cityGroundHeight);
   createSiberianRidges(kit, root);
+  const bobrovyLog = createBobrovyLog(kit, root);
   const cameraOccluders = collectCityFoliage(root);
-  batchCity(kit, root);
+  yield { label: 'Подготовка поездки', progress: 0.82 };
+  for (const part of batchCity(kit, root))
+    yield { label: 'Подготовка поездки', progress: 0.82 + 0.13 * part };
   const labels: THREE.Sprite[] = [];
   const label = (text: string, x: number, z: number, width: number, y = 3) => {
     const sprite = makeLabel(kit, text, '#ede4bd', width);
@@ -676,6 +926,12 @@ export function createCityEnvironment(kit: RenderKit) {
       carPosition?: CityPoint,
     ) {
       streetSignals.update(time);
+      water.update(time);
+      if (
+        !carPosition ||
+        Math.hypot(carPosition.x + 850, carPosition.z - 1400) < 1400
+      )
+        bobrovyLog.update(time);
       labels.forEach((sprite) => {
         sprite.visible = overview;
       });
@@ -713,7 +969,7 @@ export function createCityEnvironment(kit: RenderKit) {
           surfaceHeight(stop.x, stop.z) + (overview ? mapWidth * 0.14 : 3);
       });
       for (let i = 0; i < 64; i++) {
-        const x = minX + ((i * 7.73 + time * 0.65) % width);
+        const x = minX + (((i / 64) * width + time * 0.65) % width);
         dummy.position.set(
           x,
           -2.78,
@@ -726,4 +982,53 @@ export function createCityEnvironment(kit: RenderKit) {
       flow.instanceMatrix.needsUpdate = true;
     },
   };
+}
+
+export type CityEnvironment = {
+  root: THREE.Group;
+  scenery: ReturnType<typeof createCityLandmarks>;
+  streetFurniture: ReturnType<typeof createStreetDetails>;
+  cameraOccluders: ReturnType<typeof collectCityFoliage>;
+  stops: {
+    ring: THREE.Mesh;
+    label: THREE.Sprite;
+    overviewLabel: THREE.Sprite;
+  }[];
+  labels: THREE.Sprite[];
+  update(
+    time: number,
+    targetStop?: number,
+    nearStop?: number,
+    overview?: boolean,
+    overviewLabelWidth?: number,
+    carPosition?: CityPoint,
+  ): void;
+};
+
+/** Synchronous construction stays available to server-side geometry checks. */
+export function createCityEnvironment(kit: RenderKit): CityEnvironment {
+  const work = buildCityEnvironment(kit);
+  let step = work.next();
+  while (!step.done) step = work.next();
+  return step.value;
+}
+
+export async function loadCityEnvironment(
+  kit: RenderKit,
+  signal: AbortSignal,
+  onProgress: (p: CityLoadProgress) => void,
+) {
+  const work = buildCityEnvironment(kit);
+  try {
+    while (true) {
+      signal.throwIfAborted();
+      const step = work.next();
+      if (step.done) return step.value;
+      onProgress(step.value);
+      // Let React paint the actual stage and the browser process input.
+      await new Promise<void>((resolve) => setTimeout(resolve, 16));
+    }
+  } finally {
+    work.return(undefined as never);
+  }
 }
