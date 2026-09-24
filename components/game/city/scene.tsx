@@ -31,6 +31,7 @@ export type CityReviewCamera = {
   look: { x: number; y: number; z: number };
   fov: number;
   shadowSize?: number;
+  fitWidth?: boolean;
 };
 /** Close driving camera follows the car and its travel path. The full
  * isometric map remains available through the existing overview toggle. */
@@ -227,6 +228,23 @@ export default function CityScene({
         scene.add(sprite);
         return { sprite, age: 2, x: 0, y: 0, z: 0 };
       });
+      const splashGeometry = new THREE.RingGeometry(0.86, 1, 32);
+      kit.geometries.add(splashGeometry);
+      const splash = [0, 1].map(() => {
+        const material = new THREE.MeshBasicMaterial({
+          color: '#d2edf1',
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        });
+        kit.materials.add(material);
+        const ring = new THREE.Mesh(splashGeometry, material);
+        ring.rotation.x = -Math.PI / 2;
+        ring.visible = false;
+        scene.add(ring);
+        return ring;
+      });
       let skidCursor = 0,
         smokeCursor = 0,
         emitClock = 0,
@@ -410,7 +428,9 @@ export default function CityScene({
           // Keep the authored landmark frame usable in a narrow review panel.
           cruiseCamera.position
             .sub(projected)
-            .multiplyScalar(Math.max(1, 16 / (9 * aspect)))
+            .multiplyScalar(
+              review.fitWidth === false ? 1 : Math.max(1, 16 / (9 * aspect)),
+            )
             .add(projected);
           cruiseCamera.lookAt(projected);
           cruiseCamera.fov = review.fov;
@@ -421,7 +441,8 @@ export default function CityScene({
         previousMode = mode.current;
         car.update(s, dt, mode.current === 'faces');
         car.root.rotation.order = 'YXZ';
-        car.root.position.y = presented.elevation + 0.04;
+        car.root.position.y =
+          presented.elevation + 0.04 - (s.flight?.landing ?? 0) * 0.15;
         car.root.rotation.x = presented.pitch;
         const line = citySpeech(s);
         placeSpeechBubble(
@@ -468,8 +489,20 @@ export default function CityScene({
         sun.shadow.camera.top = shadowSize;
         sun.shadow.camera.bottom = -shadowSize;
         sun.shadow.camera.updateProjectionMatrix();
+        splash.forEach((ring, index) => {
+          const age = (s.flight?.waterTime ?? 0) - index * 0.12;
+          ring.visible = age > 0 && age < 1.3;
+          if (!ring.visible) return;
+          ring.position.set(
+            s.x,
+            (s.elevation ?? 0) + 0.69 + index * 0.005,
+            s.z,
+          );
+          ring.scale.setScalar(1.2 + age * 7);
+          ring.material.opacity = Math.max(0, 1 - age / 1.3) * 0.7;
+        });
         emitClock += dt;
-        if (s.drifting && emitClock > 0.075) {
+        if (s.drifting && !s.flight?.airborne && emitClock > 0.075) {
           emitClock = 0;
           for (const side of [-1, 1]) {
             const x =

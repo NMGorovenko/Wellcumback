@@ -180,7 +180,7 @@ void test('bridge rails stop the car but every bridge has a complete road route'
     assert.equal(s.bumps, 0, b.id);
   }
 });
-void test('city geometry is batched and animated frames never allocate new graphics resources', () => {
+void test('city geometry is batched and animated frames never allocate new graphics resources', (t) => {
   const previous = globalThis.document;
   const mockDocument = {
     createElement: () => ({
@@ -204,6 +204,14 @@ void test('city geometry is batched and animated frames never allocate new graph
           (o.isInstancedMesh ? o.count : 1);
       }
     });
+    t.diagnostic(
+      JSON.stringify({
+        meshes,
+        triangles,
+        geometries: kit.geometries.size,
+        materials: kit.materials.size,
+      }),
+    );
     assert.ok(meshes < 900, `${meshes} render batches`);
     const spatial = new Map();
     city.root.traverse((o) => {
@@ -351,7 +359,9 @@ void test('compact bridge spans take about 10–15 seconds at normal pace while 
       ) < 1e-8,
     );
   }
-  for (const lot of CITY_PARKING.filter((p) => p.id !== 'bobrovy-log')) {
+  for (const lot of CITY_PARKING.filter(
+    (p) => p.id !== 'bobrovy-log' && !p.id.startsWith('fuel-'),
+  )) {
     const mall = cityBuildings.find((b) => b.kind === lot.id);
     assert.ok(
       lot.z - lot.d / 2 > mall.z + mall.d / 2,

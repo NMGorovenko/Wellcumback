@@ -1,3 +1,8 @@
+import {
+  CITY_RIGHTBANK_PARCELS,
+  CITY_LOCAL_ACCESS,
+  CITY_FUEL_STOPS,
+} from './right-bank.ts';
 import { CITY_ART_PARCELS } from './city-art.ts';
 import { inKachaWater, kachaParcelClear } from './kacha.ts';
 import {
@@ -1096,6 +1101,10 @@ export type CityBuilding = CityRect & {
   h: number;
   color: string;
   kind?:
+    | 'aerokos'
+    | 'fighter'
+    | 'zori'
+    | 'fuel'
     | 'city-art'
     | 'station'
     | 'university'
@@ -1277,6 +1286,8 @@ for (const [kind, x, z] of [
     { x, z },
   );
 cityBuildings.find((b) => b.kind === 'frank')!.z = 28;
+for (const r of cityRoads)
+  if (r.id === 'veynbauma:0' || r.id === 'veynbauma:1') r.layer = 'raised';
 export const CITY_PARKING = [
   { id: 'bobrovy-log', x: -838, z: 1224, w: 68, d: 30 },
   { id: 'kvant', x: -70, z: -125, w: 70, d: 28 },
@@ -1296,7 +1307,7 @@ for (const parking of CITY_PARKING) {
         ? CITY_ROUTES.studPlaneta.at(-1)!
         : parking.id === 'komsomoll'
           ? compactCityPoint({ x: 1020, z: -620 })
-          : compactCityPoint({ x: 1814, z: -1173 });
+          : { x: 887.96, z: -537 };
   // Each lot has a dry clear lane from a through street; parking details honour
   // this lane in their own collision/decoration exclusions.
   cityRoads.push(
@@ -1308,13 +1319,32 @@ for (const parking of CITY_PARKING) {
         // End the raised Kubatura ramp inland of the lower quay; the final
         // metres to the unchanged arrival point are level parking pavement.
         parking.id === 'kubatura'
-          ? { x: parking.x - 10, z: parking.z - 6 }
+          ? { x: parking.x - 15, z: parking.z - 2 }
           : { x: parking.x, z: parking.z },
       ],
       14,
     ),
   );
 }
+// Reserve landmarks before background streets and housing are generated.
+cityBuildings.push(...CITY_RIGHTBANK_PARCELS);
+CITY_PARKING.push(
+  ...CITY_FUEL_STOPS.map((stop) => {
+    const b = CITY_RIGHTBANK_PARCELS.find(
+      (b) => b.kind === 'fuel' && b.x === stop.x && b.z === stop.z,
+    )!;
+    return { id: stop.id, x: b.x, z: b.z, w: b.w, d: b.d };
+  }),
+);
+for (const access of CITY_LOCAL_ACCESS)
+  cityRoads.push(...projectedRoad(access.id, access.points, access.width));
+for (const stop of CITY_FUEL_STOPS)
+  cityStops.push({
+    ...stop,
+    title: 'ЗАПРАВКА',
+    subtitle: '',
+    color: '#b5d6c7',
+  });
 export function cityParcelClear(x: number, z: number, w: number, d: number) {
   return (
     kachaParcelClear(x, z, w, d, 3) &&

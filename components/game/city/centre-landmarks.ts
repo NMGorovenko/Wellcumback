@@ -61,7 +61,7 @@ export function createCentreLandmark(
   const front = b.d / 2 - 0.4;
   const glass = '#386078',
     white = '#e4dfd3',
-    trim = '#c3b8a4',
+    trim = '#c8bdad',
     dark = '#40545a';
   function arch(x: number, y: number, z: number, w: number, h: number) {
     const s = new THREE.Shape();
@@ -161,7 +161,7 @@ export function createCentreLandmark(
       [12, 6.87],
     ])
       box(w, 0.38, 1.3, white, 0, y, front - 0.25);
-    box(b.w - 1, 0.16, b.d - 0.6, '#536c69', 0, 6.2, -0.3);
+    box(b.w - 1, 0.16, b.d - 0.6, '#56616a', 0, 6.2, -0.3);
     for (const side of [-1, 1]) {
       const medallion = cyl(0.62, 0.06, white, side * 10, 4.6, front - 0.5);
       medallion.rotation.x = Math.PI / 2;
@@ -228,7 +228,7 @@ export function createCentreLandmark(
         b.h + 0.85,
         face - b.d * 0.13,
       );
-      box(b.w - 0.3, 0.42, 0.12, '#29383b', 0, 1.65, face + 0.1);
+      box(b.w - 0.3, 0.42, 0.12, '#263b42', 0, 1.65, face + 0.1);
     }
     if (!isPho && !isFrank) {
       // Mira 49: a shallow pediment, tall pilasters, outer risalits and stone balustrades.

@@ -49,7 +49,7 @@ export function createStreetDetails(
     kit.cylinder(0.07, 0.12, 3.2, '#40545a', 0, 1.6, 0, g);
     kit.box(0.9, 0.1, 0.32, '#40545a', 0.3, 3.2, 0, g, 0);
     kit.box(0.66, 0.08, 0.25, '#f3d5a3', 0.3, 3.13, 0, g, 0).material = lit;
-    kit.cylinder(0.19, 0.23, 0.22, '#6e7e82', 0, 0.11, 0, g);
+    kit.cylinder(0.19, 0.23, 0.22, '#68787a', 0, 0.11, 0, g);
     spots.push({ x, z, radius: 0.45 });
   }
   for (const side of [-1, 1])
@@ -62,7 +62,8 @@ export function createStreetDetails(
     }
   for (const road of cityRoads) {
     // Nikolaevsky has tall deck-anchored masts in its own bridge group.
-    if (road.bridge === 'nikolaevsky') continue;
+    if (['nikolaevsky', 'kommunalny', 'oktyabrsky'].includes(road.bridge ?? ''))
+      continue;
     const dx = road.to.x - road.from.x,
       dz = road.to.z - road.from.z,
       len = Math.hypot(dx, dz),
@@ -179,7 +180,7 @@ export function createStreetDetails(
         triangle.closePath();
         const face = kit.mesh(
           new THREE.ShapeGeometry(triangle),
-          kit.material('#f1edcd'),
+          kit.material('#e4dfd3'),
           g,
         );
         face.position.set(x, 2.5, z + facing * 0.06);

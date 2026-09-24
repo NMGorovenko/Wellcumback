@@ -1,3 +1,4 @@
+import { validCityFlight } from '../city/flight.ts';
 import { validCityDamage } from '../city/destruction.ts';
 import { CAR_COLORS } from './vehicles.ts';
 const obj = (value: unknown): value is Record<string, unknown> =>
@@ -106,6 +107,7 @@ export function validRaceState(value: unknown, capacity = 3) {
         'driftDistance',
       ].every((key) => finite((r.car as Record<string, unknown>)[key])) ||
       typeof r.car.drifting !== 'boolean' ||
+      !validCityFlight(r.car.flight) ||
       !(r.finishTime === null || finite(r.finishTime)) ||
       !(r.bestLap === null || finite(r.bestLap))
     )

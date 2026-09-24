@@ -344,7 +344,7 @@ void test('terrain stays clear across actual Kubatura pavement and retaining tri
   const failures = [];
   let probes = 0,
     retainingProbes = 0;
-  for (const color of ['535b5e', '68787a', 'a99880', 'baaa92'])
+  for (const color of ['535b5e', '68787a', '5d574e', '6c655b'])
     for (const mesh of colors.get(color) ?? []) {
       const p = mesh.geometry.attributes.position,
         index = mesh.geometry.index;
@@ -380,7 +380,7 @@ void test('terrain stays clear across actual Kubatura pavement and retaining tri
           );
           const ground = Math.max(...land(sample.x, sample.z));
           probes++;
-          if (color === 'a99880' || color === 'baaa92') retainingProbes++;
+          if (color === '5d574e' || color === '6c655b') retainingProbes++;
           if (ground > sample.y + 0.02)
             failures.push({
               color,

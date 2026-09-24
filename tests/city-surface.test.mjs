@@ -190,24 +190,35 @@ void test('ordinary fixed-step driving crosses above and beneath the deck withou
   }
 });
 
-void test('leaving the edge of an elevated deck is blocked rather than teleporting to ground', () => {
-  const car = carOn(upper, crossing, 10);
+void test('a strong outward impact breaks the rail and releases the car into continuous flight', () => {
+  const car = carOn(upper, crossing, 18);
   car.heading = heading(upper) + Math.PI / 2;
-  car.vx = Math.sin(car.heading) * 10;
-  car.vz = -Math.cos(car.heading) * 10;
-  let contacted = false;
-  for (let i = 0; i < 180; i++) {
+  car.vx = Math.sin(car.heading) * 18;
+  car.vz = -Math.cos(car.heading) * 18;
+  let airborneFrames = 0,
+    contacted = false;
+  const startY = car.elevation;
+  for (let i = 0; i < 150; i++) {
     const previous = car.elevation;
     const hit = stepCityCar(
       car,
-      { throttle: 0.3, steer: 0, handbrake: false },
+      { throttle: 0, steer: 0, handbrake: false },
       1 / 60,
     );
     contacted ||= hit.worldContact;
-    assert.ok(Math.abs(car.elevation - previous) < 0.15);
-    assert.ok(car.elevation - cityGroundHeight(car.x, car.z) > 5);
+    if (car.flight?.airborne && !car.flight.waterTime) {
+      airborneFrames++;
+      assert.ok(
+        Math.abs(car.elevation - previous) < 0.9,
+        'continuous fall, never a terrain snap',
+      );
+    }
+    if (car.flight?.waterTime) break;
   }
-  assert.equal(contacted, true);
+  assert.ok(contacted, 'rail impact is reported');
+  assert.ok(airborneFrames > 10, 'the car actually spends time falling');
+  assert.ok(car.elevation < startY - 3);
+  assert.ok(car.damage.marks.length > 0, 'the visible rail broke');
 });
 
 void test('uphill load reduces acceleration and downhill load increases it without idle creep', () => {

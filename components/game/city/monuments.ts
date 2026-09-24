@@ -12,7 +12,7 @@ export function createEuropeMonument(kit: RenderKit, root: THREE.Group) {
   g.name = 'predmostnaya-europe';
   g.position.set(ROUNDABOUT.x, 0.3, ROUNDABOUT.z);
   root.add(g);
-  const bronze = '#536c69';
+  const bronze = '#56616a';
   kit.cylinder(2.5, 2.7, 0.38, '#8f8c82', 0, 0.2, 0, g);
   kit.box(3.8, 0.65, 1.9, '#a69c89', 0, 0.65, 0, g);
   // Broad bull, projecting horns and the seated figure make the outline readable.
@@ -68,7 +68,7 @@ export function createWhiteHorse(kit: RenderKit, root: THREE.Group) {
   g.position.set(p.x, 0, p.z);
   g.rotation.y = -0.28;
   root.add(g);
-  const white = '#e4dfc0';
+  const white = '#e4dfd3';
   kit.cylinder(1.14, 1.2, 0.18, '#a69c89', 0, 0.14, 0, g);
   kit.sphere(0.68, 0.33, 0.27, white, -0.03, 1.05, 0, g, 14);
   for (const x of [-0.48, 0.42])
@@ -105,7 +105,7 @@ export function createChapelCannon(kit: RenderKit, root: THREE.Group) {
   g.rotation.y = -0.35;
   root.add(g);
   kit.cylinder(1.3, 1.45, 0.2, '#a69c89', 0, 0, 0, g);
-  kit.box(0.85, 0.3, 1.4, '#536c69', 0, 0.45, 0, g);
+  kit.box(0.85, 0.3, 1.4, '#56616a', 0, 0.45, 0, g);
   for (const side of [-1, 1]) {
     const wheel = kit.cylinder(
       0.43,
@@ -123,7 +123,7 @@ export function createChapelCannon(kit: RenderKit, root: THREE.Group) {
     new THREE.Vector3(0, 0.72, 0.5),
     new THREE.Vector3(0, 1.05, -1),
     0.16,
-    '#536c69',
+    '#56616a',
     g,
   );
 }

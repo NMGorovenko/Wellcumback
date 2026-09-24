@@ -89,10 +89,12 @@ void test('city Mustang reaches 300 progressively and the AMG stays competitivel
     );
 });
 
-void test('keyboard and analog throttle approach 300 on an uphill city road at 30, 60 and 144 Hz', () => {
+void test('keyboard and analog high-speed drives agree through a natural crest and landing at 30, 60 and 144 Hz', () => {
   const states = [30, 60, 144].flatMap((hz) =>
     [false, true].map((analog) => {
       const car = fullSpeedRun();
+      let maximum = 0,
+        flew = false;
       for (let frame = 0; frame < 8.2 * hz; frame++) {
         tickCity(
           car,
@@ -100,14 +102,18 @@ void test('keyboard and analog throttle approach 300 on an uphill city road at 3
           new Set(analog ? [] : ['KeyW']),
           analog ? throttle : undefined,
         );
+        maximum = Math.max(maximum, car.speed * 3.6);
+        flew ||= car.flight?.airborne;
         const road = cityRoads.find((r) => r.id === 'left-quay:1');
         assert.ok(distanceToRoad(car.x, car.z, road) + 2 < road.width / 2);
         assert.equal(cityCarBlocked(car.x, car.z, car.heading), false);
       }
-      assert.equal(car.bumps, 0);
+      assert.equal(car.bumps, 1, 'one landing after the crest');
+      assert.equal(flew, true);
+      assert.ok(maximum > 290 && maximum <= CITY_TOP_SPEED * 3.6);
       assert.ok(
-        car.speed * 3.6 > 294 && car.speed <= CITY_TOP_SPEED,
-        'the climb retains near-maximum speed while flat-road test reaches exactly300',
+        car.speed * 3.6 > 180 && car.speed <= CITY_TOP_SPEED,
+        'landing loses speed, but preserves forward momentum',
       );
       assert.equal(car.powertrain.gear, 6);
       assert.equal(car.drifting, false);
@@ -190,7 +196,8 @@ void test('pausing and JSON rejoining preserve the high-speed transmission and c
     tickCity(rejoined, 1 / 60, new Set(), throttle);
     tickCity(uninterrupted, 1 / 60, new Set(['KeyW']));
   }
-  assert.ok(rejoined.speed * 3.6 > 294 && rejoined.speed <= CITY_TOP_SPEED);
+  assert.equal(rejoined.speed, uninterrupted.speed);
+  assert.ok(rejoined.speed * 3.6 > 180 && rejoined.speed <= CITY_TOP_SPEED);
   assert.equal(rejoined.z, uninterrupted.z);
   assert.deepEqual(rejoined.powertrain, uninterrupted.powertrain);
 });

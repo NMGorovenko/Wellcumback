@@ -283,3 +283,62 @@ void test('instanced rails and trees animate, settle, restore and reuse all reso
     kit.dispose();
   }
 });
+
+void test('ornamental bridge sections fall as complete instanced panels and restore on a fresh drive', () => {
+  const kit = new RenderKit(new THREE.Scene()),
+    root = new THREE.Group();
+  try {
+    createBridgeRails(kit, root);
+    const panels = [];
+    root.traverse((object) => {
+      if (
+        object.userData.barrier &&
+        object.children.some(
+          (child) => child.geometry?.type === 'PlaneGeometry',
+        )
+      )
+        panels.push(object);
+    });
+    assert.ok(panels.length > 0, 'decorative railings exist');
+    const panel = panels[0],
+      id = cityBarriers.indexOf(panel.userData.barrier),
+      expected = panel.children.length;
+    const view = createCityDestruction(kit, root),
+      parts = [];
+    root.traverse((mesh) => {
+      mesh.userData.cityBarrierIndices?.forEach((barrierId, index) => {
+        if (barrierId !== id) return;
+        const base = new THREE.Matrix4();
+        mesh.getMatrixAt(index, base);
+        parts.push({ mesh, index, base });
+      });
+    });
+    assert.equal(
+      parts.length,
+      expected,
+      'plinth, handrails and ironwork all participate',
+    );
+    assert.equal(
+      panel.children.length,
+      0,
+      'no intact duplicate remains after batching',
+    );
+    assert.ok(parts.some((p) => p.mesh.geometry.type === 'PlaneGeometry'));
+    assert.ok(parts.some((p) => p.mesh.geometry.type === 'BoxGeometry'));
+    const damage = freshCityDamage();
+    strikeCityObject(damage, id, 25, 1, 1);
+    view.update(damage, 2);
+    const matrix = new THREE.Matrix4();
+    for (const part of parts) {
+      part.mesh.getMatrixAt(part.index, matrix);
+      assert.notDeepEqual(matrix.elements, part.base.elements);
+    }
+    view.update(freshCityDamage(), 0);
+    for (const part of parts) {
+      part.mesh.getMatrixAt(part.index, matrix);
+      assert.deepEqual(matrix.elements, part.base.elements);
+    }
+  } finally {
+    kit.dispose();
+  }
+});

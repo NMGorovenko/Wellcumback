@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import CityScene, { type CityReviewCamera } from './scene';
-import { freshCity, stepCityCar } from '@/lib/game/city/engine';
+import { freshCity, stepCityCar, recoverCityCar } from '@/lib/game/city/engine';
 import { breakableObjects, freshCityDamage } from '@/lib/game/city/destruction';
+import { freshFlight } from '@/lib/game/city/flight';
 import { cityRoads } from '@/lib/game/city/layout';
 import { citySurfacePose } from '@/lib/game/city/surface';
 import type { CityCameraMode } from './camera';
@@ -57,8 +58,9 @@ export default function CityReview() {
       vz: dz * 19,
       speed: 19,
       damage: freshCityDamage(),
+      flight: freshFlight(),
     });
-    impactUntil.current = game.current.elapsed + 0.9;
+    impactUntil.current = game.current.elapsed + 5;
   }
   function inspect(name: string) {
     const p = places[name],
@@ -75,6 +77,7 @@ export default function CityReview() {
       z: p.z,
       heading: p.heading,
       speed: 0,
+      flight: freshFlight(),
       vx: 0,
       vz: 0,
       travelRevision: (game.current.travelRevision ?? 0) + 1,
@@ -92,12 +95,14 @@ export default function CityReview() {
       const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
       game.current.elapsed += dt;
       if (game.current.elapsed < impactUntil.current) {
-        for (let i = 0; i < 6; i++)
-          stepCityCar(
+        for (let i = 0; i < 6; i++) {
+          const contact = stepCityCar(
             game.current,
             { throttle: 0, steer: 0, handbrake: false },
             dt / 6,
           );
+          if (contact.needsRecovery) recoverCityCar(game.current);
+        }
       }
       last = now;
       raf = requestAnimationFrame(tick);

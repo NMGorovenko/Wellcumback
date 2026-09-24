@@ -9,7 +9,7 @@ import type { RenderKit } from '../world/render-kit.ts';
 
 type Part = { mesh: THREE.InstancedMesh; index: number; base: THREE.Matrix4 };
 
-/** Two rail materials and three tree batches, regardless of damaged object count. */
+/** Rails batch by primitive and material; damage only updates instance transforms. */
 export function createCityDestruction(kit: RenderKit, root: THREE.Group) {
   root.updateMatrixWorld(true);
   const parts = new Map<number, Part[]>();
@@ -18,7 +18,12 @@ export function createCityDestruction(kit: RenderKit, root: THREE.Group) {
     group.push(part);
     parts.set(id, group);
   };
-  const rods = new Map<THREE.Material, { mesh: THREE.Mesh; id: number }[]>();
+  type RailBatch = {
+    material: THREE.Material;
+    shape: string;
+    entries: { mesh: THREE.Mesh; id: number }[];
+  };
+  const rods = new Map<string, RailBatch>();
   root.traverse((object) => {
     if (
       object instanceof THREE.InstancedMesh &&
@@ -33,43 +38,71 @@ export function createCityDestruction(kit: RenderKit, root: THREE.Group) {
     }
     if (
       !(object instanceof THREE.Mesh) ||
-      object.geometry.type !== 'CylinderGeometry' ||
+      !['CylinderGeometry', 'BoxGeometry', 'PlaneGeometry'].includes(
+        object.geometry.type,
+      ) ||
       !object.parent?.userData.barrier ||
       Array.isArray(object.material)
     )
       return;
     const id = cityBarriers.indexOf(object.parent.userData.barrier);
-    const entries = rods.get(object.material) ?? [];
-    entries.push({ mesh: object, id });
-    rods.set(object.material, entries);
+    if (id < 0) return;
+    const shape = object.geometry.type,
+      key = `${shape}:${object.material.uuid}`;
+    const batch: RailBatch = rods.get(key) ?? {
+      material: object.material,
+      shape,
+      entries: [],
+    };
+    batch.entries.push({ mesh: object, id });
+    rods.set(key, batch);
   });
-  const rodGeometry = new THREE.CylinderGeometry(1, 1, 1, 8);
-  kit.geometries.add(rodGeometry);
-  for (const [material, entries] of rods) {
-    const batch = new THREE.InstancedMesh(
-      rodGeometry,
-      material,
-      entries.length,
-    );
+  const unitGeometry = new Map<string, THREE.BufferGeometry>();
+  const discarded = new Set<THREE.BufferGeometry>();
+  for (const { material, shape, entries } of rods.values()) {
+    let geometry = unitGeometry.get(shape);
+    if (!geometry) {
+      geometry =
+        shape === 'CylinderGeometry'
+          ? new THREE.CylinderGeometry(1, 1, 1, 8)
+          : shape === 'BoxGeometry'
+            ? new THREE.BoxGeometry(1, 1, 1)
+            : new THREE.PlaneGeometry(1, 1);
+      unitGeometry.set(shape, geometry);
+      kit.geometries.add(geometry);
+    }
+    const batch = new THREE.InstancedMesh(geometry, material, entries.length);
     batch.name = 'breakable-city-rails';
+    batch.userData.cityBarrierIndices = entries.map((entry) => entry.id);
     batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     entries.forEach(({ mesh, id }, index) => {
-      const p = (mesh.geometry as THREE.CylinderGeometry).parameters;
+      const p = (
+        mesh.geometry as THREE.CylinderGeometry &
+          THREE.BoxGeometry &
+          THREE.PlaneGeometry
+      ).parameters;
+      const scale =
+        shape === 'CylinderGeometry'
+          ? [p.radiusTop, p.height, p.radiusTop]
+          : [p.width, p.height, shape === 'BoxGeometry' ? p.depth : 1];
       const base = mesh.matrixWorld
         .clone()
-        .multiply(
-          new THREE.Matrix4().makeScale(p.radiusTop, p.height, p.radiusTop),
-        );
+        .multiply(new THREE.Matrix4().makeScale(scale[0], scale[1], scale[2]));
       batch.setMatrixAt(index, base);
       add(id, { mesh: batch, index, base });
-      kit.geometries.delete(mesh.geometry);
-      mesh.geometry.dispose();
+      discarded.add(mesh.geometry);
       mesh.removeFromParent();
     });
     batch.castShadow = true;
     batch.receiveShadow = true;
     batch.computeBoundingSphere();
     root.add(batch);
+  }
+  // Some decorative rails share a unit plane. Dispose it only after all source
+  // instances have been consumed; the replacement batches own separate geometry.
+  for (const geometry of discarded) {
+    kit.geometries.delete(geometry);
+    geometry.dispose();
   }
   // All transforms are in world coordinates after liftScenery. Reserve a small
   // margin once, instead of recomputing bounds for thousands of instances per hit.

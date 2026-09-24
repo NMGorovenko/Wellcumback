@@ -39,7 +39,7 @@ export function createDistrictLandmark(
   };
   box(b.w, 0.35, b.d, '#d4d2b7', 0, 0.18, 0);
   if (b.kind === 'ikit') {
-    const cream = '#d2c7aa',
+    const cream = '#c8bdad',
       burgundy = '#805e51',
       glass = '#386078';
     const clad = (
@@ -54,9 +54,9 @@ export function createDistrictLandmark(
       const front = z + d / 2;
       // Fine panel seams sit outside the wall, not coplanar with it.
       for (let y = base + 0.7; y < base + h; y += 0.8)
-        box(w, 0.018, 0.025, '#c3b8a4', x, y, front + 0.018);
+        box(w, 0.018, 0.025, '#c8bdad', x, y, front + 0.018);
       for (let dx = -w / 2 + 0.8; dx < w / 2; dx += 0.8)
-        box(0.018, h, 0.025, '#c3b8a4', x + dx, base + h / 2, front + 0.018);
+        box(0.018, h, 0.025, '#c8bdad', x + dx, base + h / 2, front + 0.018);
       return body;
     };
     const windows = (
@@ -104,7 +104,7 @@ export function createDistrictLandmark(
       b.w * 0.22,
       b.h * 0.2,
       0.12,
-      '#29383b',
+      '#263b42',
       b.w * 0.28,
       b.h * 0.1,
       -b.d * 0.15,
@@ -203,7 +203,7 @@ export function createDistrictLandmark(
       box(5.2, 3, 6.5, '#c3b192', side * 3, 1.5, 0);
       const roof = kit.mesh(
         new THREE.ConeGeometry(4.1, 1.6, 4),
-        kit.material('#536c69'),
+        kit.material('#56616a'),
         g,
       );
       roof.position.set(side * 3, 3.6, 0);

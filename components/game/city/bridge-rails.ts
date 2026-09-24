@@ -1,3 +1,4 @@
+import { decorateBridgeRail } from './bridge-details.ts';
 import * as THREE from 'three';
 import { cityBarriers } from '../../../lib/game/city/barriers.ts';
 import { cityRoads } from '../../../lib/game/city/layout.ts';
@@ -16,6 +17,7 @@ export function createBridgeRails(kit: RenderKit, parent: THREE.Group) {
     group.userData.barrier = barrier;
     parent.add(group);
     groups.push(group);
+    if (decorateBridgeRail(kit, group, barrier, road)) continue;
     const curb = kit.box(
       barrier.w,
       0.24,

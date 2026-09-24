@@ -106,7 +106,7 @@ void test('a moderate-speed handbrake turn builds real lateral slip and releases
   assert.equal(drifting.driftBlend, 0);
 });
 
-void test('the higher forward limit cannot tunnel through buildings, banks, or bridge rails', () => {
+void test('top speed respects solid buildings and intact rails while banks allow a fall', () => {
   const straight = streetCity();
   advance(straight, 1.7, ['KeyW']);
   assert.ok(straight.speed > 13 && straight.speed <= CITY_TOP_SPEED);
@@ -157,13 +157,13 @@ void test('the higher forward limit cannot tunnel through buildings, banks, or b
     for (let i = 0; i < 120; i++) {
       tickCity(s, 1 / 60, new Set(['KeyW']));
       assert.equal(
-        cityCarBlocked(s.x, s.z, s.heading, s.elevation, s.damage),
+        cityCarBlocked(s.x, s.z, s.heading, s.elevation, s.damage, true),
         false,
         'the complete car stays outside blockers on every step',
       );
       assert.ok(s.speed <= CITY_TOP_SPEED + 1e-8);
     }
-    assert.ok(s.bumps > 0);
+    assert.ok(s.bumps > 0 || (s.travelRevision ?? 0) > 0 || s.flight?.airborne);
   }
 });
 

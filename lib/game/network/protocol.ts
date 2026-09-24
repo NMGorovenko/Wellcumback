@@ -1,3 +1,4 @@
+import { validCityFlight } from '../city/flight.ts';
 import { validCityDamage } from '../city/destruction.ts';
 import {
   CITY_TOP_SPEED,
@@ -7,7 +8,7 @@ import {
 import { CITY_BOUNDS, cityStops } from '../city/layout.ts';
 import type { DriveAxes } from '../input/drive.ts';
 import type { CityState } from '../city/engine.ts';
-export const NETWORK_VERSION = 7;
+export const NETWORK_VERSION = 8;
 export const NETWORK_CHANNEL = `wellcum-city-v${NETWORK_VERSION}`;
 const VERSION_MISMATCH =
   'Версии игры различаются. Обновите игру у обоих игроков и создайте новое приглашение.';
@@ -177,7 +178,34 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
       radio: s.radio,
       interaction: null,
     });
-    if (!validCityDamage(s.damage)) return null;
+    if (!validCityDamage(s.damage) || !validCityFlight(s.flight)) return null;
+    if (s.flight) {
+      const f = s.flight;
+      state.flight = {
+        airborne: f.airborne,
+        vy: f.vy,
+        waterTime: f.waterTime,
+        landing: f.landing,
+      };
+      if (f.safe) {
+        const p = f.safe;
+        state.flight.safe = {
+          x: p.x,
+          z: p.z,
+          heading: p.heading,
+          elevation: p.elevation,
+          surfaceId: p.surfaceId,
+        };
+      }
+    }
+    if (s.travelRevision !== undefined) {
+      if (
+        !Number.isSafeInteger(s.travelRevision) ||
+        Number(s.travelRevision) < 0
+      )
+        return null;
+      state.travelRevision = Number(s.travelRevision);
+    }
     if (s.damage) {
       const damage = s.damage as NonNullable<CityState['damage']>;
       state.damage = {
@@ -218,7 +246,7 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
         if (
           typeof s[key] !== 'number' ||
           !Number.isFinite(s[key]) ||
-          Math.abs(s[key]) > (key === 'elevation' ? 150 : Math.PI / 3)
+          Math.abs(s[key]) > (key === 'elevation' ? 200 : Math.PI / 3)
         )
           return null;
         state[key] = s[key];

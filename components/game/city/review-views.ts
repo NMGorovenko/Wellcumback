@@ -2,9 +2,13 @@ import {
   CITY_BOBROVY_LOG,
   CITY_PARKING,
   cityBuildings,
+  cityRoads,
   type CityPoint,
 } from '../../../lib/game/city/layout.ts';
-import { cityGroundHeight } from '../../../lib/game/city/surface.ts';
+import {
+  cityGroundHeight,
+  cityRoadHeight,
+} from '../../../lib/game/city/surface.ts';
 import type { CityReviewCamera } from './scene.tsx';
 
 export type CityReviewPlace = CityPoint & {
@@ -59,6 +63,74 @@ const bobFront = {
 /** Development-only frames use canonical parcels and current terrain heights,
  * so moving a landmark or raising its forecourt cannot leave stale viewpoints. */
 export const CITY_LANDMARK_REVIEW_PLACES: Record<string, CityReviewPlace> = {
+  'Коммунальный · панорама с дороги': {
+    x: 185,
+    z: 195,
+    heading: 0,
+    road: 'bridge-kommunalny:0',
+    view: {
+      position: {
+        x: 185,
+        y:
+          cityRoadHeight(
+            cityRoads.find((r) => r.id === 'bridge-kommunalny:0')!,
+            185,
+            195,
+          ) + 2.2,
+        z: 195,
+      },
+      look: { x: 183, y: 14, z: 88 },
+      fov: 70,
+      shadowSize: 90,
+      fitWidth: false,
+    },
+  },
+  'Октябрьский · Кубатура с дороги': {
+    x: 941,
+    z: -377,
+    heading: -0.25,
+    road: 'bridge-oktyabrsky:0',
+    view: {
+      position: {
+        x: 941,
+        y:
+          cityRoadHeight(
+            cityRoads.find((r) => r.id === 'bridge-oktyabrsky:0')!,
+            941,
+            -377,
+          ) + 2.2,
+        z: -377,
+      },
+      look: { x: 925, y: 22, z: -510 },
+      fov: 65,
+      shadowSize: 90,
+      fitWidth: false,
+    },
+  },
+  'Аэрокос · ракета': view(
+    building('aerokos'),
+    [-75, 35, -95],
+    [0, 16, 0],
+    110,
+  ),
+  'МиГ · сквер Авиаторов': view(
+    building('fighter'),
+    [25, 12, 34],
+    [0, 11, 0],
+    45,
+  ),
+  'Тихие Зори · с набережной': view(
+    building('zori'),
+    [30, 15, -105],
+    [-60, 30, 10],
+    110,
+  ),
+  'Заправка · проезд под навесом': view(
+    building('fuel'),
+    [-13, 9, 35],
+    [0, 2, 0],
+    40,
+  ),
   'Музей · восточнее моста': view(museum, [28, 20, 48], [-12, 3, 7]),
   'Опера · восточный фасад': view(opera, [48, 11, 11], [0, 3, 0]),
   'Кубатура · поднятая парковка': view(

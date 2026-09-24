@@ -28,6 +28,10 @@ export function createMallLandmark(
   g.name = `landmark:${b.kind}`;
   g.position.set(b.x, 0, b.z);
   root.add(g);
+  // The bridge sees the long cinema side; the curved parking facade faces west.
+  // Swap local dimensions before rotation, retaining the physical parcel bounds.
+  const model = b.kind === 'kubatura' ? { ...b, w: b.d, d: b.w } : b;
+  if (b.kind === 'kubatura') g.rotation.y = -Math.PI / 2;
   const box = (
     w: number,
     h: number,
@@ -64,7 +68,7 @@ export function createMallLandmark(
     y: number,
     z: number,
   ) => facadeText(kit, g, t, c, w, x, y, z);
-  const { w, h, d } = b;
+  const { w, h, d } = model;
   if (b.kind === 'planeta') {
     const wingH = h * 0.46,
       front = d * 0.21,
@@ -95,7 +99,7 @@ export function createMallLandmark(
       front + 0.07,
     );
     // Unequal horizontal colour strips, as on the actual shopfront cladding.
-    const colors = [orange, '#e0bc42', '#8baca6', white, '#c36a41', '#d2c7aa'];
+    const colors = [orange, '#e0bc42', '#8baca6', white, '#c36a41', '#c8bdad'];
     const lengths = [0.07, 0.12, 0.045, 0.09, 0.055, 0.11, 0.08];
     const stripH = wingH * 0.075;
     for (let row = 0; row < 7; row++) {
@@ -425,7 +429,7 @@ export function createMallLandmark(
       w - 1.2,
       bodyH,
       d * 0.77 - 0.4,
-      white,
+      '#b6c1c0',
       0,
       bodyH / 2,
       -d * 0.115,
@@ -435,8 +439,8 @@ export function createMallLandmark(
     // Main parking facade, confirmed by the official aerial: two rounded glass ends,
     // orange vertical stair towers, and a broad white advertising wall between them.
     for (const [bayX, bayW, bulge] of [
-      [-w * 0.398, w * 0.15, d * 0.1],
-      [w * 0.355, w * 0.25, d * 0.17],
+      [-w * 0.398, w * 0.15, Math.min(w, d) * 0.1],
+      [w * 0.355, w * 0.25, Math.min(w, d) * 0.15],
     ]) {
       const bottom = h * 0.12,
         top = h * 0.91,
@@ -581,7 +585,7 @@ export function createMallLandmark(
     const roofShape = new THREE.Shape();
     for (let i = 0; i <= 20; i++) {
       const a = (Math.PI * i) / 20,
-        x = Math.cos(a) * d * 0.12,
+        x = Math.cos(a) * Math.min(w, d) * 0.12,
         y = Math.sin(a) * h * 0.12;
       if (!i) roofShape.moveTo(x, y);
       else roofShape.lineTo(x, y);
@@ -600,7 +604,7 @@ export function createMallLandmark(
     roof.position.set(-w * 0.185, bodyH, -d * 0.05);
     for (let i = 0; i <= 10; i++) {
       const rib = kit.mesh(
-        new THREE.TorusGeometry(d * 0.12, 0.045, 4, 16, Math.PI),
+        new THREE.TorusGeometry(Math.min(w, d) * 0.12, 0.045, 4, 16, Math.PI),
         kit.material(white),
         g,
       );
@@ -612,7 +616,7 @@ export function createMallLandmark(
     for (let x = -w / 2 + 2; x < w / 2; x += 4)
       box(0.035, bodyH, 0.04, '#b6c1c0', x, bodyH / 2, front + 0.08);
   }
-  addMallSurroundings(kit, g, b);
+  addMallSurroundings(kit, g, model);
   return true;
 }
 
@@ -644,6 +648,7 @@ export function mallParkingPropClear(
 
 export function createMallParking(kit: RenderKit, root: THREE.Group) {
   for (const p of CITY_PARKING) {
+    if (p.id.startsWith('fuel-')) continue;
     if (p.id === 'kubatura') {
       createKubaturaTerrace(kit, root);
       continue;
@@ -724,7 +729,7 @@ export function createMallParking(kit: RenderKit, root: THREE.Group) {
         shape.closePath();
         const roof = kit.mesh(
           new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false }),
-          kit.material('#d2c7aa'),
+          kit.material('#c8bdad'),
           g,
         );
         roof.name = 'parking:barrel-ramp';

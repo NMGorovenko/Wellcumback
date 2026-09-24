@@ -77,14 +77,19 @@ void test('mall side and rear details remain exposed outside their structural wa
               new THREE.Vector3(b.w * 0.265, b.h * 0.2, b.d * -1),
               new THREE.Vector3(0, 0, 1),
             )
-          : new THREE.Raycaster(
-              new THREE.Vector3(
-                b.w,
-                b.h * (kind === 'komsomoll' ? 0.42 : 0.61),
-                b.d * -0.17,
-              ),
-              new THREE.Vector3(-1, 0, 0),
-            );
+          : kind === 'kubatura'
+            ? new THREE.Raycaster(
+                new THREE.Vector3(b.w * 0.17, b.h * 0.61, b.d),
+                new THREE.Vector3(0, 0, -1),
+              )
+            : new THREE.Raycaster(
+                new THREE.Vector3(
+                  b.w,
+                  b.h * (kind === 'komsomoll' ? 0.42 : 0.61),
+                  b.d * -0.17,
+                ),
+                new THREE.Vector3(-1, 0, 0),
+              );
       const hit = ray.intersectObject(root, true)[0];
       assert.equal(
         hit?.object.name,

@@ -1,3 +1,4 @@
+import { createBridgeDetails } from './bridge-details.ts';
 import { createCityArt } from './city-art.ts';
 import { KACHA_TERRAIN_HOLES } from '../../../lib/game/city/kacha.ts';
 import { createKachaRiver } from './kacha-river.ts';
@@ -9,6 +10,7 @@ import {
   createNeighbourhoodBuilding,
   createNeighbourhoodGreenery,
 } from './neighbourhoods.ts';
+import { createRightBankLandmark } from './right-bank-landmarks.ts';
 import { createCentreLandmark, createCityParking } from './centre-landmarks.ts';
 import { createDistrictLandmark } from './district-landmarks.ts';
 import * as THREE from 'three';
@@ -38,6 +40,7 @@ import {
   cityGroundHeight,
   cityGroundRoadHeight,
   cityKubaturaRetainingEdges,
+  cityKubaturaRetainingCorners,
   cityRoadHeight,
   cityRoadLayer,
   citySurfacePose,
@@ -204,6 +207,11 @@ export function* buildCityEnvironment(
     ...KACHA_TERRAIN_HOLES.flatMap((outline) => convexPieces(outline)),
     ...BOBROVY_TERRAIN_FOOTPRINTS,
     CITY_KUBATURA_TERRACE.outline,
+    ...cityKubaturaRetainingCorners().map(({ point, left, right }) => [
+      point,
+      left,
+      right,
+    ]),
     ...cityKubaturaRetainingEdges().map(({ p, q, nx, nz }) => [
       p,
       { x: p.x + nx * 3, z: p.z + nz * 3 },
@@ -505,7 +513,8 @@ export function* buildCityEnvironment(
       roads,
       layer === 'ground' ? ROUNDABOUT : undefined,
     );
-    const sample = layer === 'raised' ? roadSample(roads) : cityGroundRoadHeight;
+    const sample =
+      layer === 'raised' ? roadSample(roads) : cityGroundRoadHeight;
     const asphalt = drapedSurface(
       kit,
       root,
@@ -668,75 +677,10 @@ export function* buildCityEnvironment(
         kit.mesh(geometry, underside.material, root);
       }
     }
-    if (r.bridge === 'oktyabrsky') {
-      const beamColor = '#6f8282';
-      for (let along = 0; along < length; along += 8)
-        for (const side of [-1, 1]) {
-          const end = Math.min(length, along + 8),
-            t = (along + end) / 2;
-          const x = r.from.x + (dx * t) / length + side * nx * r.width * 0.32;
-          const z = r.from.z + (dz * t) / length + side * nz * r.width * 0.32;
-          const deck = cityRoadHeight(r, x, z);
-          if (deck - cityGroundHeight(x, z) < 4) continue;
-          const beam = kit.box(
-            0.65,
-            2.2,
-            end - along + 0.1,
-            beamColor,
-            x,
-            deck - 1.9,
-            z,
-            root,
-            0,
-          );
-          beam.rotation.y = Math.atan2(dx, dz);
-          const y0 = cityRoadHeight(
-            r,
-            r.from.x + (dx * along) / length,
-            r.from.z + (dz * along) / length,
-          );
-          const y1 = cityRoadHeight(
-            r,
-            r.from.x + (dx * end) / length,
-            r.from.z + (dz * end) / length,
-          );
-          beam.rotation.x = -Math.atan2(y1 - y0, end - along);
-        }
-    }
-    if (r.bridge === 'kommunalny') {
-      for (let start = 2; start + 42 < length - 2; start += 48) {
-        for (const side of [-1, 1]) {
-          const arch = (u: number) => {
-            const t = start + u * 42;
-            const x = r.from.x + (dx * t) / length + side * nx * r.width * 0.4;
-            const z = r.from.z + (dz * t) / length + side * nz * r.width * 0.4;
-            const y =
-              cityRoadHeight(r, x, z) -
-              CITY_DECK_THICKNESS -
-              0.65 -
-              6.0 * (2 * u - 1) ** 2;
-            return new THREE.Vector3(x, y, z);
-          };
-          for (let step = 0; step < 16; step++)
-            kit.rod(
-              arch(step / 16),
-              arch((step + 1) / 16),
-              0.52,
-              '#d4d2b7',
-              root,
-            );
-          for (const u of [0, 0.25, 0.75, 1]) {
-            const bottom = arch(u),
-              top = bottom.clone();
-            top.y = cityRoadHeight(r, top.x, top.z) - CITY_DECK_THICKNESS;
-            kit.rod(bottom, top, 0.16, '#d4d2b7', root);
-          }
-        }
-      }
-    }
     for (
       let along = 18;
-      r.bridge !== 'nikolaevsky' && along < length - 8;
+      !['nikolaevsky', 'kommunalny', 'oktyabrsky'].includes(r.bridge ?? '') &&
+      along < length - 8;
       along += 32
     ) {
       const x = r.from.x + (dx * along) / length,
@@ -781,6 +725,7 @@ export function* buildCityEnvironment(
   yield { label: 'Ограждения мостов', progress: 0.51 };
   createBridgeRails(kit, root);
   createNikolaevskyDetails(kit, root);
+  createBridgeDetails(kit, root);
   yield { label: 'Кольцевые развязки', progress: 0.515 };
   for (const roundabout of CITY_ROUNDABOUTS) {
     const ringRoot = new THREE.Group();
@@ -792,7 +737,7 @@ export function* buildCityEnvironment(
       roundabout.innerRadius,
       roundabout.innerRadius,
       0.38,
-      '#c9c9ad',
+      '#c8bdad',
       roundabout.x,
       0.19,
       roundabout.z,
@@ -853,13 +798,14 @@ export function* buildCityEnvironment(
     if (building.kind === 'bobrovy-log' || building.kind === 'city-art')
       continue; // Built with the lift stations below.
     const { x, z, w, d, h, color } = building;
+    if (createRightBankLandmark(kit, root, building)) continue;
     if (createCentreLandmark(kit, root, building)) continue;
     if (createDistrictLandmark(kit, root, building)) continue;
     if (createCivicBuilding(kit, root, building, lit)) continue;
     if (createNeighbourhoodBuilding(kit, root, building, index)) continue;
     createApartmentDetails(kit, root, building, index);
     kit.box(w, h, d, color, x, h / 2, z, root, 0);
-    kit.box(w + 0.16, 0.16, d + 0.16, '#6e7e82', x, h + 0.08, z, root, 0);
+    kit.box(w + 0.16, 0.16, d + 0.16, '#68787a', x, h + 0.08, z, root, 0);
     const floors = Math.max(2, Math.floor(h / 1.7));
     for (let floor = 0; floor < floors; floor++)
       for (const side of [-1, 1]) {
@@ -897,12 +843,12 @@ export function* buildCityEnvironment(
     if (building.kind === 'station') {
       createStationRoof(kit, root, building);
       // Pale symmetrical facade, central clock and roof sign distinguish the main station.
-      kit.box(4.6, 2.2, d + 0.4, '#dfe0c6', x, h + 0.8, z, root, 0);
+      kit.box(4.6, 2.2, d + 0.4, '#e4dfd3', x, h + 0.8, z, root, 0);
       const clock = kit.cylinder(
         0.72,
         0.72,
         0.12,
-        '#f1eed8',
+        '#e4dfd3',
         x,
         h + 0.9,
         z + d / 2 + 0.28,

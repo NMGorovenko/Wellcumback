@@ -11,6 +11,7 @@ import {
   cityGroundHeight,
   cityKubaturaTerraceDistance,
   cityKubaturaRetainingEdges,
+  cityKubaturaRetainingCorners,
   cityRoadHeight,
   citySurfacePose,
 } from '../lib/game/city/surface.ts';
@@ -37,7 +38,10 @@ const at = (distance, lateral = 0) => ({
 void test('Kubatura building and arrival sit on a level terrace above the lower approach', () => {
   const b = cityBuildings.find((b) => b.kind === 'kubatura');
   const rise = terrace.height - cityGroundHeight(entry.from.x, entry.from.z);
-  assert.ok(rise >= 4 && rise <= 6, 'a modest artistic terrace, not a cliff');
+  assert.ok(
+    rise >= 7 && rise <= 10,
+    'upper street climbs onto the tall embankment',
+  );
   assert.equal(cityGroundHeight(entry.to.x, entry.to.z), terrace.height);
   assert.equal(
     cityGroundHeight(terrace.arrival.x, terrace.arrival.z),
@@ -123,7 +127,7 @@ void test('fixed-step driving reaches and leaves the upper arrival without wall 
     }
 });
 
-void test('the actual retaining face stops a car from either level before it can sink or pass through', () => {
+void test('the actual retaining face stops a car climbing from below', () => {
   const edge = cityKubaturaRetainingEdges().find(
     (e) =>
       e.nx > 0.5 &&
@@ -136,7 +140,7 @@ void test('the actual retaining face stops a car from either level before it can
   assert.ok(edge, 'an exposed curved front-right wall exists');
   const x = (edge.p.x + edge.q.x) / 2,
     z = (edge.p.z + edge.q.z) / 2;
-  for (const side of [1, -1]) {
+  for (const side of [1]) {
     const outset = side > 0 ? 9 : -7,
       h = Math.atan2(-edge.nx * side, edge.nz * side);
     const start = { x: x + edge.nx * outset, z: z + edge.nz * outset };
@@ -260,7 +264,7 @@ void test('rendered terrace matches physical height, clears complete road lanes 
           assert.ok(Math.abs(v.y - cityGroundHeight(v.x, v.z) - 0.08) < 0.0001);
         }
         if (wall)
-          assert.ok(terrace.height - v.y < 6, 'bounded retaining height');
+          assert.ok(terrace.height - v.y < 12.1, 'bounded retaining height');
       }
     });
     assert.ok(
@@ -281,9 +285,50 @@ void test('rendered terrace matches physical height, clears complete road lanes 
         assert.ok(hit, 'paved ramp reaches the upper parking');
         assert.ok(
           Math.abs(hit.point.y - cityGroundHeight(p.x, p.z) - 0.08) < 0.05,
-          'rendered triangles agree between samples',
+          `rendered triangles agree between samples: d=${distance}, lateral=${lateral}, delta=${hit.point.y - cityGroundHeight(p.x, p.z) - 0.08}`,
         );
       }
+  } finally {
+    kit.dispose();
+  }
+});
+
+void test('parking entry endcap leaves the front retaining wall intact and rounded toes are sealed', () => {
+  const edges = cityKubaturaRetainingEdges();
+  assert.ok(
+    edges.some(
+      ({ p, q }) =>
+        (p.x + q.x) / 2 > 953.2 &&
+        (p.x + q.x) / 2 < 962.8 &&
+        (p.z + q.z) / 2 > -470 &&
+        (p.z + q.z) / 2 < -462,
+    ),
+    'no false second exit in the front face',
+  );
+  const corners = cityKubaturaRetainingCorners();
+  assert.ok(corners.length > 1);
+  const kit = new RenderKit(new THREE.Scene()),
+    root = new THREE.Group();
+  try {
+    const terrace = createKubaturaTerrace(kit, root);
+    root.updateMatrixWorld(true);
+    const faces = [];
+    terrace.traverse((mesh) => {
+      if (mesh.name === 'kubatura:retaining-corner') faces.push(mesh);
+    });
+    for (const corner of corners) {
+      const origin = new THREE.Vector3(
+        (corner.point.x + corner.left.x + corner.right.x) / 3,
+        corner.top + 2,
+        (corner.point.z + corner.left.z + corner.right.z) / 3,
+      );
+      const hit = new THREE.Raycaster(
+        origin,
+        new THREE.Vector3(0, -1, 0),
+      ).intersectObjects(faces, false)[0];
+      assert.ok(hit, 'every curved joint has a visible masonry face');
+      assert.ok(hit.point.y > Math.min(corner.left.y, corner.right.y));
+    }
   } finally {
     kit.dispose();
   }

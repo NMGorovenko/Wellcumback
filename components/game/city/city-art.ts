@@ -113,7 +113,7 @@ function muralHost(kit: RenderKit, parent: THREE.Group, spec: CityMural) {
     d = spec.buildingDepth,
     h = spec.h;
   kit.box(w, h, d, spec.color, 0, h / 2, 0, group, 0);
-  kit.box(w + 0.3, 0.35, d + 0.3, '#6b7475', 0, h + 0.17, 0, group, 0);
+  kit.box(w + 0.3, 0.35, d + 0.3, '#68787a', 0, h + 0.17, 0, group, 0);
   kit.box(w + 0.1, 1, d + 0.1, '#79766a', 0, 0.5, 0, group, 0);
   // Windows on the long sides leave the documented mural end fully blind.
   for (let floor = 0; floor < spec.floors; floor++) {

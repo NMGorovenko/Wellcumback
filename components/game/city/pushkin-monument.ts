@@ -23,7 +23,7 @@ export function createPushkinMonument(
   // Reuse the neighbouring theatre / Apollo palette so city batching adds
   // only the inscription's draw call, not a new material for every shade.
   const stone = '#e4dfd3',
-    trim = '#c3b8a4',
+    trim = '#c8bdad',
     bronze = '#5e6658';
 
   // At this scale eight-sided shafts and low-poly heads retain the silhouette.

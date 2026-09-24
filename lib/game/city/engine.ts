@@ -1,3 +1,6 @@
+import { fuelSolids } from './right-bank.ts';
+import { freshFlight, type CityFlight } from './flight.ts';
+import { inKachaWater, sampleKacha } from './kacha.ts';
 import { onKachaStreetDeck, cityKachaRailBlocked } from './kacha-decks.ts';
 import {
   cityBreakablesAt,
@@ -17,7 +20,9 @@ import {
 import { stepCar, type CarInput, type VehicleTuning } from './car-physics.ts';
 import {
   citySurfacePose,
+  cityCeilingHit,
   cityRoadHeight,
+  cityGroundHeight,
   cityKubaturaWallBlocked,
 } from './surface.ts';
 import { freshPowertrain, type PowertrainState } from './powertrain.ts';
@@ -39,6 +44,7 @@ import {
   cityStops,
 } from './layout.ts';
 export type CityState = {
+  flight?: CityFlight;
   damage?: CityDamage;
   elevation?: number;
   pitch?: number;
@@ -79,6 +85,7 @@ export const freshCity = (): CityState => ({
   ...citySurfacePose(CITY_SPAWN.x, CITY_SPAWN.z, CITY_SPAWN.heading),
   paused: false,
   damage: freshCityDamage(),
+  flight: freshFlight(),
   players: 1,
   x: CITY_SPAWN.x,
   z: CITY_SPAWN.z,
@@ -136,8 +143,9 @@ export function cityBlocked(
   z: number,
   elevation?: number,
   damage?: CityDamage,
+  allowFalling = false,
 ) {
-  if (cityKubaturaWallBlocked(x, z, RADIUS)) return true;
+  if (cityKubaturaWallBlocked(x, z, RADIUS, elevation)) return true;
   if (
     cityKachaRailBlocked(
       x,
@@ -156,6 +164,7 @@ export function cityBlocked(
   )
     return true;
   if (
+    !allowFalling &&
     inCityWater(x, z, RADIUS) &&
     !cityRoads.some(
       (r) =>
@@ -196,6 +205,22 @@ export function cityBlocked(
       Math.abs(localZ) >= b.d / 2 + RADIUS
     )
       return false;
+    if ('kind' in b && b.kind === 'fuel') {
+      const y =
+        (elevation ?? cityGroundHeight(b.x, b.z)) - cityGroundHeight(b.x, b.z);
+      return fuelSolids(b).some(
+        (solid) =>
+          y < solid.h &&
+          y + 1.5 > 0 &&
+          Math.abs(localX - solid.x) < solid.w / 2 + RADIUS &&
+          Math.abs(localZ - solid.z) < solid.d / 2 + RADIUS,
+      );
+    }
+    if (elevation !== undefined && !b.roadId && 'h' in b) {
+      const base = cityGroundHeight(b.x, b.z);
+      if (elevation > base + Number(b.h) || elevation + 1.5 < base)
+        return false;
+    }
     if (elevation !== undefined && b.roadId) {
       const road = cityRoads.find((r) => r.id === b.roadId)!;
       if (Math.abs(cityRoadHeight(road, x, z) - elevation) > 2.5) return false;
@@ -210,6 +235,7 @@ export function cityCarBlocked(
   heading: number,
   elevation = citySurfacePose(x, z, heading).elevation,
   damage?: CityDamage,
+  allowFalling = false,
 ) {
   return [-1.2, 0, 1.2].some((offset) =>
     cityBlocked(
@@ -217,6 +243,7 @@ export function cityCarBlocked(
       z - Math.cos(heading) * offset,
       elevation,
       damage,
+      allowFalling,
     ),
   );
 }
@@ -229,58 +256,180 @@ export function stepCityCar(
   tuning?: VehicleTuning,
   damage = (s.damage ??= freshCityDamage()),
 ) {
+  const flight = (s.flight ??= freshFlight());
+  flight.landing = Math.max(0, flight.landing - dt * 2.5);
+  if (flight.waterTime > 0) {
+    flight.waterTime += dt;
+    s.vx = s.vz = s.speed = 0;
+    s.drifting = false;
+    return { worldContact: false, needsRecovery: flight.waterTime >= 1.3 };
+  }
   const prior = citySurfacePose(s.x, s.z, s.heading, s.elevation, s.surfaceId);
-  Object.assign(s, prior);
-  // A modest gravity component is noticeable uphill without turning parking
-  // or the automatic transmission into a hill-start simulation.
-  if (s.speed > 0.5) {
+  if (!flight.airborne) Object.assign(s, prior);
+  const oldY = s.elevation ?? prior.elevation;
+  if (!flight.airborne && s.speed > 0.5) {
     const gravity = Math.sin(prior.pitch) * 9.81 * 0.45 * dt;
     s.vx -= Math.sin(s.heading) * gravity;
     s.vz += Math.cos(s.heading) * gravity;
   }
+  if (!flight.airborne && prior.surfaceId.startsWith('road:')) {
+    const road = cityRoads.find((r) => `road:${r.id}` === prior.surfaceId);
+    if (
+      road &&
+      distanceToRoad(s.x, s.z, road) < road.width / 2 - 3 &&
+      !cityCarBlocked(s.x, s.z, s.heading, oldY, damage)
+    )
+      flight.safe = {
+        x: s.x,
+        z: s.z,
+        heading: s.heading,
+        elevation: oldY,
+        surfaceId: prior.surfaceId,
+      };
+  }
   const before = { x: s.x, z: s.z };
   let destructiveContact = false;
+  const oldDriftDistance = s.driftDistance;
+  const wasAirborne = flight.airborne;
   const result = stepCar(
     s,
     input,
     dt,
     (x, z, heading) => {
+      const travel = Math.hypot(x - before.x, z - before.z);
       const pose = citySurfacePose(
         x,
         z,
         heading,
-        prior.elevation,
+        oldY,
         prior.surfaceId,
+        flight.airborne ? oldY + 0.3 : Infinity,
       );
-      const travel = Math.hypot(x - before.x, z - before.z);
+      const contactY = flight.airborne ? oldY : Math.max(oldY, pose.elevation);
       for (const offset of [-1.2, 0, 1.2]) {
         const ids = cityBreakablesAt(
           x + Math.sin(heading) * offset,
           z - Math.cos(heading) * offset,
-          pose.elevation,
+          contactY,
           damage,
         );
         for (const id of ids)
           if (strikeCityObject(damage, id, s.vx, s.vz, s.elapsed))
             destructiveContact = true;
       }
+      // An upward ledge is a collision; a downward ledge is a take-off.
       return (
-        Math.abs(pose.elevation - prior.elevation) > 0.3 + travel * 0.22 ||
-        cityCarBlocked(x, z, heading, pose.elevation, damage)
+        pose.elevation - oldY > 0.3 + travel * 0.22 ||
+        cityCarBlocked(x, z, heading, contactY, damage, true)
       );
     },
     tuning,
+    !flight.airborne,
   );
-  Object.assign(
-    s,
-    citySurfacePose(s.x, s.z, s.heading, prior.elevation, prior.surfaceId),
+  const pose = citySurfacePose(
+    s.x,
+    s.z,
+    s.heading,
+    oldY,
+    prior.surfaceId,
+    flight.airborne ? oldY + 0.3 : Infinity,
   );
+  const travel = Math.hypot(s.x - before.x, s.z - before.z);
+  const projectedY = oldY + flight.vy * dt - 0.5 * 18 * dt * dt;
+  if (
+    !flight.airborne &&
+    (oldY - pose.elevation > 0.32 + travel * 0.3 ||
+      (s.speed > 9 && flight.vy > 1 && projectedY - pose.elevation > 0.1))
+  )
+    flight.airborne = true;
+  const waterAtCar = inCityWater(s.x, s.z);
+  const waterHeight = inKachaWater(s.x, s.z)
+    ? sampleKacha(s.x, s.z).waterHeight
+    : 0;
+  if (waterAtCar && pose.elevation < waterHeight && oldY <= waterHeight + 0.35)
+    flight.airborne = true;
+  let landed = false;
+  if (flight.airborne) {
+    flight.vy = Math.max(-80, flight.vy - 18 * dt);
+    const ceiling = cityCeilingHit(s.x, s.z, oldY, projectedY);
+    s.elevation = ceiling ?? projectedY;
+    if (ceiling !== null) flight.vy = -Math.abs(flight.vy) * 0.2;
+    const water = inCityWater(s.x, s.z);
+    const waterY = inKachaWater(s.x, s.z)
+      ? sampleKacha(s.x, s.z).waterHeight
+      : 0;
+    const waterFirst = water && pose.elevation < waterY;
+    if (waterFirst && s.elevation <= waterY + 0.15) {
+      s.elevation = waterY - 0.65;
+      flight.waterTime = dt;
+      flight.vy = 0;
+      s.vx *= 0.1;
+      s.vz *= 0.1;
+      s.speed *= 0.1;
+      s.radio = 'Ярик: Ну всё, теперь катер.';
+      s.radioUntil = s.elapsed + 4;
+    } else if (
+      flight.vy <= 0 &&
+      s.elevation <= pose.elevation &&
+      oldY >= pose.elevation - 0.35
+    ) {
+      const impact = Math.abs(flight.vy);
+      Object.assign(s, pose);
+      flight.airborne = false;
+      flight.vy = 0;
+      flight.landing = Math.min(1, impact / 18);
+      const loss = Math.max(0.55, 1 - impact * 0.018);
+      s.vx *= loss;
+      s.vz *= loss;
+      s.speed *= loss;
+      landed = impact > 4;
+    } else {
+      s.pitch =
+        (s.pitch ?? 0) +
+        (Math.max(
+          -0.5,
+          Math.min(0.4, Math.atan2(flight.vy, Math.max(8, s.speed))),
+        ) -
+          (s.pitch ?? 0)) *
+          (1 - Math.exp(-dt * 2));
+    }
+    s.drifting = false;
+    if (wasAirborne) s.driftDistance = oldDriftDistance;
+  } else {
+    flight.vy = Math.max(-16, Math.min(16, (pose.elevation - oldY) / dt));
+    Object.assign(s, pose);
+  }
   if (destructiveContact) {
     s.vx *= 0.76;
     s.vz *= 0.76;
     s.speed = Math.hypot(s.vx, s.vz);
   }
-  return { worldContact: result.worldContact || destructiveContact };
+  return {
+    worldContact: result.worldContact || destructiveContact || landed,
+    needsRecovery: false,
+  };
+}
+/** A water fall returns to the last stable road pose, preserving trip progress. */
+export function recoverCityCar(s: CityState) {
+  const safe = s.flight?.safe;
+  if (
+    safe &&
+    !cityCarBlocked(safe.x, safe.z, safe.heading, safe.elevation, s.damage)
+  ) {
+    Object.assign(s, safe, {
+      vx: 0,
+      vz: 0,
+      speed: 0,
+      pitch: 0,
+      steering: 0,
+      drifting: false,
+      driftBlend: 0,
+      throttle: 0,
+      flight: freshFlight(),
+      travelRevision: (s.travelRevision ?? 0) + 1,
+    });
+  } else resetCityCar(s);
+  resetVehiclePresentation(s);
 }
 /** Resolve only canonical destinations, then choose a clear pose on their road. */
 export function cityTravelArrival(stopId: string) {
@@ -354,6 +503,7 @@ export function teleportCityCar(s: CityState, stopId: string) {
     z: arrival.z,
     heading: arrival.heading,
     travelRevision: (s.travelRevision ?? 0) + 1,
+    flight: freshFlight(),
     vx: 0,
     vz: 0,
     speed: 0,
@@ -385,6 +535,8 @@ export function resetCityCar(s: CityState) {
   resetVehiclePresentation(s);
   Object.assign(s, {
     ...citySurfacePose(CITY_SPAWN.x, CITY_SPAWN.z, CITY_SPAWN.heading),
+    flight: freshFlight(),
+    travelRevision: (s.travelRevision ?? 0) + 1,
     x: CITY_SPAWN.x,
     z: CITY_SPAWN.z,
     vx: 0,
@@ -411,7 +563,7 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
     s.radioUntil = s.elapsed + 4;
   }
   s.previousHorn = horn;
-  const { worldContact: hit } = stepCityCar(
+  const { worldContact: hit, needsRecovery } = stepCityCar(
     s,
     {
       ...resolveDrive(keys, axes),
@@ -419,6 +571,7 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
     },
     STEP,
   );
+  if (needsRecovery) recoverCityCar(s);
   const magnitude = s.speed;
   if (hit && !s.bumpCooldown && magnitude > 1) {
     s.bumps++;
@@ -430,9 +583,9 @@ function step(s: CityState, keys: ReadonlySet<string>, axes?: DriveAxes) {
     ][s.bumps % 3];
     s.radioUntil = s.elapsed + 5;
   }
-  s.nearStop = cityStops.findIndex(
-    (p) => Math.hypot(s.x - p.x, s.z - p.z) < 2.8,
-  );
+  s.nearStop = s.flight?.airborne
+    ? -1
+    : cityStops.findIndex((p) => Math.hypot(s.x - p.x, s.z - p.z) < 2.8);
   const action = keys.has('KeyE');
   if (action && !s.previousAction && s.nearStop >= 0) {
     if (s.speed < 2.3) {
@@ -467,8 +620,15 @@ export function tickCity(
   s.accumulator += Math.min(dt, 0.1);
   while (s.accumulator + 1e-9 >= STEP) {
     const previous = vehiclePose(s);
+    const revision = s.travelRevision;
     step(s, keys, axes);
-    rememberVehicleStep(s, previous, vehiclePose(s), STEP);
+    rememberVehicleStep(
+      s,
+      previous,
+      vehiclePose(s),
+      STEP,
+      revision !== s.travelRevision,
+    );
     s.accumulator = Math.max(0, s.accumulator - STEP);
   }
   setVehicleRemainder(s, s.accumulator);

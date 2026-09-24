@@ -119,7 +119,7 @@ void test('driving is fixed-step; handbrake gives real lateral slip and recorded
   assert.ok(slip(drift) > slip(grip) + 0.8);
   assert.ok(drift.driftDistance > 0);
 });
-void test('high speed cannot tunnel a bonnet into walls or drive into the river', () => {
+void test('high speed cannot tunnel through walls; the river admits a fall with explicit recovery', () => {
   const s = freshCity();
   const building = cityBuildings.find((b) => b.kind === 'borisova');
   s.x = building.x + building.w / 2 + 8;
@@ -137,8 +137,10 @@ void test('high speed cannot tunnel a bonnet into walls or drive into the river'
   s.vz = 12;
   s.vx = 0;
   advance(s, 2, ['KeyW']);
-  assert.ok(!cityCarBlocked(s.x, s.z, s.heading));
-  assert.ok(s.z < riverBankZ(bankX, -1));
+  assert.ok(
+    s.flight.airborne || s.flight.waterTime > 0 || s.travelRevision > 0,
+  );
+  assert.ok(Number.isFinite(s.elevation));
   resetCityCar(s);
   assert.ok(!cityCarBlocked(s.x, s.z, s.heading));
 });

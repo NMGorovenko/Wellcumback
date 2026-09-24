@@ -549,8 +549,10 @@ export function tickRoomCity(
   if (!world || world.scene !== 'city') return;
   if (!roomHost()) {
     captureRoomInput(keys, drive);
-    const { x, z, heading } = state;
-    const discontinuity = receivedCityEpoch.get(state) !== world.epoch;
+    const { x, z, heading, elevation, pitch, travelRevision } = state;
+    const discontinuity =
+      receivedCityEpoch.get(state) !== world.epoch ||
+      travelRevision !== world.state.travelRevision;
     receivedCityEpoch.set(state, world.epoch);
     Object.assign(state, world.state);
     if (discontinuity) resetVehiclePresentation(state);
@@ -558,6 +560,10 @@ export function tickRoomCity(
     if (!discontinuity && Math.hypot(x - state.x, z - state.z) < 10) {
       state.x = x + (state.x - x) * amount;
       state.z = z + (state.z - z) * amount;
+      state.elevation =
+        (elevation ?? state.elevation ?? 0) +
+        ((state.elevation ?? 0) - (elevation ?? state.elevation ?? 0)) * amount;
+      state.pitch = (pitch ?? 0) + ((state.pitch ?? 0) - (pitch ?? 0)) * amount;
       state.heading =
         heading +
         Math.atan2(
@@ -788,6 +794,9 @@ export function tickRoomRace(
           ) *
             amount;
         r.elevation = old.elevation + (r.elevation - old.elevation) * amount;
+        r.pitch = old.pitch + (r.pitch - old.pitch) * amount;
+        r.car.elevation = r.elevation;
+        r.car.pitch = r.pitch;
       }
     }
     return;

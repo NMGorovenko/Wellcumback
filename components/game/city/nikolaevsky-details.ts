@@ -83,7 +83,7 @@ export function createNikolaevskyDetails(
     );
     return mesh;
   };
-  const steel = '#647d87',
+  const steel = '#68787a',
     concrete = '#aab0a6';
   let waterStart = total,
     waterEnd = 0;
@@ -252,9 +252,9 @@ export function createNikolaevskyDetails(
       const tip = top
         .clone()
         .add(new THREE.Vector3(-side * s.nx * 1.5, 0.45, -side * s.nz * 1.5));
-      const mast = member(bottom, top, 0.105, '#657378');
+      const mast = member(bottom, top, 0.105, '#68787a');
       if (mast) mast.name = 'nikolaevsky:deck-lamp';
-      member(top, tip, 0.06, '#657378');
+      member(top, tip, 0.06, '#68787a');
       const head = kit.box(
         0.82,
         0.12,

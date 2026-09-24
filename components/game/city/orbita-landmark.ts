@@ -90,7 +90,7 @@ export function createOrbitaLandmark(
       );
       for (let floor = 0; floor < floors; floor++) {
         const y = base + (floor * glazingHeight) / floors;
-        box(b.w * 0.048, 0.14, b.d * 0.045, '#c0c4be', x, y, -b.d * 0.094);
+        box(b.w * 0.048, 0.14, b.d * 0.045, '#b6c1c0', x, y, -b.d * 0.094);
         box(b.w * 0.044, 0.38, 0.08, '#d2d4cd', x, y + 0.38, -b.d * 0.071);
       }
       box(

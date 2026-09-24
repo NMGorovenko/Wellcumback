@@ -51,9 +51,39 @@ export function stepCar(
   dt: number,
   blocked: (x: number, z: number, heading: number) => boolean,
   tuning: VehicleTuning = CITY_MUSTANG,
+  tireContact = true,
 ) {
   const { throttle: gas, steer: steering } = input;
   s.throttle = gas;
+  if (!tireContact) {
+    // Pedals can rev the engine, but only air drag changes horizontal momentum.
+    // In particular the ground reverse-speed limiter must not arrest a jump.
+    advancePowertrain(
+      (s.powertrain ??= freshPowertrain()),
+      s.vx * Math.sin(s.heading) - s.vz * Math.cos(s.heading),
+      gas,
+      dt,
+      tuning.transmission,
+    );
+    s.steering += (steering - s.steering) * (1 - Math.exp(-dt * 12));
+    s.vx *= Math.exp(-0.025 * dt);
+    s.vz *= Math.exp(-0.025 * dt);
+    let hit = false;
+    if (!blocked(s.x + s.vx * dt, s.z, s.heading)) s.x += s.vx * dt;
+    else {
+      s.vx *= -0.3;
+      hit = true;
+    }
+    if (!blocked(s.x, s.z + s.vz * dt, s.heading)) s.z += s.vz * dt;
+    else {
+      s.vz *= -0.3;
+      hit = true;
+    }
+    s.speed = Math.hypot(s.vx, s.vz);
+    s.drifting = false;
+    s.driftBlend = (s.driftBlend ?? 0) * Math.exp(-dt * 6);
+    return { worldContact: hit };
+  }
   const handbrake = input.handbrake;
   let fx = Math.sin(s.heading),
     fz = -Math.cos(s.heading);

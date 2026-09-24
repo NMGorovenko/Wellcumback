@@ -7,8 +7,8 @@ import type { RenderKit } from '../world/render-kit.ts';
 
 const C = {
   stone: '#d4d2b7',
-  trim: '#e4dfc0',
-  roof: '#536c69',
+  trim: '#e4dfd3',
+  roof: '#56616a',
   dark: '#40545a',
   brick: '#ad806b',
   tree: '#708858',
@@ -173,7 +173,7 @@ export function createApartmentDetails(
 ) {
   if (b.kind) return;
   const { x, z, w, d, h } = b;
-  kit.box(w + 0.1, 0.35, d + 0.1, '#6e7e82', x, 0.19, z, root, 0);
+  kit.box(w + 0.1, 0.35, d + 0.1, '#68787a', x, 0.19, z, root, 0);
   kit.box(w + 0.12, 0.16, d + 0.12, C.trim, x, h - 0.38, z, root, 0);
   const oldTown = b.style === 'heritage' || b.style === 'cottage';
   if (oldTown) {

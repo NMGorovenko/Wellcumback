@@ -37,7 +37,7 @@ void test('visible bridge rails follow the collision footprints and local deck h
           );
           const elevation = vertex.y - cityRoadHeight(road, vertex.x, vertex.z);
           assert.ok(
-            elevation >= -0.025 && elevation <= 1.15,
+            elevation >= -0.025 && elevation <= 1.45,
             `floating/buried rail at ${b.roadId}: ${elevation}`,
           );
         }

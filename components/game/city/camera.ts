@@ -36,6 +36,7 @@ type CameraCar = Pick<CityState, 'x' | 'z'> & {
   elevation?: number;
   pitch?: number;
   surfaceId?: string;
+  flight?: CityState['flight'];
 };
 type DrivingCameraCar = Pick<
   CityState,
@@ -49,7 +50,14 @@ export type CityCameraSurface = {
 };
 const cityCameraSurface: CityCameraSurface = {
   heightAt: (x, z, car) =>
-    citySurfaceHeight(x, z, 0, car.elevation, car.surfaceId),
+    citySurfaceHeight(
+      x,
+      z,
+      0,
+      car.elevation,
+      car.surfaceId,
+      car.flight?.airborne ? (car.elevation ?? 0) + 0.3 : Infinity,
+    ),
   ceilingAt: cityOverpassClearance,
   buildingBaseAt: cityGroundHeight,
 };

@@ -1,3 +1,4 @@
+import { freshFlight } from '../city/flight.ts';
 import { freshCityDamage } from '../city/destruction.ts';
 import { citySurfacePose } from '../city/surface.ts';
 import {
@@ -240,6 +241,7 @@ export function respawnRacer(s: RaceState, r: Racer, course: Course) {
     steering: 0,
     drifting: false,
     driftBlend: 0,
+    flight: freshFlight(),
   });
   if (course.id === 'krasnoyarsk')
     Object.assign(r.car, citySurfacePose(r.car.x, r.car.z, r.car.heading));
@@ -463,6 +465,10 @@ function step(
             (x, z, h) => carBlocked(course, x, z, h),
             vehicleTuning(r.vehicleId, false),
           );
+    if ('needsRecovery' in hit && hit.needsRecovery) {
+      respawnRacer(s, r, course);
+      resets.add(r.id);
+    }
     if (hit.worldContact) contacts.add(r.id);
   });
   // Reset is a teleport, never sweep its old position or award a crossed gate.
@@ -474,16 +480,17 @@ function step(
   resolveCarContacts(s, course, previous).forEach((id) => contacts.add(id));
   if (course.id === 'krasnoyarsk')
     s.racers.forEach((r) => {
-      Object.assign(
-        r.car,
-        citySurfacePose(
-          r.car.x,
-          r.car.z,
-          r.car.heading,
-          r.car.elevation,
-          r.car.surfaceId,
-        ),
-      );
+      if (!r.car.flight?.airborne)
+        Object.assign(
+          r.car,
+          citySurfacePose(
+            r.car.x,
+            r.car.z,
+            r.car.heading,
+            r.car.elevation,
+            r.car.surfaceId,
+          ),
+        );
       r.elevation = r.car.elevation!;
       r.pitch = r.car.pitch!;
     });
@@ -505,7 +512,8 @@ function step(
       });
     });
   s.racers.forEach((r, i) => {
-    if (!resets.has(r.id)) advanceGates(s, r, course, previous[i]);
+    if (!resets.has(r.id) && !r.car.flight?.airborne)
+      advanceGates(s, r, course, previous[i]);
     advanceDrift(s, r, contacts.has(r.id), dt);
   });
   if (

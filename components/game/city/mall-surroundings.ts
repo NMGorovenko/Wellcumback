@@ -35,7 +35,7 @@ export function addMallSurroundings(
   if (b.kind === 'planeta') {
     const wingH = h * 0.46,
       back = -d / 2 + 0.09;
-    const colors = [orange, '#e0bc42', '#8baca6', white, '#c36a41', '#d2c7aa'];
+    const colors = [orange, '#e0bc42', '#8baca6', white, '#c36a41', '#c8bdad'];
     // The anchor-store wing reaches forward beside the main gallery, making the
     // plan stepped rather than a single rectangle (Malltech's oblique aerial).
     const anchorX = -w * 0.425,
@@ -108,7 +108,7 @@ export function addMallSurroundings(
       0.14,
       wingH * 0.84,
       d * 0.68,
-      '#bcc5c2',
+      '#b6c1c0',
       -w / 2 + 0.09,
       wingH * 0.44,
       -d * 0.14,
@@ -295,7 +295,7 @@ export function addMallSurroundings(
         w * 0.19,
         0.15,
         d * 0.83,
-        '#b4afa2',
+        '#c8bdad',
         side * w * 0.394,
         h * 0.684,
         -d * 0.065,
@@ -450,18 +450,14 @@ export function addMallSurroundings(
         0.1,
       );
     }
-    // Sparse cinema/service windows, unlike a residential regular window grid.
-    for (const [z, y] of [
-      [-0.33, 0.78],
-      [-0.2, 0.78],
-      [-0.06, 0.77],
-      [-0.33, 0.34],
-      [-0.12, 0.32],
-      [0.06, 0.32],
-    ]) {
-      box(0.085, h * 0.034, d * 0.051, frame, w / 2 - 0.553, y * h, z * d);
-      box(0.07, h * 0.025, d * 0.039, glass, w / 2 - 0.49, y * h, z * d);
-    }
+    // Thin strip windows punctuate the long silver cinema wall seen from the bridge.
+    for (const y of [0.27, 0.45, 0.8])
+      for (let i = 0; i < 22; i++) {
+        if (i === 9 || i === 10 || (y === 0.45 && i > 15)) continue;
+        const z = d * (-0.43 + i * 0.03);
+        box(0.085, h * 0.039, d * 0.024, frame, w / 2 - 0.553, y * h, z);
+        box(0.07, h * 0.029, d * 0.019, glass, w / 2 - 0.49, y * h, z);
+      }
     for (const side of [-1, 1]) {
       for (let i = 1; i < 6; i++)
         box(
@@ -487,8 +483,8 @@ export function addMallSurroundings(
     // The rounded front corners have open horizontal crowns, visible on the older
     // all-building photograph; no invented loading-door layout on the unseen rear.
     for (const [bayX, bayW, bulge] of [
-      [-w * 0.398, w * 0.15, d * 0.1],
-      [w * 0.355, w * 0.25, d * 0.17],
+      [-w * 0.398, w * 0.15, Math.min(w, d) * 0.1],
+      [w * 0.355, w * 0.25, Math.min(w, d) * 0.15],
     ]) {
       for (let i = 0; i < 16; i++) {
         const a = i / 16,

@@ -1,16 +1,18 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { cityRoads, distanceToRoad } from '../../../lib/game/city/layout.ts';
 import {
   CITY_KUBATURA_TERRACE,
   cityGroundHeight,
   cityKubaturaTerraceDistance,
   cityKubaturaRetainingEdges,
+  cityKubaturaRetainingCorners,
 } from '../../../lib/game/city/surface.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { drapedSurface } from './relief.ts';
 
 /** Owner aerial: a raised parking terrace, rounded retaining wall and lower
- * perimeter drive. The 4.5 m rise is art direction, not a surveyed height. */
+ * perimeter drive. The 10 m rise is art direction, not a surveyed height. */
 export function createKubaturaTerrace(kit: RenderKit, root: THREE.Group) {
   const g = new THREE.Group();
   g.name = 'parking:kubatura';
@@ -23,8 +25,17 @@ export function createKubaturaTerrace(kit: RenderKit, root: THREE.Group) {
     '#68787a',
     cityGroundHeight,
     0.08,
-    3,
+    4,
+    [],
+    0.025,
   );
+  const unindexed = pavement.geometry;
+  unindexed.deleteAttribute('normal');
+  pavement.geometry = mergeVertices(unindexed, 0.00001);
+  pavement.geometry.computeVertexNormals();
+  kit.geometries.delete(unindexed);
+  kit.geometries.add(pavement.geometry);
+  unindexed.dispose();
   pavement.name = 'kubatura:terrace-pavement';
   pavement.userData.reliefPlaced = true;
   const placed = (mesh: THREE.Mesh, name: string) => {
@@ -78,9 +89,9 @@ export function createKubaturaTerrace(kit: RenderKit, root: THREE.Group) {
       z = (p.z + q.z) / 2;
     // Slightly tilted support follows the same three-metre terrain toe.
     // Horizontal courses preserve the stepped masonry seen in the aerial.
-    for (let course = 0; course < 6; course++) {
-      const hi = course / 6,
-        lo = (course + 1) / 6;
+    for (let course = 0; course < 9; course++) {
+      const hi = course / 9,
+        lo = (course + 1) / 9;
       const vertices = [
         p.x + nx * 3 * hi,
         topA + (lowA - topA) * hi,
@@ -103,25 +114,55 @@ export function createKubaturaTerrace(kit: RenderKit, root: THREE.Group) {
       geometry.setIndex([0, 1, 2, 0, 2, 3]);
       geometry.computeVertexNormals();
       placed(
-        kit.mesh(geometry, kit.material(course % 2 ? '#a99880' : '#baaa92'), g),
+        kit.mesh(geometry, kit.material(course % 2 ? '#5d574e' : '#6c655b'), g),
         'kubatura:retaining-wall',
       );
     }
     const top = (topA + topB) / 2,
       cap = placed(
-        kit.box(length + 0.05, 0.16, 0.4, '#d6d0c4', x, top + 0.08, z, g, 0),
+        kit.box(length + 0.05, 0.16, 0.4, '#e4dfd3', x, top + 0.08, z, g, 0),
         'kubatura:terrace-cap',
       );
     cap.rotation.y = -Math.atan2(dz, dx);
     const rail = placed(
-      kit.box(length + 0.05, 0.055, 0.06, '#74868a', x, top + 0.92, z, g, 0),
+      kit.box(length + 0.05, 0.055, 0.06, '#68787a', x, top + 0.92, z, g, 0),
       'kubatura:terrace-railing',
     );
     rail.rotation.y = cap.rotation.y;
     placed(
-      kit.box(0.055, 0.83, 0.055, '#74868a', p.x, topA + 0.48, p.z, g, 0),
+      kit.box(0.055, 0.83, 0.055, '#68787a', p.x, topA + 0.48, p.z, g, 0),
       'kubatura:terrace-railing',
     );
+  }
+  for (const { point, top, left, right } of cityKubaturaRetainingCorners()) {
+    const at = (toe: typeof left, t: number) => [
+      point.x + (toe.x - point.x) * t,
+      top + (toe.y - top) * t,
+      point.z + (toe.z - point.z) * t,
+    ];
+    for (let course = 0; course < 9; course++) {
+      const hi = course / 9,
+        lo = (course + 1) / 9,
+        geometry = new THREE.BufferGeometry();
+      geometry.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(
+          [
+            ...at(left, hi),
+            ...at(right, hi),
+            ...at(right, lo),
+            ...at(left, lo),
+          ],
+          3,
+        ),
+      );
+      geometry.setIndex([0, 1, 2, 0, 2, 3]);
+      geometry.computeVertexNormals();
+      placed(
+        kit.mesh(geometry, kit.material(course % 2 ? '#5d574e' : '#6c655b'), g),
+        'kubatura:retaining-corner',
+      );
+    }
   }
   return g;
 }

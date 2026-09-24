@@ -27,7 +27,7 @@ export function createDonerLandmark(
     b.w * 0.94,
     b.h * 0.95,
     b.d * 0.84,
-    '#29383b',
+    '#263b42',
     0,
     b.h * 0.475,
     -b.d * 0.06,
@@ -45,12 +45,12 @@ export function createDonerLandmark(
       0.11,
       b.h * 0.69,
       0.16,
-      '#29383b',
+      '#263b42',
       faceX + (i * faceW) / 4,
       b.h * 0.345,
       front + 0.32,
     );
-  box(faceW, 0.12, 0.18, '#29383b', faceX, b.h * 0.52, front + 0.33);
+  box(faceW, 0.12, 0.18, '#263b42', faceX, b.h * 0.52, front + 0.33);
   box(b.w * 0.125, b.h * 0.48, 0.1, '#6e949e', faceX, b.h * 0.25, front + 0.34);
   box(
     0.04,
@@ -61,7 +61,7 @@ export function createDonerLandmark(
     b.h * 0.25,
     front + 0.42,
   );
-  box(faceW + 0.2, b.h * 0.2, 0.35, '#29383b', faceX, b.h * 0.805, front + 0.2);
+  box(faceW + 0.2, b.h * 0.2, 0.35, '#263b42', faceX, b.h * 0.805, front + 0.2);
   facadeText(
     kit,
     g,

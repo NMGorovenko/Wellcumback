@@ -18,9 +18,9 @@ import { createWhiteHorse } from './monuments.ts';
 
 const palette = {
   stone: '#d4d2b7',
-  cream: '#e4dfc0',
+  cream: '#e4dfd3',
   metal: '#40545a',
-  roof: '#6e7e82',
+  roof: '#68787a',
   glass: '#3c5159',
   wood: '#b79b72',
   green: '#708858',
