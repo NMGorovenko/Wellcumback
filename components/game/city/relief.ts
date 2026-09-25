@@ -493,3 +493,30 @@ export function liftScenery(
     old.dispose();
   }
 }
+
+/** Sample one shared surface normal at triangle seams. Thin adaptive fans
+ * should not acquire unrelated flat-face lighting at clipped road edges. */
+export function smoothDrapedNormals(
+  geometry: THREE.BufferGeometry,
+  heightAt: (x: number, z: number) => number,
+) {
+  const positions = geometry.getAttribute('position');
+  const normals = geometry.getAttribute('normal');
+  const cache = new Map<string, THREE.Vector3>();
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i),
+      z = positions.getZ(i);
+    const key = `${x}:${z}`;
+    let normal = cache.get(key);
+    if (!normal) {
+      normal = new THREE.Vector3(
+        heightAt(x - 0.3, z) - heightAt(x + 0.3, z),
+        0.6,
+        heightAt(x, z - 0.3) - heightAt(x, z + 0.3),
+      ).normalize();
+      cache.set(key, normal);
+    }
+    normals.setXYZ(i, normal.x, normal.y, normal.z);
+  }
+  normals.needsUpdate = true;
+}

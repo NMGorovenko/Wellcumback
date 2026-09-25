@@ -1,3 +1,4 @@
+import { fuelSolids } from '../../../lib/game/city/right-bank.ts';
 import { CITY_TOP_SPEED } from '../../../lib/game/city/powertrain.ts';
 import {
   CITY_BOUNDS,
@@ -16,8 +17,8 @@ import { forEachCityFoliageNear } from './foliage-occlusion.ts';
 
 export type CityCameraMode = 'drive' | 'cruise' | 'map' | 'faces';
 export const CITY_CAMERA_MODES: CityCameraMode[] = [
-  'drive',
   'cruise',
+  'drive',
   'map',
   'faces',
 ];
@@ -106,13 +107,29 @@ export function clearCityCruiseCamera(
   car: CameraCar,
   buildings: readonly Pick<
     CityBuilding,
-    'x' | 'z' | 'w' | 'd' | 'h'
+    'x' | 'z' | 'w' | 'd' | 'h' | 'kind' | 'angle'
   >[] = cityBuildings,
   surface: CityCameraSurface = cityCameraSurface,
   foliage: readonly CityCameraOccluder[] = [],
 ): CameraPoint {
   const elevation = car.elevation ?? 0;
   const anchor = { x: car.x, y: elevation + 1.25, z: car.z };
+  // An open petrol-station forecourt is not a solid building. Keep the boom
+  // below its actual canopy and collide with the cabin, pumps and columns.
+  const fuel = buildings.filter(
+    (b) =>
+      b.kind === 'fuel' &&
+      Math.hypot(car.x - b.x, car.z - b.z) <
+        Math.hypot(b.w, b.d) + Math.hypot(desired.x - car.x, desired.z - car.z),
+  );
+  const localPoint = (x: number, z: number, b: (typeof buildings)[number]) => {
+    const c = Math.cos(b.angle ?? 0),
+      sn = Math.sin(b.angle ?? 0);
+    return {
+      x: (x - b.x) * c - (z - b.z) * sn,
+      z: (x - b.x) * sn + (z - b.z) * c,
+    };
+  };
   const ceilingAt = (
     x: number,
     z: number,
@@ -121,9 +138,21 @@ export function clearCityCruiseCamera(
     const deck = surface.ceilingAt(x, z);
     // Compare against the selected surface here, not the car's height farther
     // down the hill: an uphill section of the same deck is never a ceiling.
-    return deck !== null && floor < deck - 2.5
-      ? deck - CITY_DECK_THICKNESS - 0.85
-      : Infinity;
+    let ceiling =
+      deck !== null && floor < deck - 2.5
+        ? deck - CITY_DECK_THICKNESS - 0.85
+        : Infinity;
+    for (const b of fuel) {
+      const base = surface.buildingBaseAt(b.x, b.z);
+      if (anchor.y >= base + 4.275) continue;
+      const local = localPoint(x, z, b);
+      if (
+        Math.abs(local.x + b.w * 0.1) < b.w * 0.32 + 0.3 &&
+        Math.abs(local.z - b.d * 0.09) < b.d * 0.285 + 0.3
+      )
+        ceiling = Math.min(ceiling, base + 4.275);
+    }
+    return ceiling;
   };
   let eyeY = Math.max(
     elevation + 2.5,
@@ -166,20 +195,22 @@ export function clearCityCruiseCamera(
       break;
     }
   }
-  const checkBox = (box: CityCameraOccluder) => {
+  const checkBox = (
+    box: CityCameraOccluder,
+    localAnchor = anchor,
+    localDelta = delta,
+  ) => {
     if (
-      box.maxX < minX ||
-      box.minX > maxX ||
-      box.maxZ < minZ ||
-      box.minZ > maxZ
+      localAnchor === anchor &&
+      (box.maxX < minX || box.minX > maxX || box.maxZ < minZ || box.minZ > maxZ)
     )
       return;
     let enter = 0,
       leave = 1;
     for (const [origin, direction, low, high] of [
-      [anchor.x, delta.x, box.minX - 0.65, box.maxX + 0.65],
-      [anchor.y, delta.y, box.minY - 0.3, box.maxY + 0.3],
-      [anchor.z, delta.z, box.minZ - 0.65, box.maxZ + 0.65],
+      [localAnchor.x, localDelta.x, box.minX - 0.65, box.maxX + 0.65],
+      [localAnchor.y, localDelta.y, box.minY - 0.3, box.maxY + 0.3],
+      [localAnchor.z, localDelta.z, box.minZ - 0.65, box.maxZ + 0.65],
     ]) {
       if (Math.abs(direction) < 1e-7) {
         if (origin < low || origin > high) {
@@ -197,6 +228,7 @@ export function clearCityCruiseCamera(
       closest = Math.min(closest, enter);
   };
   for (const b of buildings) {
+    if (b.kind === 'fuel') continue;
     if (
       b.x + b.w / 2 < minX ||
       b.x - b.w / 2 > maxX ||
@@ -214,6 +246,37 @@ export function clearCityCruiseCamera(
       maxZ: b.z + b.d / 2,
     });
   }
+  for (const b of fuel) {
+    const base = surface.buildingBaseAt(b.x, b.z);
+    const origin = { ...localPoint(anchor.x, anchor.z, b), y: anchor.y - base };
+    const end = localPoint(anchor.x + delta.x, anchor.z + delta.z, b);
+    const direction = { x: end.x - origin.x, y: delta.y, z: end.z - origin.z };
+    for (const solid of fuelSolids(b))
+      checkBox(
+        {
+          minX: solid.x - solid.w / 2,
+          maxX: solid.x + solid.w / 2,
+          minZ: solid.z - solid.d / 2,
+          maxZ: solid.z + solid.d / 2,
+          minY: -0.3,
+          maxY: solid.h,
+        },
+        origin,
+        direction,
+      );
+    checkBox(
+      {
+        minX: -b.w * 0.42,
+        maxX: b.w * 0.22,
+        minZ: -b.d * 0.195,
+        maxZ: b.d * 0.375,
+        minY: 4.575,
+        maxY: 5.025,
+      },
+      origin,
+      direction,
+    );
+  }
   const hardClosest = closest;
   const margin = 0.3 / Math.max(distance, 0.01);
   const hardFraction = Math.max(0, hardClosest - margin);
@@ -229,7 +292,9 @@ export function clearCityCruiseCamera(
       z: car.z,
     };
   closest = 1;
-  forEachCityFoliageNear(foliage, minX, minZ, maxX, maxZ, checkBox);
+  forEachCityFoliageNear(foliage, minX, minZ, maxX, maxZ, (box) =>
+    checkBox(box),
+  );
   let foliageFraction = 1;
   if (closest < 1) {
     // Branches touching the car cannot supply a clear camera-to-car segment.

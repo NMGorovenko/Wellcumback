@@ -1,4 +1,11 @@
 import {
+  cityRoofTilt,
+  cityRoofSurfaces,
+  cityRoofSupportElevation,
+  cityRoofCeilingHit,
+  type CityRoofSurface,
+} from './roofs.ts';
+import {
   inKachaWater,
   inKachaCorridor,
   KACHA_HALF_WIDTH,
@@ -721,9 +728,21 @@ export function cityCeilingHit(
   z: number,
   oldY: number,
   nextY: number,
+  heading = 0,
+  pitch = 0,
+  roll = 0,
 ): number | null {
   if (nextY <= oldY) return null;
-  let hit: number | null = null;
+  let hit: number | null = cityRoofCeilingHit(
+    x,
+    z,
+    oldY,
+    nextY,
+    cityGroundHeight,
+    heading,
+    pitch,
+    roll,
+  );
   for (const r of nearbyRoads(x, z)) {
     if (
       cityRoadLayer(r) !== 'raised' ||
@@ -746,6 +765,7 @@ function selectSurface(
 ) {
   const candidates: {
     road?: CityRoad;
+    roof?: CityRoofSurface;
     elevation: number;
     surfaceId: string;
     gap: number;
@@ -765,6 +785,29 @@ function selectSurface(
         endPenalty: Math.max(0, -along, along - l) * 2,
       };
     });
+  // Knowing the previous contact height is mandatory: a road-level lookup
+  // must never teleport onto a roof overhead. Keep the highest visible roof
+  // per building before filtering its height, so hidden internal floors cannot win.
+  if (previousHeight !== undefined)
+    for (const roof of cityRoofSurfaces(x, z, cityGroundHeight)) {
+      if (roof.elevation > previousHeight + 0.35 || roof.elevation > ceiling)
+        continue;
+      const elevation = cityRoofSupportElevation(
+        roof,
+        x,
+        z,
+        heading,
+        cityGroundHeight,
+      );
+      if (elevation <= previousHeight + 0.35 && elevation <= ceiling)
+        candidates.push({
+          roof,
+          elevation,
+          surfaceId: roof.surfaceId,
+          gap: 0,
+          endPenalty: 0,
+        });
+    }
   const water = inCityWater(x, z);
   if (!candidates.length || !water)
     candidates.push({
@@ -814,7 +857,7 @@ function selectSurface(
                 ),
               ) * 0.3
             : 0) -
-          (v.road && v.surfaceId === previousSurfaceId ? 0.15 : 0);
+          ((v.road || v.roof) && v.surfaceId === previousSurfaceId ? 0.15 : 0);
     // Rounded segment caps are real road surface. With a known elevation,
     // an endpoint preference must never outweigh several metres of vertical
     // separation and select the earth underneath an adjoining deck corner.
@@ -862,13 +905,37 @@ export function citySurfacePose(
     ),
     dx = Math.sin(heading) * 1.2,
     dz = -Math.cos(heading) * 1.2;
+  if (selected.roof) {
+    const { pitch, roll } = cityRoofTilt(selected.roof, heading);
+    return {
+      elevation: selected.elevation,
+      surfaceId: selected.surfaceId,
+      pitch,
+      roll,
+    };
+  }
   const sample = (x: number, z: number) =>
     selected.road
       ? cityRoadHeight(selected.road, x, z)
       : cityGroundHeight(x, z);
+  const ahead = sample(x + dx, z + dz),
+    behind = sample(x - dx, z - dz);
+  // A wheelbase across the river bank samples another support layer, not a
+  // drivable slope. Keep a level contact pose until flight takes over.
+  const acrossEdge =
+    !selected.road &&
+    Math.max(
+      Math.abs(ahead - selected.elevation),
+      Math.abs(behind - selected.elevation),
+    ) > 0.6;
   return {
     elevation: selected.elevation,
-    pitch: Math.atan2(sample(x + dx, z + dz) - sample(x - dx, z - dz), 2.4),
+    pitch: acrossEdge
+      ? 0
+      : Math.max(
+          -Math.PI / 3,
+          Math.min(Math.PI / 3, Math.atan2(ahead - behind, 2.4)),
+        ),
     roll: 0,
     surfaceId: selected.surfaceId,
   };

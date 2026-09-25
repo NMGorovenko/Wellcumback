@@ -1,3 +1,4 @@
+import { validCityRoofSurfaceId } from '../city/roofs.ts';
 import { validCityFlight } from '../city/flight.ts';
 import { validCityDamage } from '../city/destruction.ts';
 import {
@@ -8,7 +9,7 @@ import {
 import { CITY_BOUNDS, cityStops } from '../city/layout.ts';
 import type { DriveAxes } from '../input/drive.ts';
 import type { CityState } from '../city/engine.ts';
-export const NETWORK_VERSION = 8;
+export const NETWORK_VERSION = 9;
 export const NETWORK_CHANNEL = `wellcum-city-v${NETWORK_VERSION}`;
 const VERSION_MISMATCH =
   'Версии игры различаются. Обновите игру у обоих игроков и создайте новое приглашение.';
@@ -187,6 +188,8 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
         waterTime: f.waterTime,
         landing: f.landing,
       };
+      if (f.launchCooldown !== undefined)
+        state.flight.launchCooldown = f.launchCooldown;
       if (f.suspension) {
         state.flight.suspension = {
           offset: f.suspension.offset,
@@ -247,7 +250,7 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
         fields.map((key) => [key, motor[key]]),
       ) as typeof state.powertrain;
     }
-    for (const key of ['elevation', 'pitch'] as const)
+    for (const key of ['elevation', 'pitch', 'roll'] as const)
       if (s[key] !== undefined) {
         if (
           typeof s[key] !== 'number' ||
@@ -261,7 +264,8 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
       if (
         typeof s.surfaceId !== 'string' ||
         s.surfaceId.length > 100 ||
-        !/^ground$|^road:[a-z0-9:-]+$/.test(s.surfaceId)
+        (!/^ground$|^road:[a-z0-9:-]+$/.test(s.surfaceId) &&
+          !validCityRoofSurfaceId(s.surfaceId))
       )
         return null;
       state.surfaceId = s.surfaceId;

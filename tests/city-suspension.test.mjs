@@ -158,7 +158,7 @@ void test('a short city crown extends the suspension instead of prematurely losi
   );
 });
 
-void test('a sustained descending crown exhausts suspension travel and releases with the earned downhill velocity', () => {
+void test('a sustained descending crown exhausts suspension travel and releases with one bounded arcade hop', () => {
   const road = cityRoads.find((r) => r.id === 'akadem-udachny:5');
   const dx = road.to.x - road.from.x,
     dz = road.to.z - road.from.z,
@@ -193,13 +193,30 @@ void test('a sustained descending crown exhausts suspension travel and releases 
     'wheel travel absorbs the first crest samples',
   );
   assert.ok(takeoff.vy < 0, 'takeoff is possible while already descending');
-  close(car.flight.vy, takeoff.vy - 18 * STEP, 'no extra launch impulse');
+  const releaseVelocity = car.flight.vy + 18 * STEP;
+  assert.ok(
+    releaseVelocity > 0 && releaseVelocity <= 5.5,
+    'small bounded upward release',
+  );
   close(
     car.elevation,
-    takeoff.y + takeoff.vy * STEP - 9 * STEP * STEP,
+    takeoff.y + releaseVelocity * STEP - 9 * STEP * STEP,
     'ballistic release is continuous',
   );
   assert.ok(car.elevation > citySurfacePose(car.x, car.z, heading).elevation);
+  const nextY = car.elevation,
+    nextVy = car.flight.vy;
+  stepCityCar(car, neutral, STEP, vehicleTuning('mustang', true));
+  close(
+    car.flight.vy,
+    nextVy - 18 * STEP,
+    'subsequent flight receives gravity only',
+  );
+  close(
+    car.elevation,
+    nextY + nextVy * STEP - 9 * STEP * STEP,
+    'subsequent flight remains ballistic',
+  );
 });
 
 void test('a stencil crossing another vertical layer never fabricates road curvature or a takeoff tangent', () => {

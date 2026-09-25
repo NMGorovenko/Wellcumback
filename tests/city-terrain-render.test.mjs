@@ -494,7 +494,7 @@ void test('terrain batching retains only live geometry and frame updates allocat
     if (mesh.geometry) used.add(mesh.geometry);
   });
   assert.ok(
-    kit.geometries.size < 900,
+    kit.geometries.size < 1600,
     `spatial terrain and material batches must stay bounded: ${kit.geometries.size}`,
   );
   for (const geometry of kit.geometries)

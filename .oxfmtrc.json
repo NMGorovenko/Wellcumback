@@ -8,6 +8,7 @@
     "pnpm-lock.yaml",
     "yarn.lock",
     "bun.lock",
-    "bun.lockb"
+    "bun.lockb",
+    "lib/game/city/roofs.generated.json"
   ]
 }

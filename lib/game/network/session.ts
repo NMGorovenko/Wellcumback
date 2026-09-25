@@ -231,7 +231,8 @@ export function tickNetworkCity(
   }
   if (view.role === 'guest') {
     if (remoteCity && transportConnected && !stale) {
-      const { x, z, heading, paused, elevation, pitch, travelRevision } = s;
+      const { x, z, heading, paused, elevation, pitch, roll, travelRevision } =
+        s;
       Object.assign(s, remoteCity, { paused, interaction: null });
       const amount = 1 - Math.exp(-delta * 22);
       if (
@@ -244,6 +245,7 @@ export function tickNetworkCity(
           (elevation ?? s.elevation ?? 0) +
           ((s.elevation ?? 0) - (elevation ?? s.elevation ?? 0)) * amount;
         s.pitch = (pitch ?? 0) + ((s.pitch ?? 0) - (pitch ?? 0)) * amount;
+        s.roll = (roll ?? 0) + ((s.roll ?? 0) - (roll ?? 0)) * amount;
         s.heading =
           heading +
           Math.atan2(

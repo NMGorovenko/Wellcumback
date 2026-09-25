@@ -1,10 +1,6 @@
 import * as THREE from 'three';
 import type { RenderKit } from '../world/render-kit.ts';
-import {
-  ROUNDABOUT,
-  CITY_BOUNDS,
-  riverBankZ,
-} from '../../../lib/game/city/layout.ts';
+import { ROUNDABOUT, riverBankZ } from '../../../lib/game/city/layout.ts';
 
 /** Small recognizable silhouettes; positions are compressed game geography. */
 export function createEuropeMonument(kit: RenderKit, root: THREE.Group) {
@@ -96,34 +92,4 @@ export function createWhiteHorse(kit: RenderKit, root: THREE.Group) {
     g,
   );
   return p;
-}
-
-export function createChapelCannon(kit: RenderKit, root: THREE.Group) {
-  const g = new THREE.Group();
-  g.name = 'karaulnaya-cannon';
-  g.position.set(-7, 4.5, CITY_BOUNDS.minZ - 14);
-  g.rotation.y = -0.35;
-  root.add(g);
-  kit.cylinder(1.3, 1.45, 0.2, '#a69c89', 0, 0, 0, g);
-  kit.box(0.85, 0.3, 1.4, '#56616a', 0, 0.45, 0, g);
-  for (const side of [-1, 1]) {
-    const wheel = kit.cylinder(
-      0.43,
-      0.43,
-      0.18,
-      '#40545a',
-      side * 0.54,
-      0.45,
-      0.25,
-      g,
-    );
-    wheel.rotation.z = Math.PI / 2;
-  }
-  kit.rod(
-    new THREE.Vector3(0, 0.72, 0.5),
-    new THREE.Vector3(0, 1.05, -1),
-    0.16,
-    '#56616a',
-    g,
-  );
 }

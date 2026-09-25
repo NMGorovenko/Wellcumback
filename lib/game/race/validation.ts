@@ -108,6 +108,9 @@ export function validRaceState(value: unknown, capacity = 3) {
       ].every((key) => finite((r.car as Record<string, unknown>)[key])) ||
       typeof r.car.drifting !== 'boolean' ||
       !validCityFlight(r.car.flight) ||
+      (r.car.roll !== undefined &&
+        (!finite(r.car.roll) ||
+          Math.abs(r.car.roll as number) > Math.PI / 3)) ||
       !(r.finishTime === null || finite(r.finishTime)) ||
       !(r.bestLap === null || finite(r.bestLap))
     )

@@ -123,7 +123,7 @@ void test('parking furniture and covered ramps leave actual streets and lot thro
       let raised = 0;
       for (const mesh of lot.children) {
         if (!mesh.isMesh) continue;
-        if (mesh.name === 'parking:komsomoll:pavement') continue;
+        if (mesh.userData.reliefPlaced) continue;
         const bounds = new THREE.Box3().setFromObject(mesh);
         if (bounds.max.y < 0.14) continue; // Flat surface and painted lines.
         raised++;

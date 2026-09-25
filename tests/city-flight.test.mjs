@@ -240,11 +240,18 @@ void test('a broken real bridge rail permits a continuous ballistic departure', 
       previousY = car.elevation;
     step(car);
     if (car.flight.airborne) airFrames++;
-    if (!wasAirborne && car.flight.airborne)
+    if (!wasAirborne && car.flight.airborne) {
+      const releaseVelocity = car.flight.vy + 18 * STEP;
       assert.ok(
-        Math.abs(car.elevation - previousY) < 0.05,
-        'takeoff does not snap onto terrain below',
+        releaseVelocity > 0 && releaseVelocity <= 5.5,
+        'a broken bridge edge gives one bounded upward hop',
       );
+      close(
+        car.elevation,
+        previousY + releaseVelocity * STEP - 9 * STEP * STEP,
+        'takeoff starts at the last contact height',
+      );
+    }
   }
   assert.equal(isCityObjectBroken(car.damage, rail.id), true);
   assert.ok(airFrames > 10, 'the broken rail permits sustained flight');

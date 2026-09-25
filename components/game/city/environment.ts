@@ -1,3 +1,12 @@
+import {
+  HILL_FOUNDATION_FOOTPRINTS,
+  HILL_PLAZA_FOOTPRINTS,
+  createHillGrounds,
+} from './hill-landmarks.ts';
+import {
+  splitOversizedCityGeometry,
+  pruneEmptyCityGroups,
+} from './spatial-batches.ts';
 import { createBridgeDetails } from './bridge-details.ts';
 import {
   cityLodRanges,
@@ -10,7 +19,7 @@ import { KACHA_TERRAIN_HOLES } from '../../../lib/game/city/kacha.ts';
 import { createKachaRiver } from './kacha-river.ts';
 import { createNikolaevskyDetails } from './nikolaevsky-details.ts';
 import { createTheatreSquareGround } from './opera-landmark.ts';
-import { KOMSOMOLL_PARKING_FOOTPRINT } from './mall-landmarks.ts';
+import { MALL_PARKING_FOOTPRINTS } from './mall-landmarks.ts';
 import { createCityDestruction } from './destruction.ts';
 import type { CityDamage } from '../../../lib/game/city/destruction.ts';
 import {
@@ -74,12 +83,11 @@ import {
   roadSurfaceOutlines,
   subtractRoadPolygons,
 } from '../../../lib/game/city/road-surfaces.ts';
-import { createEuropeMonument, createChapelCannon } from './monuments.ts';
+import { createEuropeMonument } from './monuments.ts';
 import {
   createCivicBuilding,
   createApartmentDetails,
   createStationRoof,
-  createNorthernChapel,
   createSiberianRidges,
 } from './krasnoyarsk.ts';
 
@@ -261,7 +269,9 @@ export function* buildCityEnvironment(
   groundSurfaceHoles.push(
     ...KACHA_TERRAIN_HOLES.flatMap((outline) => convexPieces(outline)),
     ...BOBROVY_TERRAIN_FOOTPRINTS,
-    KOMSOMOLL_PARKING_FOOTPRINT,
+    ...MALL_PARKING_FOOTPRINTS,
+    ...HILL_FOUNDATION_FOOTPRINTS,
+    ...HILL_PLAZA_FOOTPRINTS,
     CITY_KUBATURA_TERRACE.outline,
     ...cityKubaturaRetainingCorners().map(({ point, left, right }) => [
       point,
@@ -959,11 +969,10 @@ export function* buildCityEnvironment(
   yield { label: 'Вывески и городские детали', progress: 0.73 };
   createCityParking(kit, props);
   createTheatreSquareGround(kit, props);
+  for (const paving of createHillGrounds(kit, props)) closeTerrainEdges(paving);
   createYeniseySign(kit, props);
   createNeighbourhoodGreenery(kit, props);
-  createNorthernChapel(kit, props);
   createEuropeMonument(kit, props);
-  createChapelCannon(kit, props);
   const scenery = createCityLandmarks(kit, props, lit);
   const streetSignals = createStreetSignalLight(kit);
   const streetFurniture = createStreetDetails(
@@ -982,6 +991,9 @@ export function* buildCityEnvironment(
   yield { label: 'Подготовка поездки', progress: 0.82 };
   for (const part of batchCity(kit, root))
     yield { label: 'Подготовка поездки', progress: 0.82 + 0.13 * part };
+  yield { label: 'Подготовка кварталов', progress: 0.96 };
+  splitOversizedCityGeometry(kit, root);
+  pruneEmptyCityGroups(root);
   const labels: THREE.Sprite[] = [];
   const label = (text: string, x: number, z: number, width: number, y = 3) => {
     const sprite = makeLabel(kit, text, '#ede4bd', width);

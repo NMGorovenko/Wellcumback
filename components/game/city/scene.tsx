@@ -1,4 +1,5 @@
 'use client';
+import { createIdleRenderGate } from '@/lib/game/graphics/idle-render';
 import { createGraphicsController } from '../world/graphics';
 import { presentedVehicle } from '@/lib/game/city/vehicle-presentation';
 import { renderedFrameCounter } from '@/lib/game/performance';
@@ -39,7 +40,7 @@ export type CityReviewCamera = {
 export default function CityScene({
   game,
   targetStop = -1,
-  cameraMode = 'drive',
+  cameraMode = 'cruise',
   speechRef,
   onReady,
   reviewCamera,
@@ -264,7 +265,15 @@ export default function CityScene({
       let aspect = 1,
         viewportHeight = 1,
         overviewHalfHeight = 25,
-        currentHalfHeight = 0;
+        currentHalfHeight = 0,
+        visualRevision = 0;
+      const restoreFrame = () => {
+        visualRevision++;
+      };
+      renderer.domElement.addEventListener(
+        'webglcontextrestored',
+        restoreFrame,
+      );
       const resize = () => {
         camera.position.copy(look).addScaledVector(outward, cameraDistance);
         camera.lookAt(look);
@@ -303,13 +312,38 @@ export default function CityScene({
         camera.lookAt(currentLook);
         camera.updateProjectionMatrix();
         renderer.setSize(width, height, false);
+        visualRevision++;
       };
       const observer = new ResizeObserver(resize);
       observer.observe(element);
       resize();
+      const idleRender = createIdleRenderGate();
       let lastCameraTime = performance.now();
       const render = (now: number) => {
         if (!graphics.shouldRender(now)) {
+          raf = requestAnimationFrame(render);
+          return;
+        }
+        const state = game.current;
+        if (
+          !idleRender(now, state.paused, [
+            state.elapsed,
+            state.travelRevision,
+            state.x,
+            state.z,
+            state.elevation,
+            state.heading,
+            mode.current,
+            inspection.current,
+            selectedStop.current,
+            aspect,
+            viewportHeight,
+            window.devicePixelRatio,
+            visualRevision,
+            graphics.settings(),
+          ])
+        ) {
+          last = lastCameraTime = now;
           raf = requestAnimationFrame(render);
           return;
         }
@@ -448,6 +482,7 @@ export default function CityScene({
         car.root.rotation.order = 'YXZ';
         car.root.position.y = presented.elevation + 0.04;
         car.root.rotation.x = presented.pitch;
+        car.root.rotation.z = presented.roll;
         const line = citySpeech(s);
         placeSpeechBubble(
           speechRef,
@@ -588,6 +623,10 @@ export default function CityScene({
       teardown = () => {
         cancelAnimationFrame(raf);
         observer.disconnect();
+        renderer.domElement.removeEventListener(
+          'webglcontextrestored',
+          restoreFrame,
+        );
         city.lod.dispose();
         graphics.dispose();
         kit.dispose();

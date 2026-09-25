@@ -244,10 +244,10 @@ export default function CityHub({
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
   }, [settings, closeMap, openMap]);
-  const [cameraMode, setCameraMode] = useState<CityCameraMode>('drive');
+  const [cameraMode, setCameraMode] = useState<CityCameraMode>('cruise');
   const cameraNames = {
-    drive: 'За машиной',
-    cruise: 'Низкая камера',
+    drive: 'Обзорная',
+    cruise: 'За машиной',
     map: 'Весь город',
     faces: 'Лица',
   };

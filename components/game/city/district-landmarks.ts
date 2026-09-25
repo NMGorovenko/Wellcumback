@@ -1,3 +1,4 @@
+import { createHillLandmark } from './hill-landmarks.ts';
 import * as THREE from 'three';
 import type { CityBuilding } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
@@ -14,6 +15,7 @@ export function createDistrictLandmark(
   root: THREE.Group,
   b: CityBuilding,
 ) {
+  if (createHillLandmark(kit, root, b)) return true;
   if (createMallLandmark(kit, root, b)) return true;
   if (createOrbitaLandmark(kit, root, b)) return true;
   if (createDonerLandmark(kit, root, b)) return true;

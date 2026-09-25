@@ -3,7 +3,12 @@ import type { CityState } from './engine.ts';
 export type VehiclePose = Pick<
   CityState,
   'x' | 'z' | 'vx' | 'vz' | 'heading' | 'steering' | 'speed' | 'elapsed'
-> & { elevation: number; pitch: number; suspensionOffset: number };
+> & {
+  elevation: number;
+  pitch: number;
+  roll: number;
+  suspensionOffset: number;
+};
 type History = {
   previous: VehiclePose;
   current: VehiclePose;
@@ -29,6 +34,7 @@ export function vehiclePose(
     elapsed,
     elevation,
     pitch,
+    roll: car.roll ?? 0,
     suspensionOffset: car.flight?.suspension?.offset ?? 0,
   };
 }
@@ -86,7 +92,7 @@ export function presentedVehicle(
     // A reset, restore or direct authoritative correction must never sweep
     // through an obsolete pose, including teleports shorter than one car.
     history.delete(car);
-    return { car, elevation, pitch };
+    return { car, elevation, pitch, roll: car.roll ?? 0 };
   }
   const alpha = entry.remainder / entry.step;
   const pose = { ...entry.current };
@@ -102,6 +108,7 @@ export function presentedVehicle(
   const {
     elevation: renderedElevation,
     pitch: renderedPitch,
+    roll: renderedRoll,
     suspensionOffset,
     ...motion
   } = pose;
@@ -111,6 +118,7 @@ export function presentedVehicle(
       ...motion,
       elevation: renderedElevation,
       pitch: renderedPitch,
+      roll: renderedRoll,
       ...(car.flight?.suspension
         ? {
             flight: {
@@ -125,5 +133,6 @@ export function presentedVehicle(
     },
     elevation: renderedElevation,
     pitch: renderedPitch,
+    roll: renderedRoll,
   };
 }

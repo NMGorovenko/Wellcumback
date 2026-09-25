@@ -4,6 +4,8 @@ export type CityFlight = {
   vy: number;
   waterTime: number;
   landing: number;
+  /** Supported time needed to rearm the take-off hop after landing. */
+  launchCooldown?: number;
   /** Chassis travel relative to the wheel contact plane, in metres and m/s. */
   suspension?: { offset: number; velocity: number };
   safe?: {
@@ -126,6 +128,13 @@ export function validCityFlight(
     f.waterTime > 10 ||
     f.landing < 0 ||
     f.landing > 1
+  )
+    return false;
+  if (
+    f.launchCooldown !== undefined &&
+    (!Number.isFinite(f.launchCooldown) ||
+      f.launchCooldown < 0 ||
+      f.launchCooldown > 0.25)
   )
     return false;
   if (f.safe !== undefined) {

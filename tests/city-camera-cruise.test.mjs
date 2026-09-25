@@ -25,7 +25,7 @@ const perspective = (state, aspect) => {
 };
 
 void test('low city view is an additional perspective mode with a visible car and a long forward road', () => {
-  assert.deepEqual(CITY_CAMERA_MODES, ['drive', 'cruise', 'map', 'faces']);
+  assert.deepEqual(CITY_CAMERA_MODES, ['cruise', 'drive', 'map', 'faces']);
   for (const aspect of [16 / 9, 4 / 3, 9 / 16])
     for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2])
       for (const speed of [0, 18, 32]) {

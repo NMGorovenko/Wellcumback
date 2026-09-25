@@ -721,15 +721,6 @@ export const cityRoads: CityRoad[] = [
     ],
     20,
   ),
-  ...road(
-    'planeta-parking',
-    [
-      { x: 1100, z: -1760 },
-      { x: 1260, z: -1760 },
-      { x: 1260, z: -1850 },
-    ],
-    14,
-  ),
   ...projectedRoad(
     'sfu',
     [
@@ -829,6 +820,19 @@ export const CITY_NAMED_STREETS: readonly {
   name: string;
   roadIds: readonly string[];
 }[] = [
+  {
+    name: 'Проезд к рынку',
+    roadIds: [
+      'neo-market-access:0',
+      'neo-market-access:1',
+      'neo-market-access:2',
+      'neo-market-access:3',
+    ],
+  },
+  {
+    name: 'Караульная гора',
+    roadIds: ['karaulnaya-access:0', 'karaulnaya-access:1'],
+  },
   {
     name: 'Борисова',
     roadIds: cityRoads
@@ -1125,6 +1129,14 @@ export type CityBuilding = CityRect & {
     | 'pushkin'
     | 'kubatura'
     | 'kvant'
+    | 'karaulnaya-chapel'
+    | 'chapel-cannon'
+    | 'monastery'
+    | 'monastery-wing'
+    | 'neo-hotel'
+    | 'central-market'
+    | 'belinskogo-office'
+    | 'bus-shelter'
     | 'bobrovy-log'
     | 'pho'
     | 'frank'
@@ -1214,6 +1226,25 @@ export const cityBuildings: CityBuilding[] = [
     color: '#d7d5c5',
   },
   { kind: 'kvant', x: -70, z: -168, w: 54, d: 32, h: 22, color: '#6592aa' },
+  { kind: 'neo-hotel', x: -20, z: -163, w: 30, d: 26, h: 19, color: '#d8d9cf' },
+  {
+    kind: 'central-market',
+    x: -30,
+    z: -250,
+    w: 45,
+    d: 18,
+    h: 9,
+    color: '#d8d9cf',
+  },
+  {
+    kind: 'belinskogo-office',
+    x: 580,
+    z: -350,
+    w: 38,
+    d: 25,
+    h: 16,
+    color: '#d8d9cf',
+  },
   { kind: 'borisova', ...STUD.home, w: 64, d: 40, h: 46, color: '#d8d8cd' },
   { kind: 'ikit', ...STUD.ikit, w: 64, d: 20, h: 13.5, color: '#d6cfb4' },
   landmark('university', 56.004, 92.772, 35, 21, 7, '#ccb79a'),
@@ -1275,7 +1306,7 @@ export const cityBuildings: CityBuilding[] = [
 for (const [kind, x, z] of [
   ['museum', 214, 132],
   ['arena', 110, 300],
-  ['planeta', 645, -1005],
+  ['planeta', 650, -1015],
   ['komsomoll', 600, -220],
   ['kubatura', 960, -532],
   ['fresco', 204, 44],
@@ -1293,7 +1324,7 @@ export const CITY_PARKING = [
   { id: 'kvant', x: -70, z: -125, w: 70, d: 28 },
   { id: 'komsomoll', x: 600, z: -166, w: 130, d: 52 },
   { id: 'kubatura', x: 965, z: -476, w: 90, d: 62 },
-  { id: 'planeta', x: 645, z: -931, w: 165, d: 58 },
+  { id: 'planeta', x: 650, z: -955, w: 140, d: 52 },
 ];
 for (const parking of CITY_PARKING) {
   const stop = cityStops.find((s) => s.id === parking.id)!;
@@ -1326,6 +1357,130 @@ for (const parking of CITY_PARKING) {
     ),
   );
 }
+// Open commercial grounds and a separate office court, with usable access.
+CITY_PARKING.push(
+  { id: 'planeta-service', x: 650, z: -1070, w: 110, d: 24 },
+  { id: 'belinskogo-office', x: 580, z: -380, w: 38, d: 18 },
+);
+cityRoads.push(
+  ...projectedRoad(
+    'planeta-service',
+    [
+      { x: 570, z: -930.3 },
+      { x: 565, z: -980 },
+      { x: 565, z: -1070 },
+      { x: 650, z: -1070 },
+    ],
+    9,
+  ),
+  ...projectedRoad(
+    'belinskogo-office-access',
+    [
+      { x: 540.77, z: -380 },
+      { x: 580, z: -380 },
+    ],
+    7,
+  ),
+);
+for (const [id, t, side] of [
+  ['aviatorov:0', 0.7, -1],
+  ['aviatorov:0', 0.35, 1],
+  ['belinskogo:2', 0.68, 1],
+  ['belinskogo:2', 0.84, -1],
+] as const) {
+  const r = cityRoads.find((r) => r.id === id)!;
+  const dx = r.to.x - r.from.x,
+    dz = r.to.z - r.from.z,
+    length = Math.hypot(dx, dz);
+  const offset = side * (r.width / 2 + 5.5);
+  const angle = -Math.atan2(dz, dx) + (side === 1 ? Math.PI : 0);
+  cityBuildings.push({
+    kind: 'bus-shelter',
+    x: r.from.x + dx * t - (dz / length) * offset,
+    z: r.from.z + dz * t + (dx / length) * offset,
+    // Collision and the model share the rotated local shelter footprint.
+    w: 8,
+    d: 3,
+    h: 3,
+    color: '#386078',
+    angle,
+    district: id.startsWith('aviatorov') ? 'planeta' : 'komsomoll',
+  });
+}
+// A side street connects NEO with the market and the existing centre streets.
+// Reserve it before filler housing so its full carriageway remains open.
+cityRoads.push(
+  ...projectedRoad(
+    'neo-market-access',
+    [
+      { x: 6, z: -95.925 },
+      { x: 6, z: -142 },
+      { x: 6, z: -207.3714285714285 },
+      { x: 6, z: -225 },
+      { x: 6, z: -250 },
+    ],
+    7,
+  ),
+);
+cityBuildings.push(
+  {
+    kind: 'karaulnaya-chapel',
+    x: 40,
+    z: -450,
+    w: 10,
+    d: 10,
+    h: 15,
+    color: '#e4dfd3',
+  },
+  { kind: 'chapel-cannon', x: 55, z: -435, w: 7, d: 7, h: 3, color: '#4f6050' },
+  {
+    kind: 'monastery',
+    x: -1600,
+    z: 620,
+    w: 22,
+    d: 24,
+    h: 27,
+    color: '#e4dfd3',
+  },
+  {
+    kind: 'monastery-wing',
+    x: -1626,
+    z: 619,
+    w: 18,
+    d: 9,
+    h: 6,
+    color: '#e4dfd3',
+  },
+);
+cityRoads.push(
+  ...projectedRoad(
+    'karaulnaya-access',
+    [
+      { x: 280, z: -527.125 },
+      { x: 180, z: -490 },
+      { x: 72, z: -450 },
+    ],
+    9,
+  ),
+);
+cityStops.push(
+  {
+    id: 'karaulnaya',
+    x: 72,
+    z: -450,
+    title: 'Караульная гора',
+    subtitle: 'Часовня Параскевы Пятницы · пушка',
+    color: '#d9e89b',
+  },
+  {
+    id: 'monastery',
+    x: -1605,
+    z: 646,
+    title: 'Успенский монастырь',
+    subtitle: 'Удачный · под Академгородком',
+    color: '#d9e89b',
+  },
+);
 // Reserve landmarks before background streets and housing are generated.
 cityBuildings.push(...CITY_RIGHTBANK_PARCELS);
 CITY_PARKING.push(
@@ -1345,8 +1500,16 @@ for (const stop of CITY_FUEL_STOPS)
     subtitle: '',
     color: '#b5d6c7',
   });
+// The mall sits within an open commercial block, not a housing courtyard.
+// This reservation controls procedural infill only; it never flattens terrain
+// or creates an invisible physical parcel around the surrounding roads.
+export const CITY_OPEN_MALL_GROUNDS = [{ x: 650, z: -997.5, w: 220, d: 225 }];
 export function cityParcelClear(x: number, z: number, w: number, d: number) {
   return (
+    !CITY_OPEN_MALL_GROUNDS.some(
+      (p) =>
+        Math.abs(x - p.x) < (w + p.w) / 2 && Math.abs(z - p.z) < (d + p.d) / 2,
+    ) &&
     kachaParcelClear(x, z, w, d, 3) &&
     !cityRoads.some((r) => {
       const dx = r.to.x - r.from.x,
@@ -1503,6 +1666,9 @@ function clearNeighbourhoodStreet(
       x = from.x + (to.x - from.x) * t,
       z = from.z + (to.z - from.z) * t;
     if (
+      CITY_OPEN_MALL_GROUNDS.some((p) =>
+        nearRectangle(x, z, p, width / 2 + 2),
+      ) ||
       inCityWater(x, z, width / 2 + 8) ||
       onCityIsland(x, z) ||
       cityBuildings.some((b) => nearRectangle(x, z, b, width / 2 + 4)) ||

@@ -70,6 +70,36 @@ const komsomollDescent = view(
 /** Development-only frames use canonical parcels and current terrain heights,
  * so moving a landmark or raising its forecourt cannot leave stale viewpoints. */
 export const CITY_LANDMARK_REVIEW_PLACES: Record<string, CityReviewPlace> = {
+  'Планета · площадка': view(
+    building('planeta'),
+    [-95, 75, 110],
+    [0, 0, 45],
+    150,
+  ),
+  'Квант · NEO и рынок': view(
+    building('neo-hotel'),
+    [70, 40, 65],
+    [-20, 5, -35],
+    100,
+  ),
+  'Комсомолл · офисы': view(
+    building('belinskogo-office'),
+    [-75, 40, 70],
+    [25, 3, 75],
+    120,
+  ),
+  'Караульная гора · часовня': view(
+    building('karaulnaya-chapel'),
+    [38, 22, -50],
+    [4, 5, 5],
+    60,
+  ),
+  'Успенский монастырь': view(
+    building('monastery'),
+    [50, 28, 55],
+    [-9, 9, 0],
+    85,
+  ),
   'Коммунальный · панорама с дороги': {
     x: 185,
     z: 195,

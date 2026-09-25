@@ -4,7 +4,7 @@ import CityScene, { type CityReviewCamera } from './scene';
 import { freshCity, stepCityCar, recoverCityCar } from '@/lib/game/city/engine';
 import { breakableObjects, freshCityDamage } from '@/lib/game/city/destruction';
 import { freshFlight } from '@/lib/game/city/flight';
-import { cityRoads } from '@/lib/game/city/layout';
+import { cityRoads, cityBuildings } from '@/lib/game/city/layout';
 import { citySurfacePose } from '@/lib/game/city/surface';
 import type { CityCameraMode } from './camera';
 import {
@@ -61,6 +61,30 @@ export default function CityReview() {
       flight: freshFlight(),
     });
     impactUntil.current = game.current.elapsed + 5;
+  }
+  function dropOnRoof(kind: 'university' | 'cottage' | 'fuel') {
+    const building = cityBuildings.find((b) => (b.kind ?? b.style) === kind)!;
+    const x = building.x + (kind === 'cottage' ? building.w * 0.2 : 0),
+      z = building.z,
+      heading = 0;
+    const pose = citySurfacePose(x, z, heading, 180);
+    Object.assign(game.current, pose, {
+      x,
+      z,
+      heading,
+      elevation: pose.elevation + 12,
+      pitch: 0,
+      roll: 0,
+      vx: 0,
+      vz: 0,
+      speed: 0,
+      damage: freshCityDamage(),
+      flight: { ...freshFlight(), airborne: true, vy: -2 },
+      travelRevision: (game.current.travelRevision ?? 0) + 1,
+    });
+    impactUntil.current = game.current.elapsed + 8;
+    setReviewCamera(undefined);
+    setMode('cruise');
   }
   function inspect(name: string) {
     const p = places[name],
@@ -197,6 +221,15 @@ export default function CityReview() {
           Повернуть 45°
         </button>
         <span>{ready ? 'Готово' : 'Загрузка…'}</span>
+        <button onClick={() => dropOnRoof('university')} disabled={!ready}>
+          Сброс на крышу
+        </button>
+        <button onClick={() => dropOnRoof('cottage')} disabled={!ready}>
+          Сброс на скат
+        </button>
+        <button onClick={() => dropOnRoof('fuel')} disabled={!ready}>
+          Сброс на навес
+        </button>
         <button onClick={() => impact('rail')} disabled={!ready}>
           Удар в перила
         </button>

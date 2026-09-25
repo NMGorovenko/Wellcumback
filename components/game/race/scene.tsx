@@ -238,6 +238,7 @@ export default function RaceScene({
               x: p.x - p.dz * side,
               z: p.z + p.dx * side,
               heading: Math.atan2(p.dx, -p.dz),
+              roll: 0,
             };
             elevation = p.y;
             if (course.id === 'krasnoyarsk') {
@@ -255,6 +256,7 @@ export default function RaceScene({
           item.model.update(car, state.paused ? 0 : dt);
           item.model.root.position.y = elevation + 0.04;
           item.model.root.rotation.x = pitch;
+          item.model.root.rotation.z = car.roll ?? 0;
         }
         updateEffects(state, dt);
         const ids = views.current.length

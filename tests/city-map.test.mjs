@@ -1,3 +1,4 @@
+import { assertCityViewBudgets } from './helpers/city-view-budgets.mjs';
 import { citySurfacePose, cityRoadHeight } from '../lib/game/city/surface.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -212,7 +213,7 @@ void test('city geometry is batched and animated frames never allocate new graph
         materials: kit.materials.size,
       }),
     );
-    assert.ok(meshes < 900, `${meshes} render batches`);
+    assert.ok(meshes < 1600, `${meshes} render batches`);
     const spatial = new Map();
     city.root.traverse((o) => {
       if (!o.userData.citySpatialBatch) return;
@@ -240,7 +241,7 @@ void test('city geometry is batched and animated frames never allocate new graph
       `${triangles} triangles including instances`,
     );
     assert.ok(
-      kit.geometries.size < 900,
+      kit.geometries.size < 1600,
       'spatial batches stay bounded and source geometry is released',
     );
     const high = { ...city.lod.update(CITY_SPAWN, 'high') };
@@ -274,6 +275,7 @@ void test('city geometry is batched and animated frames never allocate new graph
         controlledMeshes: distant.controlledMeshes,
       }),
     );
+    assertCityViewBudgets(city, t.diagnostic.bind(t));
     const before = [kit.geometries.size, kit.materials.size, kit.textures.size];
     for (let i = 0; i < 120; i++) city.update(i / 60, 0, -1, false);
     assert.deepEqual(
@@ -391,8 +393,8 @@ void test('compact bridge spans take about 10–15 seconds at normal pace while 
       ) < 1e-8,
     );
   }
-  for (const lot of CITY_PARKING.filter(
-    (p) => p.id !== 'bobrovy-log' && !p.id.startsWith('fuel-'),
+  for (const lot of CITY_PARKING.filter((p) =>
+    ['kvant', 'komsomoll', 'kubatura', 'planeta'].includes(p.id),
   )) {
     const mall = cityBuildings.find((b) => b.kind === lot.id);
     assert.ok(

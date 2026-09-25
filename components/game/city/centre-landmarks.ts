@@ -1,3 +1,4 @@
+import { createMallNeighbour } from './mall-neighbourhoods.ts';
 import { createPushkinMonument } from './pushkin-monument.ts';
 import {
   createOperaLandmark,
@@ -21,6 +22,7 @@ export function createCentreLandmark(
     createTheatreSquareProp(kit, root, b)
   )
     return true;
+  if (createMallNeighbour(kit, root, b)) return true;
   if (createPushkinMonument(kit, root, b)) return true;
   if (createKvantLandmark(kit, root, b)) return true;
   if (

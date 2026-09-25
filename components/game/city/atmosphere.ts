@@ -9,7 +9,9 @@ export function createCityAtmosphere(kit: RenderKit) {
   sky.name = 'krasnoyarsk-daylight';
   sky.scale.setScalar(1000000);
   sky.frustumCulled = false;
-  sky.renderOrder = -1000;
+  // Draw at the far depth after opaque streets/buildings so hidden cloud
+  // fragments fail depth testing instead of shading the entire viewport.
+  sky.renderOrder = 1000;
   sky.castShadow = sky.receiveShadow = false;
   const uniforms = sky.material.uniforms;
   uniforms.turbidity.value = 3.2;

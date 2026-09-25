@@ -185,6 +185,7 @@ export function startRace(s: RaceState, course: Course) {
       Object.assign(r.car, {
         elevation: point.y,
         pitch: 0,
+        roll: 0,
         surfaceId: undefined,
       });
     r.elevation = r.car.elevation!;
@@ -245,7 +246,13 @@ export function respawnRacer(s: RaceState, r: Racer, course: Course) {
   });
   if (course.id === 'krasnoyarsk')
     Object.assign(r.car, citySurfacePose(r.car.x, r.car.z, r.car.heading));
-  else Object.assign(r.car, { elevation: p.y, pitch: 0, surfaceId: undefined });
+  else
+    Object.assign(r.car, {
+      elevation: p.y,
+      pitch: 0,
+      roll: 0,
+      surfaceId: undefined,
+    });
   r.elevation = r.car.elevation!;
   r.pitch = r.car.pitch!;
   r.combo = 0;
