@@ -25,6 +25,7 @@ const museum = building('museum'),
   bobBuildings = cityBuildings.filter((b) => b.kind === 'bobrovy-log'),
   bob = CITY_BOBROVY_LOG.base,
   summit = CITY_BOBROVY_LOG.summit,
+  komsomollEntry = cityRoads.find((r) => r.id === 'komsomoll-forecourt:0')!,
   parking = CITY_PARKING.find((p) => p.id === 'kubatura')!;
 
 function view(
@@ -59,6 +60,12 @@ const bobFront = {
     2,
   z: Math.min(...bobBuildings.map((b) => b.z - b.d / 2)),
 };
+const komsomollDescent = view(
+  komsomollEntry.from,
+  [-24, 12, -40],
+  [65, 1, 65],
+  95,
+);
 
 /** Development-only frames use canonical parcels and current terrain heights,
  * so moving a landmark or raising its forecourt cannot leave stale viewpoints. */
@@ -133,6 +140,14 @@ export const CITY_LANDMARK_REVIEW_PLACES: Record<string, CityReviewPlace> = {
   ),
   'Музей · восточнее моста': view(museum, [28, 20, 48], [-12, 3, 7]),
   'Опера · восточный фасад': view(opera, [48, 11, 11], [0, 3, 0]),
+  'Комсомолл · спуск': {
+    ...komsomollDescent,
+    view: {
+      ...komsomollDescent.view!,
+      fov: 65,
+      fitWidth: false,
+    },
+  },
   'Кубатура · поднятая парковка': view(
     kubatura,
     [76, 44, parking.z - kubatura.z + 110],

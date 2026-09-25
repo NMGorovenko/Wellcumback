@@ -1,4 +1,5 @@
 'use client';
+import { createGraphicsController } from '../world/graphics';
 import { screenFaceActor } from '@/lib/game/screen/camera';
 import { levelCheck, levelCheckStage } from '@/lib/game/screen/level-check';
 import { createSpiritLevel, placeLevelHands } from './spirit-level';
@@ -102,7 +103,6 @@ export default function Scene({
       setFailed(true);
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.65));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -121,6 +121,7 @@ export default function Scene({
     key.position.set(-3.5, 8, 5);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
+    const graphics = createGraphicsController(renderer, key, world);
     key.shadow.normalBias = 0.025;
     key.shadow.bias = -0.00012;
     Object.assign(key.shadow.camera, {
@@ -242,6 +243,10 @@ export default function Scene({
     resize.observe(element);
     size();
     function render(now: number) {
+      if (!graphics.shouldRender(now)) {
+        raf = requestAnimationFrame(render);
+        return;
+      }
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       const opt = options.current,
@@ -765,6 +770,7 @@ export default function Scene({
     return () => {
       cancelAnimationFrame(raf);
       resize.disconnect();
+      graphics.dispose();
       kit.dispose();
       renderer.dispose();
       renderer.domElement.remove();

@@ -6,6 +6,7 @@ import {
   createTerrainSeamMaterial,
   convexPieces,
   drapedGeometry,
+  drapedRegionSeams,
   terrainTiles,
 } from '../components/game/city/relief.ts';
 import {
@@ -18,7 +19,11 @@ import {
   ROUNDABOUT,
   cityRoads,
 } from '../lib/game/city/layout.ts';
-import { cityGroundHeight, cityRoadLayer } from '../lib/game/city/surface.ts';
+import {
+  cityGroundHeight,
+  cityGroundRoadHeight,
+  cityRoadLayer,
+} from '../lib/game/city/surface.ts';
 
 const material = () => new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
 const heightAt = (mesh, x, z) =>
@@ -26,6 +31,113 @@ const heightAt = (mesh, x, z) =>
     new THREE.Vector3(x, 200, z),
     new THREE.Vector3(0, -1, 0),
   ).intersectObject(mesh)[0]?.point.y;
+
+void test('Komso junction seals the real adaptive asphalt cracks from either viewing side', () => {
+  const roads = cityRoads.filter(
+    (road) =>
+      cityRoadLayer(road) === 'ground' &&
+      Math.min(road.from.x, road.to.x) < 550 &&
+      Math.max(road.from.x, road.to.x) > 480 &&
+      Math.min(road.from.z, road.to.z) < -215 &&
+      Math.max(road.from.z, road.to.z) > -285,
+  );
+  const asphalt = drapedGeometry(
+    buildRoadSurfaces(roads).asphalt,
+    cityGroundRoadHeight,
+    0.065,
+    3,
+    [],
+    0.06,
+  );
+  const original = new Float32Array(asphalt.attributes.position.array);
+  const bounds = { minX: 485, maxX: 625, minZ: -278, maxZ: -140 };
+  const patch = drapedRegionSeams(asphalt, cityGroundRoadHeight, bounds);
+  const stitcher = createDrapedEdgeStitcher();
+  stitcher.add(asphalt);
+  const gaps = stitcher.stitch(asphalt);
+  const road = new THREE.Mesh(asphalt, material());
+  const closure = new THREE.Mesh(patch, new THREE.MeshBasicMaterial());
+  let checked = 0;
+  try {
+    assert.deepEqual(
+      asphalt.attributes.position.array,
+      original,
+      'no pavement vertex is moved',
+    );
+    assert.ok(
+      patch.attributes.position.count > 0 &&
+        patch.attributes.position.count / 3 < 500,
+      'only a small local set of closure triangles is needed',
+    );
+    const positions = gaps.attributes.position;
+    for (let i = 0; i < positions.count; i += 3) {
+      const points = [0, 1, 2].map((offset) =>
+        new THREE.Vector3().fromBufferAttribute(positions, i + offset),
+      );
+      const centre = points
+        .reduce((sum, point) => sum.add(point), new THREE.Vector3())
+        .multiplyScalar(1 / 3);
+      if (
+        centre.x < 488 ||
+        centre.x > 539 ||
+        centre.z < -277 ||
+        centre.z > -218
+      )
+        continue;
+      const gap = Math.max(
+        ...points.flatMap((a, j) =>
+          points
+            .slice(j + 1)
+            .filter((b) => Math.hypot(a.x - b.x, a.z - b.z) < 0.001)
+            .map((b) => Math.abs(a.y - b.y)),
+        ),
+      );
+      if (!(gap > 0.01)) continue;
+      const direction = points[1]
+        .clone()
+        .sub(points[0])
+        .cross(points[2].clone().sub(points[0]));
+      direction.y = 0;
+      direction.normalize();
+      const ray = new THREE.Raycaster(
+        centre.clone().addScaledVector(direction, 0.001),
+        direction.clone().negate(),
+        0,
+        0.002,
+      );
+      if (ray.intersectObject(road).length) continue;
+      assert.ok(
+        ray.intersectObject(closure).length,
+        `close asphalt hole at ${centre.x},${centre.z}`,
+      );
+      ray.set(centre.clone().addScaledVector(direction, -0.001), direction);
+      assert.ok(
+        ray.intersectObject(closure).length,
+        'the opposite road-level view is closed too',
+      );
+      checked++;
+    }
+    assert.ok(
+      checked >= 10,
+      `real centimetre-wide holes reproduced: ${checked}`,
+    );
+    for (let i = 0; i < patch.attributes.position.count; i++) {
+      assert.ok(
+        patch.attributes.normal.getY(i) > 0.9,
+        'closure receives road lighting',
+      );
+      assert.ok(
+        Math.abs(
+          patch.attributes.uv.getX(i) - patch.attributes.position.getX(i) / 10,
+        ) < 0.00001,
+      );
+    }
+  } finally {
+    for (const geometry of [asphalt, patch, gaps]) geometry.dispose();
+    road.material.dispose();
+    closure.material.dispose();
+  }
+});
 
 void test('Kacha north-bank terrain and curbs join across both signs of their tessellation mismatch', () => {
   const roads = cityRoads.filter(

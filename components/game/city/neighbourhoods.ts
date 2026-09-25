@@ -2,6 +2,7 @@ import { cityPlanting } from '../../../lib/game/city/trees.ts';
 import * as THREE from 'three';
 import type { CityBuilding } from '../../../lib/game/city/layout.ts';
 import type { RenderKit } from '../world/render-kit.ts';
+import type { CityLodRange, CityLodTier } from './lod.ts';
 
 type HousingStyle = NonNullable<CityBuilding['style']>;
 type Point = [number, number, number];
@@ -124,13 +125,21 @@ function housingMaterial(kit: RenderKit) {
 }
 
 /** Merge the complete house into one draw call, including its balcony volumes. */
-function houseGeometry() {
+function houseGeometry(roofHeight: number) {
   const positions: number[] = [],
     normals: number[] = [],
     uv: number[] = [],
     colors: number[] = [],
     indices: number[] = [];
   const colorCache = new Map<string, THREE.Color>();
+  const lodRanges: CityLodRange[] = [];
+  let tier: CityLodTier = 'house-detail';
+  const silhouette = (draw: () => void) => {
+    const previous = tier;
+    tier = 'silhouette';
+    draw();
+    tier = previous;
+  };
   const first = new THREE.Vector3(),
     second = new THREE.Vector3();
   function face(points: Point[], color: string, tile = SOLID) {
@@ -167,8 +176,12 @@ function houseGeometry() {
       colors.push(tint.r, tint.g, tint.b);
       uv.push(...coords[i]);
     });
+    const start = indices.length;
     indices.push(offset, offset + 1, offset + 2);
     if (points.length === 4) indices.push(offset, offset + 2, offset + 3);
+    const previous = lodRanges.at(-1);
+    if (previous?.tier === tier) previous.count += indices.length - start;
+    else lodRanges.push({ start, count: indices.length - start, tier });
   }
   function wall(
     origin: Point,
@@ -222,6 +235,9 @@ function houseGeometry() {
     rightCoveredHeight = 0,
     endTile = tile,
   ) {
+    const previousTier = tier;
+    // Roof caps, chimneys and equipment belong to the distant outline too.
+    if (y - h / 2 >= roofHeight - 0.15) tier = 'silhouette';
     const left = x - w / 2,
       right = x + w / 2,
       back = z - d / 2,
@@ -302,6 +318,7 @@ function houseGeometry() {
       ],
       color,
     );
+    tier = previousTier;
   }
   function gable(w: number, d: number, y: number, rise: number, color: string) {
     const a: Point = [-w / 2, y, -d / 2],
@@ -310,10 +327,12 @@ function houseGeometry() {
     const d1: Point = [-w / 2, y, d / 2],
       e: Point = [w / 2, y, d / 2],
       f: Point = [0, y + rise, d / 2];
-    face([a, c, b], color);
-    face([d1, e, f], color);
-    face([a, d1, f, c], color);
-    face([b, c, f, e], color);
+    silhouette(() => {
+      face([a, c, b], color);
+      face([d1, e, f], color);
+      face([a, d1, f, c], color);
+      face([b, c, f, e], color);
+    });
   }
   function finish() {
     const geometry = new THREE.BufferGeometry();
@@ -328,11 +347,12 @@ function houseGeometry() {
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geometry.setIndex(indices);
+    geometry.userData.cityLodRanges = lodRanges;
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
     return geometry;
   }
-  return { box, gable, finish };
+  return { box, gable, finish, silhouette };
 }
 
 /** Krasnoyarsk street types: Mira masonry, Soviet slabs, Vzletka towers, timber outskirts. */
@@ -351,7 +371,7 @@ export function createNeighbourhoodBuilding(
       Math.abs(index + Math.floor(b.x / 57) + Math.floor(b.z / 73)) % 4,
     style = styles.indexOf(b.style),
     tile = style * 3 + (variant % 3);
-  const g = houseGeometry(),
+  const g = houseGeometry(b.h),
     { box } = g;
   // Recess the walls so that balconies and entrance canopies remain in the parcel.
   const turned = b.orientation === 'north-south';
@@ -382,22 +402,24 @@ export function createNeighbourhoodBuilding(
     leftCoveredHeight = 0,
     rightCoveredHeight = 0,
   ) =>
-    box(
-      bw,
-      bh,
-      bd,
-      tint,
-      x,
-      bh / 2,
-      z,
-      tile,
-      !low,
-      true,
-      b.style === 'panel' || b.style === 'tower' ? end : tint,
-      b.floors ? Math.max(1, Math.round((b.floors * bh) / h)) : undefined,
-      leftCoveredHeight,
-      rightCoveredHeight,
-      b.style === 'panel' ? SOLID : tile,
+    g.silhouette(() =>
+      box(
+        bw,
+        bh,
+        bd,
+        tint,
+        x,
+        bh / 2,
+        z,
+        tile,
+        !low,
+        true,
+        b.style === 'panel' || b.style === 'tower' ? end : tint,
+        b.floors ? Math.max(1, Math.round((b.floors * bh) / h)) : undefined,
+        leftCoveredHeight,
+        rightCoveredHeight,
+        b.style === 'panel' ? SOLID : tile,
+      ),
     );
   const cornice = (y: number, thickness = 0.22) =>
     box(w + 0.28, thickness, d + 0.28, trim, 0, y, 0);

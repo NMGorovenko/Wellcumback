@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { CityBuilding } from '../../../lib/game/city/layout.ts';
+import { cityGroundHeight } from '../../../lib/game/city/surface.ts';
 import type { RenderKit } from '../world/render-kit.ts';
 import { facadeText } from './facade-text.ts';
 
@@ -43,6 +44,34 @@ export function createOperaLandmark(
     y: number,
     z: number,
   ) => kit.box(w, h, d, c, x, y, z, g, 0);
+  // The parcel is level, but the 8 m terrain grid spans the sharp descent to
+  // Perensona behind the opera. Carry the complete footprint on a closed
+  // plinth; extending below the neighbouring grid samples seals both corner
+  // interpolation gaps and the visible retaining face beside the lower road.
+  const base = cityGroundHeight(footprint.x, footprint.z);
+  let bottom = base;
+  for (
+    let x = Math.floor((footprint.x - footprint.w / 2) / 8) * 8 - 8;
+    x <= Math.ceil((footprint.x + footprint.w / 2) / 8) * 8 + 8;
+    x += 8
+  )
+    for (
+      let z = Math.floor((footprint.z - footprint.d / 2) / 8) * 8 - 8;
+      z <= Math.ceil((footprint.z + footprint.d / 2) / 8) * 8 + 8;
+      z += 8
+    )
+      bottom = Math.min(bottom, cityGroundHeight(x, z));
+  const plinthBottom = bottom - base - 0.35,
+    plinthTop = 0.035;
+  box(
+    b.w + 0.24,
+    plinthTop - plinthBottom,
+    b.d + 0.24,
+    '#b6c1c0',
+    0,
+    (plinthTop + plinthBottom) / 2,
+    0,
+  ).name = 'theatre:foundation';
   const front = b.d / 2 - 0.3,
     facade = front - 2;
   box(b.w - 2, 3.75, b.d - 3, stone, 0, 1.9, -1.2);

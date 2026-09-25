@@ -1,4 +1,5 @@
 'use client';
+import { createGraphicsController } from '../world/graphics';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
 import { presentedVehicle } from '../../../lib/game/city/vehicle-presentation';
@@ -76,7 +77,6 @@ export default function RaceScene({
         setFailed(true);
         return;
       }
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.15;
@@ -93,6 +93,7 @@ export default function RaceScene({
       const sun = new THREE.DirectionalLight('#ffedc9', 2.8);
       sun.castShadow = true;
       sun.shadow.mapSize.set(1024, 1024);
+      const graphics = createGraphicsController(renderer, sun, scene);
       sun.shadow.camera.left = -45;
       sun.shadow.camera.right = 45;
       sun.shadow.camera.top = 45;
@@ -202,6 +203,10 @@ export default function RaceScene({
       resize();
       const countFrame = renderedFrameCounter();
       const animate = (now: number) => {
+        if (!graphics.shouldRender(now)) {
+          raf = requestAnimationFrame(animate);
+          return;
+        }
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
         const actual = game.current;
@@ -370,6 +375,10 @@ export default function RaceScene({
           renderer.setViewport(x, 0, w, height);
           renderer.setScissor(x, 0, w, height);
           atmosphere?.update(camera, state.elapsed);
+          cityEnvironment?.lod.update(
+            camera.position,
+            graphics.settings().detail,
+          );
           renderer.render(scene, camera);
         }
         countFrame(now);
@@ -379,6 +388,8 @@ export default function RaceScene({
         cancelAnimationFrame(raf);
         observer.disconnect();
         models.forEach((m) => m.kit.dispose());
+        cityEnvironment?.lod.dispose();
+        graphics.dispose();
         kit.dispose();
         renderer.dispose();
         renderer.domElement.remove();

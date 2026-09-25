@@ -1116,10 +1116,7 @@ export function createMustang(
         THREE.MathUtils.clamp((forward - lastSpeed) * 0.024, -0.035, 0.035),
         smooth,
       );
-      body.position.y =
-        s.speed > 0.2
-          ? Math.sin(s.elapsed * 16) * Math.min(0.013, s.speed * 0.002)
-          : 0;
+      body.position.y = s.flight?.suspension?.offset ?? 0;
       passengers.forEach(
         (head, i) =>
           (head.rotation.z =

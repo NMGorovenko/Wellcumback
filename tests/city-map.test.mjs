@@ -243,12 +243,44 @@ void test('city geometry is batched and animated frames never allocate new graph
       kit.geometries.size < 900,
       'spatial batches stay bounded and source geometry is released',
     );
+    const high = { ...city.lod.update(CITY_SPAWN, 'high') };
+    const low = { ...city.lod.update(CITY_SPAWN, 'low') };
+    const distant = { ...city.lod.update({ x: 50000, z: 50000 }, 'low') };
+    assert.equal(
+      high.fullMeshes,
+      meshes,
+      'LOD creates no extra render batches',
+    );
+    assert.equal(
+      high.fullTriangles,
+      triangles,
+      'near LOD keeps the original topology',
+    );
+    assert.ok(low.selectedTriangles <= high.selectedTriangles);
+    assert.ok(
+      distant.selectedTriangles < triangles * 0.94,
+      'far geometry meaningfully sheds detail',
+    );
+    assert.equal(
+      distant.largeBatches,
+      0,
+      'no LOD group spans unrelated city districts',
+    );
+    t.diagnostic(
+      JSON.stringify({
+        lodHigh: high.selectedTriangles,
+        lodLow: low.selectedTriangles,
+        lodFar: distant.selectedTriangles,
+        controlledMeshes: distant.controlledMeshes,
+      }),
+    );
     const before = [kit.geometries.size, kit.materials.size, kit.textures.size];
     for (let i = 0; i < 120; i++) city.update(i / 60, 0, -1, false);
     assert.deepEqual(
       [kit.geometries.size, kit.materials.size, kit.textures.size],
       before,
     );
+    city.lod.dispose();
     assert.ok(city.root.getObjectByName('landmark:komsomoll'));
   } finally {
     kit.dispose();

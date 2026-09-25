@@ -187,6 +187,12 @@ export function readPeerPacket(raw: unknown): PeerPacket | null {
         waterTime: f.waterTime,
         landing: f.landing,
       };
+      if (f.suspension) {
+        state.flight.suspension = {
+          offset: f.suspension.offset,
+          velocity: f.suspension.velocity,
+        };
+      }
       if (f.safe) {
         const p = f.safe;
         state.flight.safe = {

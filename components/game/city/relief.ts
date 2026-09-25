@@ -345,6 +345,93 @@ export function createDrapedEdgeStitcher() {
   };
 }
 
+/** Close internal T-junctions in a bounded part of a draped surface. Adaptive
+ * triangles can sample the same footprint edge at different heights. Keep the
+ * original surface intact and supply narrow faces with its lighting and UVs. */
+export function drapedRegionSeams(
+  geometry: THREE.BufferGeometry,
+  heightAt: HeightAt,
+  bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
+) {
+  const source = geometry.attributes.position;
+  const index = geometry.index;
+  const local: number[] = [];
+  for (let i = 0; i < (index?.count ?? source.count); i += 3) {
+    const points = [0, 1, 2].map((offset) => {
+      const j = index ? index.getX(i + offset) : i + offset;
+      return [source.getX(j), source.getY(j), source.getZ(j)];
+    });
+    if (
+      Math.max(...points.map((p) => p[0])) < bounds.minX - 6 ||
+      Math.min(...points.map((p) => p[0])) > bounds.maxX + 6 ||
+      Math.max(...points.map((p) => p[2])) < bounds.minZ - 6 ||
+      Math.min(...points.map((p) => p[2])) > bounds.maxZ + 6
+    )
+      continue;
+    local.push(...points.flat());
+  }
+  const subset = new THREE.BufferGeometry();
+  subset.setAttribute('position', new THREE.Float32BufferAttribute(local, 3));
+  const stitcher = createDrapedEdgeStitcher();
+  stitcher.add(subset);
+  const joined = stitcher.stitch(subset);
+  const positions: number[] = [],
+    normals: number[] = [],
+    uv: number[] = [];
+  const sourceJoins = joined.attributes.position;
+  const normal = new THREE.Vector3();
+  for (let i = 0; i < sourceJoins.count; i += 3) {
+    const x =
+      (sourceJoins.getX(i) +
+        sourceJoins.getX(i + 1) +
+        sourceJoins.getX(i + 2)) /
+      3;
+    const z =
+      (sourceJoins.getZ(i) +
+        sourceJoins.getZ(i + 1) +
+        sourceJoins.getZ(i + 2)) /
+      3;
+    if (
+      x < bounds.minX ||
+      x > bounds.maxX ||
+      z < bounds.minZ ||
+      z > bounds.maxZ
+    )
+      continue;
+    normal
+      .set(
+        heightAt(x - 0.3, z) - heightAt(x + 0.3, z),
+        0.6,
+        heightAt(x, z - 0.3) - heightAt(x, z + 0.3),
+      )
+      .normalize();
+    // Both windings retain the existing FrontSide material without creating a
+    // material group or flipping the road's supplied shading normal.
+    for (const offset of [0, 1, 2, 2, 1, 0]) {
+      const j = i + offset;
+      positions.push(
+        sourceJoins.getX(j),
+        sourceJoins.getY(j),
+        sourceJoins.getZ(j),
+      );
+      normals.push(normal.x, normal.y, normal.z);
+      uv.push(sourceJoins.getX(j) / 10, sourceJoins.getZ(j) / 10);
+    }
+  }
+  subset.dispose();
+  joined.dispose();
+  const result = new THREE.BufferGeometry();
+  result.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  result.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  result.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  result.computeBoundingBox();
+  result.computeBoundingSphere();
+  return result;
+}
+
 /** Lift scenery before material batching. Rigid objects keep vertical walls;
  * paint and wide ground slabs follow the same height field as their ground. */
 export function liftScenery(

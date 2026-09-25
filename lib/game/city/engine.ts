@@ -1,5 +1,13 @@
 import { fuelSolids } from './right-bank.ts';
-import { freshFlight, type CityFlight } from './flight.ts';
+import {
+  freshFlight,
+  advanceCitySuspension,
+  compressCitySuspension,
+  roadVerticalMotion,
+  CITY_FLIGHT_GRAVITY,
+  CITY_SUSPENSION_EXTENSION,
+  type CityFlight,
+} from './flight.ts';
 import { inKachaWater, sampleKacha } from './kacha.ts';
 import { onKachaStreetDeck, cityKachaRailBlocked } from './kacha-decks.ts';
 import {
@@ -111,6 +119,9 @@ export const freshCity = (): CityState => ({
   conversation: freshCityConversation(),
 });
 const blockers = [...cityBuildings, ...cityBarriers];
+const roadsBySurface = new Map(
+  cityRoads.map((road) => [`road:${road.id}`, road]),
+);
 const barrierIds = new Map(cityBarriers.map((b, i) => [b, i]));
 // Static spatial index keeps a city drive independent of the number of distant houses.
 const BLOCK_CELL = 64,
@@ -259,6 +270,7 @@ export function stepCityCar(
   const flight = (s.flight ??= freshFlight());
   flight.landing = Math.max(0, flight.landing - dt * 2.5);
   if (flight.waterTime > 0) {
+    advanceCitySuspension(flight, 0, dt);
     flight.waterTime += dt;
     s.vx = s.vz = s.speed = 0;
     s.drifting = false;
@@ -267,13 +279,35 @@ export function stepCityCar(
   const prior = citySurfacePose(s.x, s.z, s.heading, s.elevation, s.surfaceId);
   if (!flight.airborne) Object.assign(s, prior);
   const oldY = s.elevation ?? prior.elevation;
+  const road = roadsBySurface.get(prior.surfaceId);
+  const motion = flight.airborne
+    ? { velocity: 0, acceleration: 0 }
+    : roadVerticalMotion(
+        road ? (x, z) => cityRoadHeight(road, x, z) : cityGroundHeight,
+        s.x,
+        s.z,
+        s.vx,
+        s.vz,
+        prior.elevation,
+      );
+  advanceCitySuspension(flight, flight.airborne ? 0 : motion.acceleration, dt);
+  // Short road seams unload the suspension without throwing all four wheels
+  // into the air. A sustained crest releases them once its extension is spent.
+  if (
+    !flight.airborne &&
+    flight.suspension!.offset >= CITY_SUSPENSION_EXTENSION &&
+    motion.acceleration < -CITY_FLIGHT_GRAVITY - 0.5
+  ) {
+    // Keep the velocity earned on the last actual contact step. A predicted
+    // sample across an edge must never add a vertical launch impulse.
+    flight.airborne = true;
+  }
   if (!flight.airborne && s.speed > 0.5) {
     const gravity = Math.sin(prior.pitch) * 9.81 * 0.45 * dt;
     s.vx -= Math.sin(s.heading) * gravity;
     s.vz += Math.cos(s.heading) * gravity;
   }
   if (!flight.airborne && prior.surfaceId.startsWith('road:')) {
-    const road = cityRoads.find((r) => `road:${r.id}` === prior.surfaceId);
     if (
       road &&
       distanceToRoad(s.x, s.z, road) < road.width / 2 - 3 &&
@@ -335,11 +369,12 @@ export function stepCityCar(
     flight.airborne ? oldY + 0.3 : Infinity,
   );
   const travel = Math.hypot(s.x - before.x, s.z - before.z);
-  const projectedY = oldY + flight.vy * dt - 0.5 * 18 * dt * dt;
+  const projectedY =
+    oldY + flight.vy * dt - 0.5 * CITY_FLIGHT_GRAVITY * dt * dt;
   if (
     !flight.airborne &&
     (oldY - pose.elevation > 0.32 + travel * 0.3 ||
-      (s.speed > 9 && flight.vy > 1 && projectedY - pose.elevation > 0.1))
+      (s.speed > 9 && projectedY - pose.elevation > 0.1))
   )
     flight.airborne = true;
   const waterAtCar = inCityWater(s.x, s.z);
@@ -350,7 +385,7 @@ export function stepCityCar(
     flight.airborne = true;
   let landed = false;
   if (flight.airborne) {
-    flight.vy = Math.max(-80, flight.vy - 18 * dt);
+    flight.vy = Math.max(-80, flight.vy - CITY_FLIGHT_GRAVITY * dt);
     const ceiling = cityCeilingHit(s.x, s.z, oldY, projectedY);
     s.elevation = ceiling ?? projectedY;
     if (ceiling !== null) flight.vy = -Math.abs(flight.vy) * 0.2;
@@ -378,6 +413,7 @@ export function stepCityCar(
       flight.airborne = false;
       flight.vy = 0;
       flight.landing = Math.min(1, impact / 18);
+      compressCitySuspension(flight, impact);
       const loss = Math.max(0.55, 1 - impact * 0.018);
       s.vx *= loss;
       s.vz *= loss;

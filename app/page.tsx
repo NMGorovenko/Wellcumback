@@ -5,7 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Gamepad2,
+  Settings2,
   Map,
   Radio,
   Maximize,
@@ -268,9 +268,9 @@ export default function Home() {
               <button
                 className="icon-button"
                 onClick={() => setPanel('controls')}
-                aria-label="Клавиатура и геймпады"
+                aria-label="Настройки игры"
               >
-                <Gamepad2 size={19} />
+                <Settings2 size={19} />
               </button>
             </>
           )}

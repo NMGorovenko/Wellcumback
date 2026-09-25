@@ -1,4 +1,5 @@
 'use client';
+import { createGraphicsController } from '../world/graphics';
 import { presentedVehicle } from '@/lib/game/city/vehicle-presentation';
 import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, useState, type RefObject } from 'react';
@@ -96,7 +97,6 @@ export default function CityScene({
         setFailed(true);
         return;
       }
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.7));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.0;
@@ -152,6 +152,7 @@ export default function CityScene({
       sun.position.set(-22, 38, 16);
       sun.castShadow = true;
       sun.shadow.mapSize.set(1536, 1536);
+      const graphics = createGraphicsController(renderer, sun, scene);
       sun.shadow.camera.left = -42;
       sun.shadow.camera.right = 42;
       sun.shadow.camera.top = 37;
@@ -308,6 +309,10 @@ export default function CityScene({
       resize();
       let lastCameraTime = performance.now();
       const render = (now: number) => {
+        if (!graphics.shouldRender(now)) {
+          raf = requestAnimationFrame(render);
+          return;
+        }
         const presented = presentedVehicle(game.current),
           s = {
             ...presented.car,
@@ -441,8 +446,7 @@ export default function CityScene({
         previousMode = mode.current;
         car.update(s, dt, mode.current === 'faces');
         car.root.rotation.order = 'YXZ';
-        car.root.position.y =
-          presented.elevation + 0.04 - (s.flight?.landing ?? 0) * 0.15;
+        car.root.position.y = presented.elevation + 0.04;
         car.root.rotation.x = presented.pitch;
         const line = citySpeech(s);
         placeSpeechBubble(
@@ -568,6 +572,15 @@ export default function CityScene({
           puff.sprite.material.opacity = (1 - puff.age / 1.55) * 0.43;
         });
         atmosphere.update(activeCamera, s.elapsed, mode.current === 'cruise');
+        city.lod.update(
+          review?.look ??
+            (mode.current === 'cruise' ? activeCamera.position : s),
+          graphics.settings().detail,
+          mode.current === 'map',
+          mode.current === 'map'
+            ? (currentHalfHeight * 2) / viewportHeight
+            : undefined,
+        );
         renderer.render(scene, activeCamera);
         countRenderedFrame(performance.now());
         raf = requestAnimationFrame(render);
@@ -575,6 +588,8 @@ export default function CityScene({
       teardown = () => {
         cancelAnimationFrame(raf);
         observer.disconnect();
+        city.lod.dispose();
+        graphics.dispose();
         kit.dispose();
         renderer.dispose();
         renderer.domElement.remove();

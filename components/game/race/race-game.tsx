@@ -661,7 +661,7 @@ export default function RaceGame({
                 ))}
               </div>
               <footer>
-                <button onClick={onControls} aria-label="Управление">
+                <button onClick={onControls} aria-label="Настройки">
                   <Settings2 size={20} />
                 </button>
                 <button
@@ -786,7 +786,7 @@ export default function RaceGame({
               >
                 <Play size={18} /> Продолжить
               </button>
-              <button onClick={onControls}>Управление</button>
+              <button onClick={onControls}>Настройки</button>
               <button onClick={onFullscreen}>На весь экран</button>
               <button disabled={!canManage} onClick={lobby}>
                 Заново выбрать заезд

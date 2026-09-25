@@ -125,7 +125,7 @@ export function MapCar({
 }) {
   return (
     <g
-      transform={`translate(${state.x} ${state.z}) rotate(${(state.heading * 180) / Math.PI}) scale(${size})`}
+      transform={`translate(${state.x} ${state.z}) rotate(${((state.heading * 180) / Math.PI).toFixed(5)}) scale(${size})`}
     >
       <circle r="7.5" fill="#142922" fillOpacity=".9" />
       <path

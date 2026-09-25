@@ -410,7 +410,7 @@ export default function MovingGame({
           <strong>{view.delivered}</strong> у двери
         </span>
         <button className="secondary-button" onClick={openControls}>
-          <Settings2 size={16} /> Управление
+          <Settings2 size={16} /> Настройки
         </button>
         <span className="moving-score">
           <Trophy size={16} /> {view.score.toLocaleString('ru-RU')}
@@ -480,7 +480,7 @@ export default function MovingGame({
             className={`secondary-button${choice === 1 ? ' pad-selected' : ''}`}
             onClick={openControls}
           >
-            <Settings2 size={17} /> Управление
+            <Settings2 size={17} /> Настройки
           </button>
           <button
             className={`secondary-button${choice === 2 ? ' pad-selected' : ''}`}

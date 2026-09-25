@@ -375,7 +375,7 @@ export default function CityHub({
       label: 'Вернуть машину на дорогу',
       disabled: shared && network.role === 'guest',
     },
-    { id: 'controls', label: 'Управление' },
+    { id: 'controls', label: 'Настройки' },
     { id: 'fullscreen', label: 'Полный экран / окно' },
     ...(shared && network.role === 'host'
       ? [

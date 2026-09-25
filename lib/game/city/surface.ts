@@ -190,9 +190,38 @@ function trenchDepth(x: number, z: number) {
   );
   return 10 * (1 - smooth(Math.abs(x + 720) / 300)) * (1 - smooth(gap / 140));
 }
+const komsomollEntry = cityRoads.find((r) => r.id === 'komsomoll-forecourt:0')!;
+const komsomollApron = cityRoads.find((r) => r.id === 'komsomoll-forecourt:1')!;
+const komsomollLowerLevel = naturalHeight(
+  komsomollApron.to.x,
+  komsomollApron.to.z,
+);
+const komsomollUpperLevel = naturalHeight(
+  komsomollEntry.from.x,
+  komsomollEntry.from.z,
+);
+
+/** Fill the artificial Kacha-side dip under the mall access. The Belinskogo
+ * turn descends to one low parking apron, rather than dipping below it and
+ * climbing again. This is a compressed road profile, not a surveyed altitude. */
+function komsomollAccessHeight(x: number, z: number, ground: number) {
+  if (x < 488 || x > 622 || z < -274 || z > -144) return ground;
+  const entry = projection({ x, z }, komsomollEntry.from, komsomollEntry.to);
+  const gap = Math.min(
+    distanceToRoad(x, z, komsomollEntry),
+    distanceToRoad(x, z, komsomollApron),
+  );
+  const weight = 1 - smooth((gap - komsomollEntry.width / 2) / 14);
+  const floor =
+    komsomollLowerLevel +
+    (komsomollUpperLevel - komsomollLowerLevel) * (1 - smooth(entry.t));
+  return ground + Math.max(0, floor - ground) * weight;
+}
 function unflattenedGround(x: number, z: number) {
   const h = naturalHeight(x, z);
-  return inCityWater(x, z) ? h : Math.max(0.5, h - trenchDepth(x, z));
+  return inCityWater(x, z)
+    ? h
+    : komsomollAccessHeight(x, z, Math.max(0.5, h - trenchDepth(x, z)));
 }
 function kachaRoadMinimum(x: number, z: number) {
   if (!nearKacha(x, z, 125)) return undefined;

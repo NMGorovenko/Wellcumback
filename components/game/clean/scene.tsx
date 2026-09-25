@@ -1,4 +1,5 @@
 'use client';
+import { createGraphicsController } from '../world/graphics';
 import { isRomaWitness, cleanNpcVisible } from '@/lib/game/clean/cast';
 import { cleanSpeech } from '@/lib/game/clean/dialogue';
 import { placeSpeechBubble } from '../world/speech-position';
@@ -80,7 +81,6 @@ export default function CleanScene({
       if (fallback) fallback.hidden = false;
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -101,6 +101,7 @@ export default function CleanScene({
     key.position.set(-4, 11, 7);
     key.castShadow = true;
     key.shadow.mapSize.set(1536, 1536);
+    const graphics = createGraphicsController(renderer, key, scene);
     key.shadow.camera.left = -(bounds.maxX - bounds.minX) / 140 - 2;
     key.shadow.camera.right = (bounds.maxX - bounds.minX) / 140 + 2;
     key.shadow.camera.top = (bounds.maxY - bounds.minY) / 140 + 3;
@@ -183,6 +184,7 @@ export default function CleanScene({
 
     const draw = (now: number) => {
       animation = requestAnimationFrame(draw);
+      if (!graphics.shouldRender(now)) return;
       const s = game.current,
         dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
       last = now;
@@ -662,6 +664,7 @@ export default function CleanScene({
     return () => {
       cancelAnimationFrame(animation);
       observer.disconnect();
+      graphics.dispose();
       kit.dispose();
       renderer.dispose();
       renderer.domElement.remove();

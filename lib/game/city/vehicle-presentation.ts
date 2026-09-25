@@ -3,7 +3,7 @@ import type { CityState } from './engine.ts';
 export type VehiclePose = Pick<
   CityState,
   'x' | 'z' | 'vx' | 'vz' | 'heading' | 'steering' | 'speed' | 'elapsed'
-> & { elevation: number; pitch: number };
+> & { elevation: number; pitch: number; suspensionOffset: number };
 type History = {
   previous: VehiclePose;
   current: VehiclePose;
@@ -18,7 +18,19 @@ export function vehiclePose(
   pitch = car.pitch ?? 0,
 ): VehiclePose {
   const { x, z, vx, vz, heading, steering, speed, elapsed } = car;
-  return { x, z, vx, vz, heading, steering, speed, elapsed, elevation, pitch };
+  return {
+    x,
+    z,
+    vx,
+    vz,
+    heading,
+    steering,
+    speed,
+    elapsed,
+    elevation,
+    pitch,
+    suspensionOffset: car.flight?.suspension?.offset ?? 0,
+  };
 }
 export function resetVehiclePresentation(car: CityState) {
   history.delete(car);
@@ -90,6 +102,7 @@ export function presentedVehicle(
   const {
     elevation: renderedElevation,
     pitch: renderedPitch,
+    suspensionOffset,
     ...motion
   } = pose;
   return {
@@ -98,6 +111,17 @@ export function presentedVehicle(
       ...motion,
       elevation: renderedElevation,
       pitch: renderedPitch,
+      ...(car.flight?.suspension
+        ? {
+            flight: {
+              ...car.flight,
+              suspension: {
+                ...car.flight.suspension,
+                offset: suspensionOffset,
+              },
+            },
+          }
+        : {}),
     },
     elevation: renderedElevation,
     pitch: renderedPitch,

@@ -10,6 +10,34 @@ import type { RenderKit } from '../world/render-kit.ts';
 import { facadeText } from './facade-text.ts';
 import { addMallSurroundings } from './mall-surroundings.ts';
 import { createKubaturaTerrace } from './kubatura-terrace.ts';
+import {
+  cityGroundHeight,
+  cityRoadLayer,
+} from '../../../lib/game/city/surface.ts';
+import { roadSurfaceOutlines } from '../../../lib/game/city/road-surfaces.ts';
+import { drapedSurface } from './relief.ts';
+
+const komsomollParking = CITY_PARKING.find((p) => p.id === 'komsomoll')!;
+/** Shared by pavement and the terrain cutout; no ground triangles remain
+ * beneath the private apron to pierce its finer surface at the street join. */
+export const KOMSOMOLL_PARKING_FOOTPRINT = [
+  {
+    x: komsomollParking.x - komsomollParking.w / 2,
+    z: komsomollParking.z - komsomollParking.d / 2,
+  },
+  {
+    x: komsomollParking.x + komsomollParking.w / 2,
+    z: komsomollParking.z - komsomollParking.d / 2,
+  },
+  {
+    x: komsomollParking.x + komsomollParking.w / 2,
+    z: komsomollParking.z + komsomollParking.d / 2,
+  },
+  {
+    x: komsomollParking.x - komsomollParking.w / 2,
+    z: komsomollParking.z + komsomollParking.d / 2,
+  },
+];
 
 const white = '#e4dfd3',
   glass = '#386078',
@@ -666,7 +694,30 @@ export function createMallParking(kit: RenderKit, root: THREE.Group) {
       y: number,
       z: number,
     ) => kit.box(w, h, d, color, x, y, z, g, 0);
-    box(p.w, 0.025, p.d, '#68787a', 0, 0.076, 0);
+    if (p.id === 'komsomoll') {
+      // A single 130 m box interpolated only its four corner heights, so its
+      // diagonal cut through the independently draped road at the entrance.
+      // Tessellate one mesh and leave the complete road/curb footprint to the
+      // road renderer, instead of stacking two crossing pavement surfaces.
+      const pavement = drapedSurface(
+        kit,
+        g,
+        [KOMSOMOLL_PARKING_FOOTPRINT],
+        '#68787a',
+        cityGroundHeight,
+        0.09,
+        3,
+        roadSurfaceOutlines(
+          cityRoads.filter((r) => cityRoadLayer(r) !== 'raised'),
+          undefined,
+          0.65,
+        ),
+        0.025,
+      );
+      pavement.geometry.translate(-p.x, 0, -p.z);
+      pavement.name = 'parking:komsomoll:pavement';
+      pavement.userData.reliefPlaced = true;
+    } else box(p.w, 0.025, p.d, '#68787a', 0, 0.076, 0);
     const line = (w: number, d: number, x: number, z: number) =>
       box(w, 0.012, d, white, x, 0.096, z);
     const clear = (x: number, z: number, w: number, d: number) =>

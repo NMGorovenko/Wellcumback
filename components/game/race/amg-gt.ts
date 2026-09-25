@@ -956,6 +956,7 @@ export function createAmgGt(
         ),
         smooth,
       );
+      body.position.y = s.flight?.suspension?.offset ?? 0;
       if (step > 0) previousForward = forward;
       steering.rotation.z = -s.steering * 0.52;
       rig.head.rotation.z =

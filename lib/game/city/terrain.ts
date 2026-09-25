@@ -194,5 +194,16 @@ export function cityNaturalLandHeight(x: number, z: number) {
       height = bank + (Math.max(bank, height) - bank) * valley;
     }
   }
+  // The opera, fountain and city hall occupy the upper Theatre Square terrace;
+  // the museum and Dubrovinskogo remain below it. The eastern edge retreats
+  // behind the museum, while the western square extends towards the river.
+  // A2 records about 7 m between the existing terraces (centre-reference-021).
+  // This bounded shoulder stops before every Yenisei bridge landing and Kacha.
+  const squareSouth = 142 - 22 * smooth((x - 170) / 30);
+  const square =
+    band(x, -120, -20, 260, 360) *
+    smooth((z + 170) / 120) *
+    (1 - smooth((z - squareSouth) / 12));
+  height += 6.5 * square;
   return height;
 }

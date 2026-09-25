@@ -1,4 +1,5 @@
 'use client';
+import { createGraphicsController } from '../world/graphics';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import { people } from '@/lib/game/presets';
@@ -50,7 +51,6 @@ export default function Roma2Scene({
       element.querySelector<HTMLElement>('.webgl-fallback')!.hidden = false;
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -65,6 +65,7 @@ export default function Roma2Scene({
     key.position.set(-4, 10, 6);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
+    const graphics = createGraphicsController(renderer, key, scene);
     Object.assign(key.shadow.camera, {
       left: -7,
       right: 7,
@@ -274,6 +275,7 @@ export default function Roma2Scene({
       lastRender = -Infinity;
     const draw = (now: number) => {
       frame = requestAnimationFrame(draw);
+      if (!graphics.shouldRender(now)) return;
       const s = game.current;
       // Menus/hidden tabs do not need a full-speed 3D loop.
       if (
@@ -391,7 +393,7 @@ export default function Roma2Scene({
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      key.shadow.dispose();
+      graphics.dispose();
       kit.dispose();
       renderer.dispose();
       renderer.domElement.remove();

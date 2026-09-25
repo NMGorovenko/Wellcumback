@@ -565,7 +565,7 @@ export default function ScreenGame({
             <button
               type="button"
               className="hud-icon"
-              aria-label="Настройки управления"
+              aria-label="Настройки игры"
               onClick={openControls}
             >
               <Settings2 size={16} />
@@ -801,7 +801,7 @@ export default function ScreenGame({
             className={`hud-secondary${pauseChoice === 1 ? ' pad-selected' : ''}`}
             onClick={openControls}
           >
-            <Settings2 size={15} /> Настройки управления
+            <Settings2 size={15} /> Настройки
           </button>
           <button
             type="button"

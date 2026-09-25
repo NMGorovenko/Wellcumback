@@ -1,9 +1,16 @@
 import { createBridgeDetails } from './bridge-details.ts';
+import {
+  cityLodRanges,
+  createCityLod,
+  orderCityLodGeometry,
+  type CityLodRange,
+} from './lod.ts';
 import { createCityArt } from './city-art.ts';
 import { KACHA_TERRAIN_HOLES } from '../../../lib/game/city/kacha.ts';
 import { createKachaRiver } from './kacha-river.ts';
 import { createNikolaevskyDetails } from './nikolaevsky-details.ts';
 import { createTheatreSquareGround } from './opera-landmark.ts';
+import { KOMSOMOLL_PARKING_FOOTPRINT } from './mall-landmarks.ts';
 import { createCityDestruction } from './destruction.ts';
 import type { CityDamage } from '../../../lib/game/city/destruction.ts';
 import {
@@ -49,6 +56,7 @@ import {
   convexPieces,
   createDrapedEdgeStitcher,
   createTerrainSeamMaterial,
+  drapedRegionSeams,
   drapedSurface,
   liftScenery,
   terrainTiles,
@@ -77,12 +85,33 @@ import {
 
 /** Bake static boxes/windows into material groups once, including nested props.
  * Source geometries are released after merging, rather than retained per window. */
-function* batchCity(kit: RenderKit, root: THREE.Group) {
+export function* batchCity(kit: RenderKit, root: THREE.Group) {
   root.updateMatrixWorld(true);
   const groups = new Map<
     string,
-    { material: THREE.Material; meshes: THREE.Mesh[] }
+    {
+      material: THREE.Material;
+      meshes: THREE.Mesh[];
+      ranges: CityLodRange[];
+      count: number;
+    }
   >();
+  const references = new Map<THREE.BufferGeometry, number>();
+  root.traverse((object) => {
+    if (object instanceof THREE.Mesh)
+      references.set(
+        object.geometry,
+        (references.get(object.geometry) ?? 0) + 1,
+      );
+  });
+  const release = (geometry: THREE.BufferGeometry) => {
+    const remaining = (references.get(geometry) ?? 1) - 1;
+    references.set(geometry, remaining);
+    if (!remaining) {
+      kit.geometries.delete(geometry);
+      geometry.dispose();
+    }
+  };
   const point = new THREE.Vector3();
   root.traverse((object) => {
     if (
@@ -103,27 +132,53 @@ function* batchCity(kit: RenderKit, root: THREE.Group) {
     const group = groups.get(key) ?? {
       material: object.material,
       meshes: [] as THREE.Mesh[],
+      ranges: [] as CityLodRange[],
+      count: 0,
     };
+    for (const range of cityLodRanges(object))
+      group.ranges.push({ ...range, start: range.start + group.count });
+    group.count +=
+      object.geometry.index?.count ?? object.geometry.attributes.position.count;
     group.meshes.push(object);
     groups.set(key, group);
   });
   let done = 0;
-  for (const { material, meshes } of groups.values()) {
+  for (const { material, meshes, ranges } of groups.values()) {
     if (++done % 16 === 0) yield done / groups.size;
-    if (meshes.length < 2) continue;
+    if (meshes.length < 2) {
+      const mesh = meshes[0];
+      if (
+        ranges.some((range) => range.tier !== 'silhouette') &&
+        (references.get(mesh.geometry) ?? 0) > 1
+      ) {
+        const source = mesh.geometry;
+        mesh.geometry = source.clone();
+        kit.geometries.add(mesh.geometry);
+        release(source);
+      }
+      orderCityLodGeometry(mesh.geometry, ranges);
+      continue;
+    }
     const geometries = meshes.map((mesh) => {
-      const geometry = mesh.geometry.index
-        ? mesh.geometry.toNonIndexed()
-        : mesh.geometry.clone();
+      // Preserve shared vertices instead of expanding every indexed box and
+      // facade into triangle soup. LOD only needs to reorder this index buffer.
+      const geometry = mesh.geometry.clone();
+      if (!geometry.index) {
+        const count = geometry.attributes.position.count;
+        const indices =
+          count > 65535 ? new Uint32Array(count) : new Uint16Array(count);
+        for (let i = 0; i < count; i++) indices[i] = i;
+        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+      }
       return geometry.applyMatrix4(mesh.matrixWorld);
     });
     const merged = mergeGeometries(geometries, false);
     geometries.forEach((geometry) => geometry.dispose());
     if (!merged) continue;
+    orderCityLodGeometry(merged, ranges);
     meshes.forEach((mesh) => {
       mesh.removeFromParent();
-      kit.geometries.delete(mesh.geometry);
-      mesh.geometry.dispose();
+      release(mesh.geometry);
     });
     const batch = kit.mesh(merged, material, root);
     batch.userData.citySpatialBatch = true;
@@ -206,6 +261,7 @@ export function* buildCityEnvironment(
   groundSurfaceHoles.push(
     ...KACHA_TERRAIN_HOLES.flatMap((outline) => convexPieces(outline)),
     ...BOBROVY_TERRAIN_FOOTPRINTS,
+    KOMSOMOLL_PARKING_FOOTPRINT,
     CITY_KUBATURA_TERRACE.outline,
     ...cityKubaturaRetainingCorners().map(({ point, left, right }) => [
       point,
@@ -569,6 +625,24 @@ export function* buildCityEnvironment(
     );
     seams.name = `city-curb-seams:${layer}`;
     seams.castShadow = false;
+    if (layer === 'ground') {
+      // The Komso descent has curved grades at the adjoining road patches.
+      // Seal their unequal adaptive edges in the same asphalt mesh/material.
+      const patch = drapedRegionSeams(asphalt.geometry, sample, {
+        minX: 485,
+        maxX: 625,
+        minZ: -278,
+        maxZ: -140,
+      });
+      if (patch.attributes.position.count) {
+        const original = asphalt.geometry;
+        asphalt.geometry = mergeGeometries([original, patch])!;
+        kit.geometries.add(asphalt.geometry);
+        kit.geometries.delete(original);
+        original.dispose();
+      }
+      patch.dispose();
+    }
   }
   yield { label: 'Мосты через Енисей', progress: 0.49 };
   let paintIndex = 0;
@@ -794,6 +868,7 @@ export function* buildCityEnvironment(
       };
     const root = new THREE.Group();
     root.position.y = cityGroundHeight(building.x, building.z);
+    root.userData.cityLodBuilding = building.kind ?? 'house';
     cityRoot.add(root);
     if (building.kind === 'bobrovy-log' || building.kind === 'city-art')
       continue; // Built with the lift stations below.
@@ -973,6 +1048,7 @@ export function* buildCityEnvironment(
   dummy.rotation.set(-Math.PI / 2, 0, 0);
   return {
     root,
+    lod: createCityLod(root),
     destruction,
     scenery,
     streetFurniture,
@@ -1048,6 +1124,7 @@ export function* buildCityEnvironment(
 
 export type CityEnvironment = {
   root: THREE.Group;
+  lod: ReturnType<typeof createCityLod>;
   destruction: { update(damage: CityDamage | undefined, time: number): void };
   scenery: ReturnType<typeof createCityLandmarks>;
   streetFurniture: ReturnType<typeof createStreetDetails>;

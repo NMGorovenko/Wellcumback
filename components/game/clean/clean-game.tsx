@@ -351,7 +351,7 @@ export default function CleanGame({
           </button>
           <button
             className="icon-button"
-            aria-label="Настройки управления"
+            aria-label="Настройки игры"
             onClick={openControls}
           >
             <Settings2 size={17} />
@@ -578,7 +578,7 @@ export default function CleanGame({
             className={`secondary-button${pauseChoice === 3 ? ' pad-selected' : ''}`}
             onClick={openControls}
           >
-            <Settings2 size={17} /> Настройки управления
+            <Settings2 size={17} /> Настройки
           </button>
           <button
             className={`secondary-button${pauseChoice === 4 ? ' pad-selected' : ''}`}

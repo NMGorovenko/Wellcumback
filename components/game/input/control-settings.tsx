@@ -30,6 +30,8 @@ import {
   type PlayerControl,
   type PadGlyphPreference,
 } from '@/lib/game/input/settings';
+import { GraphicsSettings } from './graphics-settings';
+import { resetGraphicsSettings } from '@/lib/game/graphics/store';
 import { acquireControlInputBlock } from '@/lib/game/input/settings-store';
 
 const controls: PlayerControl[] = [
@@ -202,6 +204,7 @@ function OpenControlSettings({
     setShowFps,
     setPadGlyphPreference,
   } = useControlSettings();
+  const [section, setSection] = useState<'controls' | 'graphics'>('controls');
   const [activeProfile, setActiveProfile] = useState<InputProfile>(profile);
   const [device, setDevice] = useState<'keyboard' | 'pad'>('keyboard');
   const [player, setPlayer] = useState(0);
@@ -349,133 +352,164 @@ function OpenControlSettings({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent ref={content} className="control-settings-dialog">
-        <DialogTitle>Управление</DialogTitle>
+        <DialogTitle>Настройки</DialogTitle>
         <DialogDescription className="sr-only">
-          Клавиши и геймпады для машины и персонажей.
+          Управление, графика и отображение игры.
         </DialogDescription>
-        <fieldset className="control-player-tabs">
-          <legend className="sr-only">Что настроить</legend>
+        <div className="control-device-tabs" aria-label="Раздел настроек">
           <button
-            data-control-focus
             type="button"
-            aria-pressed={activeProfile === 'city'}
-            onClick={() => selectProfile('city')}
-          >
-            <strong>Машина</strong>
-            <small>один водитель</small>
-          </button>
-          {[0, 1, 2].map((index) => (
-            <button
-              key={`race-${index}`}
-              data-control-focus
-              type="button"
-              aria-pressed={activeProfile === 'race' && player === index}
-              onClick={() => selectProfile('race', index)}
-            >
-              <strong>Гонщик {index + 1}</strong>
-              <small>своя машина</small>
-            </button>
-          ))}
-          {playerNames.slice(0, 3).map((name, index) => (
-            <button
-              data-control-focus
-              type="button"
-              key={index}
-              aria-pressed={activeProfile === 'game' && index === player}
-              onClick={() => selectProfile('game', index)}
-            >
-              <strong>
-                {index + 1} · {name}
-              </strong>
-              <small>
-                {index < players ? 'в историях' : 'настроить заранее'}
-              </small>
-            </button>
-          ))}
-        </fieldset>
-        <fieldset className="control-device-tabs">
-          <legend className="sr-only">Устройство</legend>
-          <button
             data-control-focus
-            type="button"
-            aria-pressed={device === 'keyboard'}
+            aria-pressed={section === 'controls'}
             onClick={() => {
-              setDevice('keyboard');
+              setSection('controls');
+              setNotice('');
+            }}
+          >
+            Управление
+          </button>
+          <button
+            type="button"
+            data-control-focus
+            aria-pressed={section === 'graphics'}
+            onClick={() => {
+              setSection('graphics');
               setCapturing(null);
               setNotice('');
             }}
           >
-            Клавиатура
+            Графика
           </button>
-          <button
-            data-control-focus
-            type="button"
-            aria-pressed={device === 'pad'}
-            onClick={() => {
-              setDevice('pad');
-              setCapturing(null);
-              setNotice('');
-            }}
-          >
-            Геймпады
-            {shownPads.assignments.length
-              ? ` · ${shownPads.assignments.length}`
-              : ''}
-          </button>
-        </fieldset>
-        {device === 'keyboard' ? (
-          <section
-            className="control-keyboard-section"
-            aria-label="Клавиши управления"
-          >
-            <p className="control-settings-note">
-              Выбери действие и нажми новую клавишу.
-            </p>
-            <div className="control-binding-list">
-              {controls.map((control) =>
-                bindingButton(binding[control], names[control]),
-              )}
-              {activeProfile !== 'race' &&
-                bindingButton(
-                  'KeyQ',
-                  activeProfile === 'city'
-                    ? 'Сигнал'
-                    : 'Общее · бросок / смена инструмента',
-                )}
-            </div>
-            {activeProfile === 'game' && player === 0 && (
-              <p className="control-settings-note">
-                Пробел тоже выполняет действие первого игрока.
-              </p>
-            )}
-          </section>
+        </div>
+        {section === 'graphics' ? (
+          <GraphicsSettings />
         ) : (
-          <PadHelp
-            pads={shownPads}
-            profile={activeProfile}
-            player={player}
-            playerNames={playerNames}
-            glyphPreference={
-              settings.padGlyphs[activeProfile === 'city' ? 0 : player] ??
-              'auto'
-            }
-            onGlyphPreferenceChange={(preference) =>
-              setPadGlyphPreference(
-                activeProfile === 'city' ? 0 : player,
-                preference,
-              )
-            }
-          />
+          <>
+            <fieldset className="control-player-tabs">
+              <legend className="sr-only">Что настроить</legend>
+              <button
+                data-control-focus
+                type="button"
+                aria-pressed={activeProfile === 'city'}
+                onClick={() => selectProfile('city')}
+              >
+                <strong>Машина</strong>
+                <small>один водитель</small>
+              </button>
+              {[0, 1, 2].map((index) => (
+                <button
+                  key={`race-${index}`}
+                  data-control-focus
+                  type="button"
+                  aria-pressed={activeProfile === 'race' && player === index}
+                  onClick={() => selectProfile('race', index)}
+                >
+                  <strong>Гонщик {index + 1}</strong>
+                  <small>своя машина</small>
+                </button>
+              ))}
+              {playerNames.slice(0, 3).map((name, index) => (
+                <button
+                  data-control-focus
+                  type="button"
+                  key={index}
+                  aria-pressed={activeProfile === 'game' && index === player}
+                  onClick={() => selectProfile('game', index)}
+                >
+                  <strong>
+                    {index + 1} · {name}
+                  </strong>
+                  <small>
+                    {index < players ? 'в историях' : 'настроить заранее'}
+                  </small>
+                </button>
+              ))}
+            </fieldset>
+            <fieldset className="control-device-tabs">
+              <legend className="sr-only">Устройство</legend>
+              <button
+                data-control-focus
+                type="button"
+                aria-pressed={device === 'keyboard'}
+                onClick={() => {
+                  setDevice('keyboard');
+                  setCapturing(null);
+                  setNotice('');
+                }}
+              >
+                Клавиатура
+              </button>
+              <button
+                data-control-focus
+                type="button"
+                aria-pressed={device === 'pad'}
+                onClick={() => {
+                  setDevice('pad');
+                  setCapturing(null);
+                  setNotice('');
+                }}
+              >
+                Геймпады
+                {shownPads.assignments.length
+                  ? ` · ${shownPads.assignments.length}`
+                  : ''}
+              </button>
+            </fieldset>
+            {device === 'keyboard' ? (
+              <section
+                className="control-keyboard-section"
+                aria-label="Клавиши управления"
+              >
+                <p className="control-settings-note">
+                  Выбери действие и нажми новую клавишу.
+                </p>
+                <div className="control-binding-list">
+                  {controls.map((control) =>
+                    bindingButton(binding[control], names[control]),
+                  )}
+                  {activeProfile !== 'race' &&
+                    bindingButton(
+                      'KeyQ',
+                      activeProfile === 'city'
+                        ? 'Сигнал'
+                        : 'Общее · бросок / смена инструмента',
+                    )}
+                </div>
+                {activeProfile === 'game' && player === 0 && (
+                  <p className="control-settings-note">
+                    Пробел тоже выполняет действие первого игрока.
+                  </p>
+                )}
+              </section>
+            ) : (
+              <PadHelp
+                pads={shownPads}
+                profile={activeProfile}
+                player={player}
+                playerNames={playerNames}
+                glyphPreference={
+                  settings.padGlyphs[activeProfile === 'city' ? 0 : player] ??
+                  'auto'
+                }
+                onGlyphPreferenceChange={(preference) =>
+                  setPadGlyphPreference(
+                    activeProfile === 'city' ? 0 : player,
+                    preference,
+                  )
+                }
+              />
+            )}
+            <label className="control-prompts-toggle">
+              <input
+                data-control-focus
+                type="checkbox"
+                checked={settings.showWorldPrompts}
+                onChange={(event) => setWorldPrompts(event.target.checked)}
+              />
+              <span>Показывать кнопки рядом с действиями</span>
+            </label>
+          </>
         )}
-        <label className="control-prompts-toggle">
-          <input
-            data-control-focus
-            type="checkbox"
-            checked={settings.showWorldPrompts}
-            onChange={(event) => setWorldPrompts(event.target.checked)}
-          />
-          <span>Показывать кнопки рядом с действиями</span>
-        </label>
         <label className="control-prompts-toggle">
           <input
             data-control-focus
@@ -485,20 +519,24 @@ function OpenControlSettings({
           />
           <span>Показывать FPS</span>
         </label>
-        <p className="control-settings-shortcuts">
-          <span>
-            <kbd>F</kbd> весь экран
-          </span>
-          <span>
-            <kbd>Esc</kbd> пауза / назад
-          </span>
-          <span>
-            <kbd>Tab</kbd> по настройкам
-          </span>
-        </p>
-        <p className="control-settings-notice" aria-live="polite">
-          {notice}
-        </p>
+        {section === 'controls' && (
+          <p className="control-settings-shortcuts">
+            <span>
+              <kbd>F</kbd> весь экран
+            </span>
+            <span>
+              <kbd>Esc</kbd> пауза / назад
+            </span>
+            <span>
+              <kbd>Tab</kbd> по настройкам
+            </span>
+          </p>
+        )}
+        {notice && (
+          <p className="control-settings-notice" aria-live="polite">
+            {notice}
+          </p>
+        )}
         {storageWarning && (
           <p className="control-settings-warning">{storageWarning}</p>
         )}
@@ -508,11 +546,16 @@ function OpenControlSettings({
             type="button"
             onClick={() => {
               setCapturing(null);
-              reset();
-              setNotice('Все раскладки и подсказки сброшены к стандартным.');
+              if (section === 'graphics') resetGraphicsSettings();
+              else reset();
+              setNotice(
+                section === 'graphics'
+                  ? 'Графика сброшена к стандартным настройкам.'
+                  : 'Раскладки и подсказки сброшены к стандартным.',
+              );
             }}
           >
-            Сбросить всё
+            Сбросить раздел
           </button>
           <button
             data-control-focus

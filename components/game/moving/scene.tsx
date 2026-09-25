@@ -1,4 +1,5 @@
 'use client';
+import { createGraphicsController } from '../world/graphics';
 import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
@@ -56,7 +57,6 @@ export default function MovingScene({
       if (fallback) fallback.hidden = false;
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -73,6 +73,7 @@ export default function MovingScene({
     sun.position.set(-3, 11, -5);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1536, 1536);
+    const graphics = createGraphicsController(renderer, sun, scene);
     Object.assign(sun.shadow.camera, {
       left: -8,
       right: 8,
@@ -129,8 +130,9 @@ export default function MovingScene({
     const hand = new THREE.Vector3(),
       target = new THREE.Vector3(),
       handOffset = new THREE.Vector3();
-    const draw = () => {
+    const draw = (now: number) => {
       animation = requestAnimationFrame(draw);
+      if (!graphics.shouldRender(now)) return;
       const s = game.current,
         time = s.elapsed;
       const prompts =
@@ -541,6 +543,7 @@ export default function MovingScene({
     return () => {
       cancelAnimationFrame(animation);
       observer.disconnect();
+      graphics.dispose();
       kit.dispose();
       renderer.dispose();
       renderer.domElement.remove();

@@ -1,4 +1,7 @@
 .control-settings-dialog {
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: #697d79 #182529;
   width: min(660px, calc(100vw - 28px));
   max-width: 660px !important;
   max-height: calc(100dvh - 32px);
@@ -10,6 +13,46 @@
   border-radius: 14px;
   gap: 15px;
   box-shadow: 0 24px 110px #0009;
+}
+.graphics-settings {
+  display: grid;
+  gap: 15px;
+}
+.graphics-choices {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.graphics-choices legend {
+  font-size: 13px;
+  color: #dce6d2;
+  margin-bottom: 8px;
+}
+.graphics-choices > div {
+  display: flex;
+  gap: 5px;
+}
+.graphics-choices button {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 6px;
+  border: 1px solid #71877b60;
+  border-radius: 6px;
+  background: #0c171a55;
+  color: #bdcabd;
+  font-size: 12px;
+}
+.graphics-choices button[aria-pressed='true'] {
+  background: #495b42;
+  border-color: #abc784;
+  color: #f1f6db;
+}
+.graphics-setting-note {
+  color: #adbcaf;
+  line-height: 1.5;
+  font-size: 12px;
+  margin: -7px 0 0;
 }
 .control-settings-dialog [data-slot='dialog-title'] {
   font-size: 26px;

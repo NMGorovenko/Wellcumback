@@ -402,6 +402,22 @@ void test('terrain stays clear across actual Kubatura pavement and retaining tri
   );
 });
 
+void test('Komsomoll parking replaces coarse ground across its complete paved footprint', () => {
+  const { colors } = renderedCity();
+  const land = surfaceProbe(colors.get('82966d') ?? []);
+  let probes = 0;
+  for (let x = 535.5; x < 665; x += 2)
+    for (let z = -191.5; z < -140; z += 2) {
+      assert.equal(
+        land(x, z).length,
+        0,
+        `coarse ground remains under parking at ${x},${z}`,
+      );
+      probes++;
+    }
+  assert.ok(probes > 1600);
+});
+
 void test('fresh, reset and Nikita arrivals leave the entire car above rendered junction asphalt', () => {
   const { colors } = renderedCity(),
     asphalt = surfaceProbe(colors.get('535b5e') ?? []);
