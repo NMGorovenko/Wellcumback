@@ -1,3 +1,4 @@
+import { createAudioTargets } from './automation.ts';
 import {
   exhaustWave,
   exhaustPuffs,
@@ -123,25 +124,22 @@ export function createCityFoley(
   const startedAt = context.currentTime;
   sources.forEach((source) => source.start(startedAt));
   let disposed = false;
-  const target = (
-    param: AudioParam,
-    value: number,
-    now: number,
-    lag = 0.035,
-  ) => {
-    param.cancelScheduledValues(now);
-    param.setTargetAtTime(value, now, lag);
+  const target = createAudioTargets(context);
+  const clearTransient = (param: AudioParam, at: number) => {
+    target.forget(param);
+    param.cancelScheduledValues(at <= context.currentTime ? 0 : at);
   };
   return {
     impact(kind: 'rail' | 'tree', force: number, atTime = context.currentTime) {
       if (disposed) return;
+      clearTransient(impact.filter.frequency, atTime);
       impact.filter.frequency.setValueAtTime(
         kind === 'rail' ? 960 : 230,
         atTime,
       );
       impact.filter.Q.value = kind === 'rail' ? 2.8 : 0.65;
       const gain = impact.gain.gain;
-      gain.cancelScheduledValues(atTime);
+      clearTransient(gain, atTime);
       gain.setValueAtTime(0, atTime);
       gain.linearRampToValueAtTime(0.7 + force * 0.6, atTime + 0.007);
       gain.exponentialRampToValueAtTime(
@@ -206,7 +204,7 @@ export function createCityFoley(
       target(tyres.gain.gain, state.skid * 0.1, now);
       target(horn.gain, audible && state.horn ? 0.12 : 0, now, 0.015);
       if (audible && state.crackle) {
-        pop.gain.gain.cancelScheduledValues(now);
+        clearTransient(pop.gain.gain, now);
         pop.gain.gain.setValueAtTime(0, now);
         pop.gain.gain.linearRampToValueAtTime(0.22, now + 0.009);
         pop.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
@@ -223,7 +221,7 @@ export function createCityFoley(
     dispose() {
       if (disposed) return;
       disposed = true;
-      master.gain.cancelScheduledValues(context.currentTime);
+      master.gain.cancelScheduledValues(0);
       master.gain.value = 0;
       sources.forEach((source) => {
         try {

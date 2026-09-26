@@ -176,19 +176,25 @@ void test('V8 graph reuses sources, clears transients and disposes exactly once'
     const p = {
       value: 0,
       calls: [],
+      scheduled: [],
       cancelScheduledValues(t) {
+        this.scheduled = this.scheduled.filter((event) => event[2] < t);
         this.calls.push(['cancel', t]);
       },
       setTargetAtTime(v, t) {
+        this.scheduled.push(['target', v, t]);
         this.calls.push(['target', v, t]);
       },
       setValueAtTime(v, t) {
+        this.scheduled.push(['value', v, t]);
         this.calls.push(['value', v, t]);
       },
       linearRampToValueAtTime(v, t) {
+        this.scheduled.push(['linear', v, t]);
         this.calls.push(['linear', v, t]);
       },
       exponentialRampToValueAtTime(v, t) {
+        this.scheduled.push(['exponential', v, t]);
         this.calls.push(['exponential', v, t]);
       },
     };
@@ -259,7 +265,13 @@ void test('V8 graph reuses sources, clears transients and disposes exactly once'
   const s = freshV8();
   for (let i = 0; i < 1000; i++) {
     advanceV8(s, { ...input(i / 100), horn: true }, 1 / 60);
-    graph.update(s, true, i / 60);
+    context.currentTime = i / 60;
+    graph.update(s, true, context.currentTime);
+    if (i % 60 === 0) graph.impact('rail', 0.5);
+    assert.ok(
+      params.every((p) => p.scheduled.length <= 4),
+      'live graph has no growing native automation queues',
+    );
   }
   assert.equal(nodes.length, count);
   assert.equal(sources.length, 7);

@@ -5,6 +5,14 @@ import { advanceV8, freshV8 } from '@/lib/game/audio/v8-model';
 import { createCityFoley } from '@/lib/game/audio/city-foley';
 import { breakableObjects, type CityDamage } from '@/lib/game/city/destruction';
 
+/** Read by the development soak page; retains no audio nodes or game snapshots. */
+export const cityAudioProfile = {
+  updates: 0,
+  active: false,
+  seconds: 0,
+  updateMs: 0,
+};
+
 export function useCityAudio(
   enabled: boolean,
   state: CityState,
@@ -74,6 +82,10 @@ export function useCityAudio(
   }, [enabled, voice, mix]);
   useEffect(() => {
     const current = audio.current;
+    if (process.env.NODE_ENV === 'development') {
+      cityAudioProfile.active = current?.context.state === 'running';
+      cityAudioProfile.seconds = current?.context.currentTime ?? 0;
+    }
     if (!current) return;
     if (!enabled || state.paused || document.hidden || !document.hasFocus()) {
       stop();
@@ -117,7 +129,14 @@ export function useCityAudio(
       },
       dt,
     );
+    const audioStarted =
+      process.env.NODE_ENV === 'development' ? performance.now() : 0;
     current.graph.update(motor.current, true);
+    if (process.env.NODE_ENV === 'development') {
+      cityAudioProfile.updates++;
+      cityAudioProfile.updateMs =
+        Math.round((performance.now() - audioStarted) * 1000) / 1000;
+    }
     const hit = damage?.hits.at(-1);
     const signature = hit ? `${hit[0]}:${hit[1]}` : '';
     if (

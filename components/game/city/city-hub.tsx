@@ -1,4 +1,6 @@
 'use client';
+import type { FrameProfileReport } from '@/lib/game/graphics/frame-profile';
+import type { DriveAxes } from '@/lib/game/input/drive';
 import { isRoomLeader } from '@/lib/game/network/room-roles';
 import {
   useCallback,
@@ -73,8 +75,12 @@ export default function CityHub({
   onGamepads,
   onControls,
   onFullscreen,
+  onProfile,
+  inspectionDrive,
 }: {
   game: RefObject<CityState>;
+  onProfile?: (report: FrameProfileReport) => void;
+  inspectionDrive?: (state: CityState) => DriveAxes | undefined;
   sound: boolean;
   onPlay: (story: CityMission) => void;
   onStories: () => void;
@@ -506,7 +512,13 @@ export default function CityHub({
           mapOpenRef.current || mapBusy ? new Set() : input,
           mapOpenRef.current || mapBusy ? { throttle: 0, steer: 0 } : axes,
         );
-      else if (!mapOpenRef.current && !mapBusy) tickCity(s, dt, input, axes);
+      else if (!mapOpenRef.current && !mapBusy) {
+        const inspection =
+          process.env.NODE_ENV === 'development'
+            ? inspectionDrive?.(s)
+            : undefined;
+        tickCity(s, dt, input, inspection ?? axes);
+      }
       if (s.interaction && !mapOpenRef.current && !mapBusy) {
         const id = s.interaction as CityMission;
         s.interaction = null;
@@ -574,6 +586,7 @@ export default function CityHub({
           cameraMode={cameraMode}
           speechRef={speechRef}
           onReady={setSceneReady}
+          onProfile={onProfile}
         />
         <SpeechBubble
           bubbleRef={speechRef}
