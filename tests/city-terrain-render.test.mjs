@@ -1,3 +1,4 @@
+import { citySurfaceColors } from './helpers/city-surface-colors.mjs';
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -166,25 +167,20 @@ function renderedCity() {
   try {
     const city = createCityEnvironment(kit);
     city.root.updateMatrixWorld(true);
-    const colors = new Map();
-    city.root.traverse((mesh) => {
-      if (!mesh.isMesh || mesh.isInstancedMesh || Array.isArray(mesh.material))
-        return;
-      const color =
-        mesh.name === 'city-relief-ground'
-          ? '82966d'
-          : mesh.material.color?.getHexString();
-      const entries = colors.get(color) ?? [];
-      entries.push(mesh);
-      colors.set(color, entries);
-    });
-    fixture = { kit, city, colors };
+    const decoded = citySurfaceColors(city.root);
+    fixture = {
+      kit,
+      city,
+      colors: decoded.colors,
+      disposeColors: decoded.dispose,
+    };
     return fixture;
   } finally {
     globalThis.document = previous;
   }
 }
 after(() => {
+  fixture?.disposeColors();
   fixture?.kit.dispose();
 });
 

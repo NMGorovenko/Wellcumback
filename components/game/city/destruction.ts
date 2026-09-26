@@ -48,7 +48,7 @@ export function createCityDestruction(kit: RenderKit, root: THREE.Group) {
     const id = cityBarriers.indexOf(object.parent.userData.barrier);
     if (id < 0) return;
     const shape = object.geometry.type,
-      key = `${shape}:${object.material.uuid}`;
+      key = `${shape}:${object.material.uuid}:${Math.floor(object.matrixWorld.elements[12] / 320)}:${Math.floor(object.matrixWorld.elements[14] / 320)}`;
     const batch: RailBatch = rods.get(key) ?? {
       material: object.material,
       shape,

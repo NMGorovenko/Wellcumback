@@ -1,3 +1,4 @@
+import { cityBatchMaterials, bakeCityPaint } from './batch-materials.ts';
 import {
   HILL_FOUNDATION_FOOTPRINTS,
   HILL_PLAZA_FOOTPRINTS,
@@ -95,6 +96,7 @@ import {
  * Source geometries are released after merging, rather than retained per window. */
 export function* batchCity(kit: RenderKit, root: THREE.Group) {
   root.updateMatrixWorld(true);
+  const batchMaterial = cityBatchMaterials(kit);
   const groups = new Map<
     string,
     {
@@ -136,9 +138,14 @@ export function* batchCity(kit: RenderKit, root: THREE.Group) {
     point
       .copy(object.geometry.boundingSphere!.center)
       .applyMatrix4(object.matrixWorld);
-    const key = `${object.material.uuid}:${Math.floor(point.x / 640)}:${Math.floor(point.z / 640)}:${object.castShadow}:${object.receiveShadow}`;
+    const material = batchMaterial(object.material);
+    const attributes = Object.keys(object.geometry.attributes)
+      .filter((name) => name !== 'color' || material === object.material)
+      .sort()
+      .join(',');
+    const key = `${material.uuid}:${attributes}:${Math.floor(point.x / 320)}:${Math.floor(point.z / 320)}:${object.castShadow}:${object.receiveShadow}`;
     const group = groups.get(key) ?? {
-      material: object.material,
+      material,
       meshes: [] as THREE.Mesh[],
       ranges: [] as CityLodRange[],
       count: 0,
@@ -164,6 +171,14 @@ export function* batchCity(kit: RenderKit, root: THREE.Group) {
         kit.geometries.add(mesh.geometry);
         release(source);
       }
+      if (material !== mesh.material) {
+        const source = mesh.geometry;
+        mesh.geometry = source.clone();
+        kit.geometries.add(mesh.geometry);
+        release(source);
+        bakeCityPaint(mesh.geometry, mesh.material as THREE.Material);
+        mesh.material = material;
+      }
       orderCityLodGeometry(mesh.geometry, ranges);
       continue;
     }
@@ -171,6 +186,8 @@ export function* batchCity(kit: RenderKit, root: THREE.Group) {
       // Preserve shared vertices instead of expanding every indexed box and
       // facade into triangle soup. LOD only needs to reorder this index buffer.
       const geometry = mesh.geometry.clone();
+      if (material !== mesh.material)
+        bakeCityPaint(geometry, mesh.material as THREE.Material);
       if (!geometry.index) {
         const count = geometry.attributes.position.count;
         const indices =

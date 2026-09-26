@@ -216,7 +216,10 @@ void test('ordinary houses lose small facade geometry while every body and roof 
       far.fullMeshes,
       'no ordinary house batch disappears',
     );
-    assert.ok(kit.geometries.size < 30, 'housing remains spatially batched');
+    assert.ok(
+      kit.geometries.size < 100,
+      '320m housing cells remain spatially batched',
+    );
     t.diagnostic(
       `${homes} homes: ${far.fullTriangles} → ${far.selectedTriangles} triangles in ${far.fullMeshes} batches`,
     );

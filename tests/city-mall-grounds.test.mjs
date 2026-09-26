@@ -1,3 +1,4 @@
+import { citySurfaceColors } from './helpers/city-surface-colors.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
@@ -352,37 +353,37 @@ void test('assembled city replaces ground under every lot without leaving holes 
           Math.max(a.z, b.z, c.z) >= p.z - p.d / 2 &&
           Math.min(a.z, b.z, c.z) <= p.z + p.d / 2,
       );
-    city.root.traverse((mesh) => {
-      if (!mesh.isMesh || mesh.isInstancedMesh || Array.isArray(mesh.material))
-        return;
-      const color = mesh.material.color?.getHexString();
-      const kind = mesh.name.startsWith('city-relief-ground')
-        ? 'ground'
-        : ['68787a', '535b5e', 'b9b9af'].includes(color)
-          ? 'paved'
-          : undefined;
-      if (!kind) return;
-      triangles(mesh, ([a, b, c]) => {
-        if (!intersectsLot(a, b, c)) return;
-        const den = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
-        if (Math.abs(den) < 1e-8) return;
-        const tri = { a, b, c, den, kind };
-        for (
-          let x = Math.floor(Math.min(a.x, b.x, c.x) / cell);
-          x <= Math.floor(Math.max(a.x, b.x, c.x) / cell);
-          x++
-        )
+    const decoded = citySurfaceColors(city.root);
+    for (const [color, meshes] of decoded.colors)
+      meshes.forEach((mesh) => {
+        const kind =
+          color === '82966d'
+            ? 'ground'
+            : ['68787a', '535b5e', 'b9b9af'].includes(color)
+              ? 'paved'
+              : undefined;
+        if (!kind) return;
+        triangles(mesh, ([a, b, c]) => {
+          if (!intersectsLot(a, b, c)) return;
+          const den = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+          if (Math.abs(den) < 1e-8) return;
+          const tri = { a, b, c, den, kind };
           for (
-            let z = Math.floor(Math.min(a.z, b.z, c.z) / cell);
-            z <= Math.floor(Math.max(a.z, b.z, c.z) / cell);
-            z++
-          ) {
-            const key = `${x}:${z}`;
-            if (!bins.has(key)) bins.set(key, []);
-            bins.get(key).push(tri);
-          }
+            let x = Math.floor(Math.min(a.x, b.x, c.x) / cell);
+            x <= Math.floor(Math.max(a.x, b.x, c.x) / cell);
+            x++
+          )
+            for (
+              let z = Math.floor(Math.min(a.z, b.z, c.z) / cell);
+              z <= Math.floor(Math.max(a.z, b.z, c.z) / cell);
+              z++
+            ) {
+              const key = `${x}:${z}`;
+              if (!bins.has(key)) bins.set(key, []);
+              bins.get(key).push(tri);
+            }
+        });
       });
-    });
     const probe = (x, z) => {
       const hits = [];
       for (const { a, b, c, den, kind } of bins.get(
@@ -420,6 +421,7 @@ void test('assembled city replaces ground under every lot without leaving holes 
     t.diagnostic(
       `${count} assembled-city lot probes; ${failures.length} failed, first ${JSON.stringify(failures.slice(0, 10))}`,
     );
+    decoded.dispose();
     assert.equal(failures.length, 0);
     assert.ok(count > 5000);
   } finally {

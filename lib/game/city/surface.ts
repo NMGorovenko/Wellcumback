@@ -225,7 +225,19 @@ function komsomollAccessHeight(x: number, z: number, ground: number) {
   return ground + Math.max(0, floor - ground) * weight;
 }
 function unflattenedGround(x: number, z: number) {
-  const h = naturalHeight(x, z);
+  let h = naturalHeight(x, z);
+  // A broad engineered commercial terrace, with a gentle west→east fall.
+  // Keep the Kacha bank outside it; one road/terrain field serves the entrances,
+  // parking and foundations instead of deep cuts between separate flat parcels.
+  const commercialGap = Math.max(
+    0,
+    Math.abs(x + 790) - 165,
+    Math.abs(z + 215) - 95,
+  );
+  if (commercialGap < 75 && !inCityWater(x, z)) {
+    const terrace = 38 - (x + 730) * 0.045;
+    h += (terrace - h) * (1 - smooth(commercialGap / 75));
+  }
   return inCityWater(x, z)
     ? h
     : komsomollAccessHeight(x, z, Math.max(0.5, h - trenchDepth(x, z)));

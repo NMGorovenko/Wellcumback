@@ -76,6 +76,24 @@ export const CITY_LANDMARK_REVIEW_PLACES: Record<string, CityReviewPlace> = {
     [0, 0, 45],
     150,
   ),
+  'Свободный · MixMax и TTX': view(
+    building('mixmax'),
+    [-105, 60, 105],
+    [-35, 8, -20],
+    160,
+  ),
+  'На Свободном · вход': view(
+    building('na-svobodnom'),
+    [60, 35, 100],
+    [0, 6, 0],
+    100,
+  ),
+  'Дубровинского · к рынку': {
+    x: 6,
+    z: 180,
+    heading: 0,
+    road: 'dubrovinskogo-market:0',
+  },
   'Квант · NEO и рынок': view(
     building('neo-hotel'),
     [70, 40, 65],

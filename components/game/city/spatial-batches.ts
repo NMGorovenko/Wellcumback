@@ -215,3 +215,61 @@ export function pruneEmptyCityGroups(root: THREE.Object3D) {
   visit(root);
   return removed;
 }
+
+/** Partition before lift/destruction capture references. Geometry/material stay
+ * shared, while instance IDs and colours follow their transforms into each cell.
+ */
+export function partitionCityInstances(
+  source: THREE.InstancedMesh,
+  cellSize = 320,
+) {
+  if (!source.parent || source.morphTexture) return [];
+  source.updateWorldMatrix(true, false);
+  const matrix = new THREE.Matrix4(),
+    point = new THREE.Vector3();
+  const cells = new Map<string, number[]>();
+  for (let i = 0; i < source.count; i++) {
+    source.getMatrixAt(i, matrix);
+    point.setFromMatrixPosition(matrix).applyMatrix4(source.matrixWorld);
+    const key = `${Math.floor(point.x / cellSize)}:${Math.floor(point.z / cellSize)}`;
+    const ids = cells.get(key) ?? [];
+    ids.push(i);
+    cells.set(key, ids);
+  }
+  if (cells.size < 2) return [source];
+  const treeIds = source.userData.cityTreeIndices as number[] | undefined;
+  const color = new THREE.Color();
+  const parts = [...cells.values()].map((ids, cell) => {
+    const part = new THREE.InstancedMesh(
+      source.geometry,
+      source.material,
+      ids.length,
+    );
+    part.position.copy(source.position);
+    part.quaternion.copy(source.quaternion);
+    part.scale.copy(source.scale);
+    part.name = cell ? `${source.name}:cell-${cell}` : source.name;
+    part.castShadow = source.castShadow;
+    part.receiveShadow = source.receiveShadow;
+    part.visible = source.visible;
+    part.layers.mask = source.layers.mask;
+    part.userData = { ...source.userData };
+    if (treeIds) part.userData.cityTreeIndices = ids.map((i) => treeIds[i]);
+    ids.forEach((i, j) => {
+      source.getMatrixAt(i, matrix);
+      part.setMatrixAt(j, matrix);
+      if (source.instanceColor) {
+        source.getColorAt(i, color);
+        part.setColorAt(j, color);
+      }
+    });
+    part.instanceMatrix.setUsage(source.instanceMatrix.usage);
+    part.computeBoundingBox();
+    part.computeBoundingSphere();
+    source.parent!.add(part);
+    return part;
+  });
+  source.removeFromParent();
+  source.dispose();
+  return parts;
+}

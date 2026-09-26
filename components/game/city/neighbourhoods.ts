@@ -1,3 +1,4 @@
+import { partitionCityInstances } from './spatial-batches.ts';
 import { cityPlanting } from '../../../lib/game/city/trees.ts';
 import * as THREE from 'three';
 import type { CityBuilding } from '../../../lib/game/city/layout.ts';
@@ -800,6 +801,7 @@ export function createNeighbourhoodGreenery(kit: RenderKit, root: THREE.Group) {
     mesh.receiveShadow = true;
     mesh.computeBoundingSphere();
     root.add(mesh);
+    partitionCityInstances(mesh);
   }
   if (lawns.length) {
     const geometry = new THREE.CircleGeometry(1, 12);
@@ -821,5 +823,6 @@ export function createNeighbourhoodGreenery(kit: RenderKit, root: THREE.Group) {
     grass.receiveShadow = true;
     grass.computeBoundingSphere();
     root.add(grass);
+    partitionCityInstances(grass);
   }
 }

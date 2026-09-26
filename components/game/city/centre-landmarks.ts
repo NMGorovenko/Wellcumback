@@ -1,3 +1,4 @@
+import { createSvobodnyLandmark } from './svobodny-landmarks.ts';
 import { createMallNeighbour } from './mall-neighbourhoods.ts';
 import { createPushkinMonument } from './pushkin-monument.ts';
 import {
@@ -17,6 +18,7 @@ export function createCentreLandmark(
   root: THREE.Group,
   b: CityBuilding,
 ) {
+  if (createSvobodnyLandmark(kit, root, b)) return true;
   if (
     createOperaLandmark(kit, root, b) ||
     createTheatreSquareProp(kit, root, b)

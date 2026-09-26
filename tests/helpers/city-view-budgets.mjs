@@ -12,6 +12,14 @@ import { CITY_SPAWN, cityStops } from '../../lib/game/city/layout.ts';
 import { cityGroundHeight } from '../../lib/game/city/surface.ts';
 
 const limits = {
+  centre: {
+    drive: { triangles: 550000, draws: 150 },
+    cruise: { triangles: 850000, draws: 340 },
+  },
+  kvant: {
+    drive: { triangles: 400000, draws: 140 },
+    cruise: { triangles: 510000, draws: 245 },
+  },
   spawn: {
     drive: { triangles: 400000, draws: 85 },
     cruise: { triangles: 850000, draws: 275 },
@@ -60,6 +68,8 @@ export function assertCityViewBudgets(city, diagnostic = () => {}) {
   const overview = cityOverviewCamera(1);
   const points = [
     { id: 'spawn', ...CITY_SPAWN },
+    { id: 'centre', x: 6, z: 80, heading: 0 },
+    { id: 'kvant', x: 6, z: -130, heading: 0 },
     ...['planeta', 'komsomoll'].map((id) =>
       cityStops.find((stop) => stop.id === id),
     ),

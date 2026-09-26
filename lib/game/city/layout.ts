@@ -823,11 +823,22 @@ export const CITY_NAMED_STREETS: readonly {
   {
     name: 'Проезд к рынку',
     roadIds: [
+      'dubrovinskogo-market:0',
+      'dubrovinskogo-market:1',
+      'dubrovinskogo-market:2',
       'neo-market-access:0',
       'neo-market-access:1',
       'neo-market-access:2',
       'neo-market-access:3',
     ],
+  },
+  {
+    name: 'Высотная',
+    roadIds: ['vysotnaya:0', 'vysotnaya:1', 'vysotnaya:2'],
+  },
+  {
+    name: 'Телевизорная',
+    roadIds: ['televizornaya:0', 'televizornaya:1', 'televizornaya:2'],
   },
   {
     name: 'Караульная гора',
@@ -1128,6 +1139,9 @@ export type CityBuilding = CityRect & {
     | 'pushkin-monument'
     | 'pushkin'
     | 'kubatura'
+    | 'na-svobodnom'
+    | 'mixmax'
+    | 'ttx'
     | 'kvant'
     | 'karaulnaya-chapel'
     | 'chapel-cannon'
@@ -1407,6 +1421,111 @@ for (const [id, t, side] of [
     district: id.startsWith('aviatorov') ? 'planeta' : 'komsomoll',
   });
 }
+// A compact commercial quarter north of Svobodny. MixMax and the new
+// shopping/sports building face one another across Vysotnaya; TK is northeast.
+cityBuildings.push(
+  {
+    kind: 'na-svobodnom',
+    x: -690,
+    z: -265,
+    w: 90,
+    d: 58,
+    h: 15,
+    color: '#d3c2a6',
+  },
+  { kind: 'mixmax', x: -805, z: -200, w: 54, d: 66, h: 25, color: '#a2a7a7' },
+  { kind: 'ttx', x: -910, z: -200, w: 48, d: 62, h: 18, color: '#ddd8c8' },
+);
+CITY_PARKING.push(
+  { id: 'na-svobodnom', x: -690, z: -213, w: 94, d: 32 },
+  { id: 'mixmax', x: -805, z: -149, w: 48, d: 24 },
+  { id: 'ttx', x: -910, z: -149, w: 48, d: 24 },
+);
+cityStops.push(
+  {
+    id: 'na-svobodnom',
+    x: -690,
+    z: -213,
+    title: 'ТК «На Свободном»',
+    subtitle: 'Телевизорная',
+    color: '#e3c68d',
+  },
+  {
+    id: 'mixmax',
+    x: -805,
+    z: -149,
+    title: 'MixMax',
+    subtitle: 'Телевизорная · Высотная',
+    color: '#db7770',
+  },
+  {
+    id: 'ttx',
+    x: -910,
+    z: -149,
+    title: 'TTX',
+    subtitle: 'Высотная',
+    color: '#dc9b68',
+  },
+);
+cityRoads.push(
+  ...projectedRoad(
+    'dubrovinskogo-market',
+    [
+      { x: 6, z: 196.755 },
+      { x: 6, z: 80 },
+      { x: 6, z: 12.02429577464785 },
+      { x: 6, z: -95.925 },
+    ],
+    10,
+  ),
+  ...projectedRoad(
+    'vysotnaya',
+    [
+      { x: -930, z: -60 },
+      { x: -855, z: -80 },
+      { x: -855, z: -135 },
+      { x: -855, z: -280 },
+    ],
+    15,
+  ),
+  ...projectedRoad(
+    'televizornaya',
+    [
+      { x: -730, z: -174.5 },
+      { x: -730, z: -135 },
+      { x: -855, z: -135 },
+      { x: -950, z: -135 },
+    ],
+    12,
+  ),
+  ...projectedRoad(
+    'svobodny-mall-access',
+    [
+      { x: -730, z: -135 },
+      { x: -630, z: -135 },
+      { x: -630, z: -213 },
+      { x: -690, z: -213 },
+    ],
+    9,
+  ),
+  ...projectedRoad(
+    'mixmax-forecourt',
+    [
+      { x: -805, z: -135 },
+      { x: -805, z: -149 },
+    ],
+    8,
+  ),
+  ...projectedRoad(
+    'ttx-forecourt',
+    [
+      { x: -910, z: -135 },
+      { x: -910, z: -149 },
+    ],
+    8,
+  ),
+);
+
 // A side street connects NEO with the market and the existing centre streets.
 // Reserve it before filler housing so its full carriageway remains open.
 cityRoads.push(
@@ -1503,7 +1622,10 @@ for (const stop of CITY_FUEL_STOPS)
 // The mall sits within an open commercial block, not a housing courtyard.
 // This reservation controls procedural infill only; it never flattens terrain
 // or creates an invisible physical parcel around the surrounding roads.
-export const CITY_OPEN_MALL_GROUNDS = [{ x: 650, z: -997.5, w: 220, d: 225 }];
+export const CITY_OPEN_MALL_GROUNDS = [
+  { x: 650, z: -997.5, w: 220, d: 225 },
+  { x: -790, z: -220, w: 330, d: 210 },
+];
 export function cityParcelClear(x: number, z: number, w: number, d: number) {
   return (
     !CITY_OPEN_MALL_GROUNDS.some(
