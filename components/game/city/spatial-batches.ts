@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { RenderKit } from '../world/render-kit.ts';
 
 type LodCounts = { silhouette: number; landmark: number; full: number };
@@ -272,4 +273,40 @@ export function partitionCityInstances(
   source.removeFromParent();
   source.dispose();
   return parts;
+}
+
+/** Welding identical attributes preserves every triangle, UV and LOD prefix,
+ * while road/terrain grid neighbours can share GPU vertex storage. */
+export function compactCityGeometry(kit: RenderKit, root: THREE.Object3D) {
+  const owners = new Map<THREE.BufferGeometry, THREE.Mesh[]>();
+  root.traverse((object) => {
+    if (
+      !(object instanceof THREE.Mesh) ||
+      object instanceof THREE.InstancedMesh ||
+      object instanceof THREE.SkinnedMesh ||
+      object.geometry.attributes.position.count < 3000
+    )
+      return;
+    const list = owners.get(object.geometry) ?? [];
+    list.push(object);
+    owners.set(object.geometry, list);
+  });
+  let savedBytes = 0;
+  const bytes = (g: THREE.BufferGeometry) =>
+    Object.values(g.attributes).reduce((s, a) => s + a.array.byteLength, 0) +
+    (g.index?.array.byteLength ?? 0);
+  for (const [source, meshes] of owners) {
+    const compact = mergeVertices(source, 1e-6);
+    const saved = bytes(source) - bytes(compact);
+    if (saved <= 0) {
+      compact.dispose();
+      continue;
+    }
+    savedBytes += saved;
+    for (const mesh of meshes) mesh.geometry = compact;
+    kit.geometries.add(compact);
+    kit.geometries.delete(source);
+    source.dispose();
+  }
+  return savedBytes;
 }

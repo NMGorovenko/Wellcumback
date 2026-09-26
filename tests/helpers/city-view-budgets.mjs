@@ -13,24 +13,24 @@ import { cityGroundHeight } from '../../lib/game/city/surface.ts';
 
 const limits = {
   centre: {
-    drive: { triangles: 550000, draws: 150 },
-    cruise: { triangles: 850000, draws: 340 },
+    drive: { triangles: 270000, draws: 150 },
+    cruise: { triangles: 720000, draws: 340 },
   },
   kvant: {
-    drive: { triangles: 400000, draws: 140 },
-    cruise: { triangles: 510000, draws: 245 },
+    drive: { triangles: 275000, draws: 140 },
+    cruise: { triangles: 400000, draws: 245 },
   },
   spawn: {
-    drive: { triangles: 400000, draws: 85 },
-    cruise: { triangles: 850000, draws: 275 },
+    drive: { triangles: 240000, draws: 85 },
+    cruise: { triangles: 550000, draws: 275 },
   },
   planeta: {
-    drive: { triangles: 600000, draws: 85 },
-    cruise: { triangles: 550000, draws: 115 },
+    drive: { triangles: 140000, draws: 85 },
+    cruise: { triangles: 150000, draws: 115 },
   },
   komsomoll: {
-    drive: { triangles: 650000, draws: 120 },
-    cruise: { triangles: 1000000, draws: 320 },
+    drive: { triangles: 270000, draws: 120 },
+    cruise: { triangles: 550000, draws: 320 },
   },
 };
 

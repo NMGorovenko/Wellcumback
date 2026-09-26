@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import type { FrameProfileReport } from '@/lib/game/graphics/frame-profile';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import CityScene, { type CityReviewCamera } from './scene';
 import { freshCity, stepCityCar, recoverCityCar } from '@/lib/game/city/engine';
 import { breakableObjects, freshCityDamage } from '@/lib/game/city/destruction';
@@ -13,6 +14,9 @@ import {
 } from './review-views';
 
 const places: Record<string, CityReviewPlace> = {
+  'Центр · замер': { x: 6, z: 80, heading: 0 },
+  'Квант · замер': { x: 6, z: -130, heading: 0 },
+  'Набережная · замер': { x: -200, z: 150, heading: Math.PI / 2 },
   Старт: { x: -769, z: 432.963636, heading: 0 },
   'Мост → Студгородок': {
     x: -625,
@@ -34,6 +38,15 @@ export default function CityReview() {
     speech = useRef<HTMLOutputElement>(null);
   const [mode, setMode] = useState<CityCameraMode>('cruise');
   const [ready, setReady] = useState(false);
+  const [profile, setProfile] = useState<FrameProfileReport>();
+  const [tour, setTour] = useState(false);
+  const profileHistory = useRef<(FrameProfileReport & { place: string })[]>([]);
+  const placeRef = useRef('Старт');
+  const captureProfile = useCallback((report: FrameProfileReport) => {
+    setProfile(report);
+    if (profileHistory.current.length >= 120) profileHistory.current.shift();
+    profileHistory.current.push({ ...report, place: placeRef.current });
+  }, []);
   const [place, setPlace] = useState('Старт');
   const [reviewCamera, setReviewCamera] = useState<CityReviewCamera>();
   const impactUntil = useRef(0);
@@ -109,8 +122,26 @@ export default function CityReview() {
     impactUntil.current = 0;
     setReviewCamera(p.view);
     if (p.view) setMode('cruise');
+    placeRef.current = name;
     setPlace(name);
   }
+  useEffect(() => {
+    if (!ready || !tour) return;
+    const itinerary = [
+      'Старт',
+      'Центр · замер',
+      'Квант · замер',
+      'Набережная · замер',
+      'Коммунальный',
+      'Старт',
+    ];
+    let index = 0;
+    const timer = window.setInterval(
+      () => inspect(itinerary[index++ % itinerary.length]),
+      15000,
+    );
+    return () => window.clearInterval(timer);
+  }, [ready, tour]);
   useEffect(() => {
     if (!ready) return;
     let last = performance.now(),
@@ -150,9 +181,28 @@ export default function CityReview() {
           speechRef={speech}
           cameraMode={mode}
           onReady={setReady}
+          onProfile={captureProfile}
           reviewCamera={reviewCamera}
         />
       </div>
+      {profile && (
+        <pre
+          aria-label="Профиль кадра"
+          style={{
+            position: 'absolute',
+            right: 12,
+            bottom: 12,
+            zIndex: 110,
+            background: '#10201fe8',
+            color: 'white',
+            padding: 10,
+            fontSize: 12,
+            pointerEvents: 'none',
+          }}
+        >
+          {JSON.stringify(profile, null, 2)}
+        </pre>
+      )}
       <div
         style={{
           position: 'absolute',
@@ -219,6 +269,25 @@ export default function CityReview() {
           }}
         >
           Повернуть 45°
+        </button>
+        <button disabled={!ready} onClick={() => setTour((v) => !v)}>
+          {tour ? 'Остановить цикл' : 'Цикл проверки памяти'}
+        </button>
+        <button
+          onClick={() => {
+            const blob = new Blob(
+              [JSON.stringify(profileHistory.current, null, 2)],
+              { type: 'application/json' },
+            );
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'city-frame-profile.json';
+            a.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}
+        >
+          Сохранить замеры
         </button>
         <span>{ready ? 'Готово' : 'Загрузка…'}</span>
         <button onClick={() => dropOnRoof('university')} disabled={!ready}>

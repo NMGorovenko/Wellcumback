@@ -5,6 +5,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 export class RenderKit {
   readonly geometries = new Set<THREE.BufferGeometry>();
   readonly materials = new Set<THREE.Material>();
+  readonly renderTargets = new Set<THREE.RenderTarget>();
   readonly textures = new Set<THREE.Texture>();
   readonly cache = new Map<string, THREE.MeshStandardMaterial>();
   readonly scene: THREE.Scene;
@@ -142,8 +143,19 @@ export class RenderKit {
     return texture;
   }
   dispose() {
+    // Instance matrices/colours are GPU buffers owned by the mesh, not geometry.
+    this.scene.traverse((object) => {
+      if (object instanceof THREE.InstancedMesh) object.dispose();
+    });
+    this.renderTargets.forEach((target) => target.dispose());
+    this.renderTargets.clear();
     this.geometries.forEach((g) => g.dispose());
     this.materials.forEach((m) => m.dispose());
     this.textures.forEach((t) => t.dispose());
+    this.geometries.clear();
+    this.materials.clear();
+    this.textures.clear();
+    this.cache.clear();
+    this.scene.clear();
   }
 }

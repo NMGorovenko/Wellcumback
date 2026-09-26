@@ -1,4 +1,5 @@
 'use client';
+import { disposeGameRenderer } from '../world/dispose-renderer';
 import { createGraphicsController } from '../world/graphics';
 import { renderedFrameCounter } from '@/lib/game/performance';
 import { useEffect, useRef, type RefObject } from 'react';
@@ -545,7 +546,7 @@ export default function MovingScene({
       observer.disconnect();
       graphics.dispose();
       kit.dispose();
-      renderer.dispose();
+      disposeGameRenderer(renderer);
       renderer.domElement.remove();
     };
   }, [game, onCameraAspect, speechRef]);

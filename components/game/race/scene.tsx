@@ -1,4 +1,5 @@
 'use client';
+import { disposeGameRenderer } from '../world/dispose-renderer';
 import { createGraphicsController } from '../world/graphics';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
@@ -86,7 +87,7 @@ export default function RaceScene({
       element.appendChild(renderer.domElement);
       teardown = () => {
         kit.dispose();
-        renderer.dispose();
+        disposeGameRenderer(renderer);
         renderer.domElement.remove();
       };
       scene.add(new THREE.HemisphereLight('#d9ecf4', '#647256', 2.7));
@@ -393,13 +394,14 @@ export default function RaceScene({
         cityEnvironment?.lod.dispose();
         graphics.dispose();
         kit.dispose();
-        renderer.dispose();
+        disposeGameRenderer(renderer);
         renderer.domElement.remove();
       };
 
       setLoading({ label: 'Свет и материалы', progress: 0.97 });
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
       if (abort.signal.aborted) return;
+      atmosphere?.prepare(renderer);
       await renderer.compileAsync(scene, cameras[0]);
       if (abort.signal.aborted) return;
       raf = requestAnimationFrame(animate);

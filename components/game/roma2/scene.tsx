@@ -1,4 +1,5 @@
 'use client';
+import { disposeGameRenderer } from '../world/dispose-renderer';
 import { createGraphicsController } from '../world/graphics';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
@@ -395,7 +396,7 @@ export default function Roma2Scene({
       observer.disconnect();
       graphics.dispose();
       kit.dispose();
-      renderer.dispose();
+      disposeGameRenderer(renderer);
       renderer.domElement.remove();
     };
   }, [game, cues, speechRef]);

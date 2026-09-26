@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import type { RenderKit } from '../world/render-kit.ts';
 
-/** A shared daylight sky, including clouds. It follows each camera independently,
- * so split-screen views and fast travel cannot leave the skybox behind. */
+/** Bake the analytic daylight/cloud shader once. A cheap cube lookup replaces
+ * four-octave cloud noise and atmospheric scattering for millions of pixels on
+ * EVERY frame, including split-screen racing. */
 export function createCityAtmosphere(kit: RenderKit) {
   const sky = new Sky();
   sky.name = 'krasnoyarsk-daylight';
@@ -28,13 +29,36 @@ export function createCityAtmosphere(kit: RenderKit) {
   uniforms.cloudSpeed.value = 0.000007;
   kit.geometries.add(sky.geometry);
   kit.materials.add(sky.material);
-  kit.scene.add(sky);
+  const background = kit.scene.background;
+  const target = new THREE.WebGLCubeRenderTarget(512, {
+    type: THREE.HalfFloatType,
+    generateMipmaps: false,
+    minFilter: THREE.LinearFilter,
+    depthBuffer: false,
+  });
+  target.texture.colorSpace = THREE.LinearSRGBColorSpace;
+  kit.renderTargets.add(target);
+  const bakingScene = new THREE.Scene();
+  bakingScene.add(sky);
+  const capture = new THREE.CubeCamera(1, 2000000, target);
+  let renderer: THREE.WebGLRenderer | undefined;
+  let baked = false;
+  const prepare = (value: THREE.WebGLRenderer) => {
+    renderer = value;
+    if (baked) return;
+    sky.position.set(0, 0, 0);
+    capture.update(value, bakingScene);
+    baked = true;
+  };
   return {
+    prepare,
+    invalidate() {
+      baked = false;
+    },
     sky,
-    update(camera: THREE.Camera, seconds: number, visible = true) {
-      sky.visible = visible;
-      sky.position.copy(camera.position);
-      uniforms.time.value = seconds;
+    update(_camera: THREE.Camera, _seconds: number, visible = true) {
+      if (!baked && renderer) prepare(renderer);
+      kit.scene.background = visible && baked ? target.texture : background;
     },
   };
 }

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
+  compactCityGeometry,
   partitionCityGeometry,
   splitOversizedCityGeometry,
   pruneEmptyCityGroups,
@@ -270,4 +271,30 @@ void test('pruning removes nested empty transforms but preserves named landmarks
   assert.equal(pruneEmptyCityGroups(root), 0, 'repeated pruning is harmless');
   live.geometry.dispose();
   live.material.dispose();
+});
+
+void test('vertex compaction preserves triangle attributes and LOD prefix while reducing road buffers', () => {
+  const kit = new RenderKit(new THREE.Scene());
+  const source = new THREE.PlaneGeometry(100, 100, 40, 40).toNonIndexed();
+  source.userData.cityLod = {
+    silhouette: 600,
+    landmark: 1200,
+    full: source.attributes.position.count,
+  };
+  source.setDrawRange(0, 1200);
+  const before = triangles(source),
+    active = triangles(source, true);
+  const mesh = kit.mesh(source, kit.material('#777'));
+  try {
+    assert.ok(compactCityGeometry(kit, kit.scene) > 10000);
+    assert.deepEqual(triangles(mesh.geometry), before);
+    assert.deepEqual(triangles(mesh.geometry, true), active);
+    assert.deepEqual(mesh.geometry.userData.cityLod, source.userData.cityLod);
+    assert.ok(
+      mesh.geometry.attributes.position.count <
+        source.attributes.position.count / 2,
+    );
+  } finally {
+    kit.dispose();
+  }
 });

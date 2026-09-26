@@ -120,6 +120,34 @@ function housingMaterial(kit: RenderKit) {
     vertexColors: true,
     roughness: 0.88,
   });
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader =
+      'attribute vec2 cityAtlas;\nvarying vec2 vCityAtlas;\n' +
+      shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\nvCityAtlas = cityAtlas;',
+    );
+    shader.fragmentShader =
+      'varying vec2 vCityAtlas;\n' + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `
+      #ifdef USE_MAP
+        vec2 cell = floor(vMapUv);
+        float tile = vCityAtlas.x;
+        if (vCityAtlas.y >= 0. && cell.y < 1. && mod(cell.x, 4.) == 1.) tile = vCityAtlas.y;
+        vec2 origin = vec2(mod(tile, 4.), 3. - floor(tile / 4.)) * .25;
+        float span = .25 - 2. / 1024.;
+        vec2 atlasUv = origin + vec2(1. / 1024.) + fract(vMapUv) * span;
+        // Differentiate before wrapping, so repeating tile boundaries do not
+        // select a blurry mip level. Same pixels/derivatives as the old quads.
+        diffuseColor *= textureGrad(map, atlasUv, dFdx(vMapUv) * span, dFdy(vMapUv) * span);
+      #endif
+    `,
+    );
+  };
+  material.customProgramCacheKey = () => 'city-housing-repeated-atlas-v1';
   kit.materials.add(material);
   materials.set(kit, material);
   return material;
@@ -130,6 +158,7 @@ function houseGeometry(roofHeight: number) {
   const positions: number[] = [],
     normals: number[] = [],
     uv: number[] = [],
+    atlas: number[] = [],
     colors: number[] = [],
     indices: number[] = [];
   const colorCache = new Map<string, THREE.Color>();
@@ -143,7 +172,14 @@ function houseGeometry(roofHeight: number) {
   };
   const first = new THREE.Vector3(),
     second = new THREE.Vector3();
-  function face(points: Point[], color: string, tile = SOLID) {
+  function face(
+    points: Point[],
+    color: string,
+    tile = SOLID,
+    columns = 1,
+    floors = 1,
+    entryTile = -1,
+  ) {
     const offset = positions.length / 3;
     first.set(
       points[1][0] - points[0][0],
@@ -161,21 +197,18 @@ function houseGeometry(roofHeight: number) {
       tint = new THREE.Color(color);
       colorCache.set(color, tint);
     }
-    // Half-texel inset keeps neighbouring atlas cells out of the window frames.
-    const u = (tile % 4) / 4,
-      v = 1 - (Math.floor(tile / 4) + 1) / 4,
-      inset = 1 / 1024;
     const coords = [
-      [u + inset, v + inset],
-      [u + 0.25 - inset, v + inset],
-      [u + 0.25 - inset, v + 0.25 - inset],
-      [u + inset, v + 0.25 - inset],
+      [0, 0],
+      [columns, 0],
+      [columns, floors],
+      [0, floors],
     ];
     points.forEach((p, i) => {
       positions.push(...p);
       normals.push(first.x, first.y, first.z);
       colors.push(tint.r, tint.g, tint.b);
       uv.push(...coords[i]);
+      atlas.push(tile, entryTile);
     });
     const start = indices.length;
     indices.push(offset, offset + 1, offset + 2);
@@ -200,25 +233,18 @@ function houseGeometry(roofHeight: number) {
       origin[1] + up,
       origin[2] + right[2] * across,
     ];
-    for (let floor = 0; floor < floors; floor++)
-      for (let col = 0; col < columns; col++) {
-        const x = (width * col) / columns,
-          y = (height * floor) / floors,
-          dx = width / columns,
-          dy = height / floors;
-        const entry = entrances && floor === 0 && col % 4 === 1;
-        face(
-          [
-            point(x, y),
-            point(x + dx, y),
-            point(x + dx, y + dy),
-            point(x, y + dy),
-          ],
-          color,
-          entry ? (tile >= 9 ? 14 : 13 + Math.floor(tile / 3)) : tile,
-        );
-      }
+    // Window repetition belongs in the atlas sampler, not in a grid of coplanar
+    // polygons. The bottom-row entry pattern is retained by the same sampler.
+    face(
+      [point(0, 0), point(width, 0), point(width, height), point(0, height)],
+      color,
+      tile,
+      columns,
+      floors,
+      entrances ? (tile >= 9 ? 14 : 13 + Math.floor(tile / 3)) : -1,
+    );
   }
+
   function box(
     w: number,
     h: number,
@@ -346,6 +372,10 @@ function houseGeometry(roofHeight: number) {
       new THREE.Float32BufferAttribute(normals, 3),
     );
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geometry.setAttribute(
+      'cityAtlas',
+      new THREE.Float32BufferAttribute(atlas, 2),
+    );
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geometry.setIndex(indices);
     geometry.userData.cityLodRanges = lodRanges;

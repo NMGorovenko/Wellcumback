@@ -141,3 +141,48 @@ void test('adjacent equal-height panel roofs meet without coplanar overlap', () 
     kit.dispose();
   }
 });
+
+void test('tall house walls repeat all floors/windows on broad quads without growing a coplanar grid', () => {
+  const kit = new RenderKit(new THREE.Scene()),
+    root = new THREE.Group();
+  try {
+    createNeighbourhoodBuilding(
+      kit,
+      root,
+      {
+        x: 0,
+        z: 0,
+        w: 35,
+        d: 20,
+        h: 75,
+        floors: 25,
+        color: '#fff',
+        style: 'tower',
+        lowDetail: true,
+      },
+      2,
+    );
+    const geometry = root.children[0].geometry;
+    assert.ok(geometry.attributes.cityAtlas);
+    const uv = geometry.attributes.uv;
+    let maxFloor = 0,
+      maxColumn = 0;
+    for (let i = 0; i < uv.count; i++) {
+      maxFloor = Math.max(maxFloor, uv.getY(i));
+      maxColumn = Math.max(maxColumn, uv.getX(i));
+    }
+    assert.ok(
+      maxFloor >= 25 && maxColumn >= 10,
+      'original facade repetition counts remain',
+    );
+    assert.ok(
+      geometry.index.count / 3 < 900,
+      'a 25-floor house does not require thousands of flat window triangles',
+    );
+    assert.ok(
+      geometry.userData.cityLodRanges.some((r) => r.tier === 'silhouette'),
+    );
+  } finally {
+    kit.dispose();
+  }
+});

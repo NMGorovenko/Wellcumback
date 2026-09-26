@@ -1,4 +1,9 @@
 'use client';
+import { disposeGameRenderer } from '../world/dispose-renderer';
+import {
+  createFrameProfile,
+  type FrameProfileReport,
+} from '@/lib/game/graphics/frame-profile';
 import { createIdleRenderGate } from '@/lib/game/graphics/idle-render';
 import { createGraphicsController } from '../world/graphics';
 import { presentedVehicle } from '@/lib/game/city/vehicle-presentation';
@@ -44,6 +49,7 @@ export default function CityScene({
   speechRef,
   onReady,
   reviewCamera,
+  onProfile,
 }: {
   game: RefObject<CityState>;
   targetStop?: number;
@@ -51,6 +57,7 @@ export default function CityScene({
   speechRef: SpeechBubbleRef;
   onReady?: (ready: boolean) => void;
   reviewCamera?: CityReviewCamera;
+  onProfile?: (report: FrameProfileReport) => void;
 }) {
   const host = useRef<HTMLDivElement>(null),
     selectedStop = useRef(targetStop);
@@ -81,6 +88,10 @@ export default function CityScene({
       setLoading({ label: 'Готовимся к поездке', progress: 0 });
       setFailed(false);
       const countRenderedFrame = renderedFrameCounter();
+      const profile =
+        process.env.NODE_ENV === 'development' && onProfile
+          ? createFrameProfile(onProfile)
+          : undefined;
       const scene = new THREE.Scene();
       scene.background = new THREE.Color('#b8ced4');
       const kit = new RenderKit(scene);
@@ -110,7 +121,7 @@ export default function CityScene({
       element.appendChild(renderer.domElement);
       teardown = () => {
         kit.dispose();
-        renderer.dispose();
+        disposeGameRenderer(renderer);
         renderer.domElement.remove();
       };
       const overview = cityOverviewCamera(1),
@@ -173,6 +184,7 @@ export default function CityScene({
       scene.add(evening);
       const city = await loadCityEnvironment(kit, abort.signal, setLoading);
       if (abort.signal.aborted) return;
+      atmosphere.prepare(renderer);
       const car = createMustang(kit);
       // Two narrow tracks per drift sample; a fixed ring buffer cannot grow after
       // a long drive. They fade into the road instead of accumulating draw calls.
@@ -268,6 +280,7 @@ export default function CityScene({
         currentHalfHeight = 0,
         visualRevision = 0;
       const restoreFrame = () => {
+        atmosphere.invalidate();
         visualRevision++;
       };
       renderer.domElement.addEventListener(
@@ -347,6 +360,7 @@ export default function CityScene({
           raf = requestAnimationFrame(render);
           return;
         }
+        profile?.begin(now);
         const presented = presentedVehicle(game.current),
           s = {
             ...presented.car,
@@ -478,6 +492,7 @@ export default function CityScene({
           scene.fog = null;
         }
         previousMode = mode.current;
+        profile?.mark('camera');
         car.update(s, dt, mode.current === 'faces');
         car.root.rotation.order = 'YXZ';
         car.root.position.y = presented.elevation + 0.04;
@@ -616,7 +631,10 @@ export default function CityScene({
             ? (currentHalfHeight * 2) / viewportHeight
             : undefined,
         );
+        profile?.mark('update');
         renderer.render(scene, activeCamera);
+        profile?.mark('submit');
+        profile?.end(renderer, scene);
         countRenderedFrame(performance.now());
         raf = requestAnimationFrame(render);
       };
@@ -630,7 +648,7 @@ export default function CityScene({
         city.lod.dispose();
         graphics.dispose();
         kit.dispose();
-        renderer.dispose();
+        disposeGameRenderer(renderer);
         renderer.domElement.remove();
       };
 
@@ -654,7 +672,7 @@ export default function CityScene({
       abort.abort();
       teardown();
     };
-  }, [game, speechRef, onReady]);
+  }, [game, speechRef, onReady, onProfile]);
   return (
     <div
       className="three-host city-three-host"

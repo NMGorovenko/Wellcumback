@@ -1,4 +1,5 @@
 'use client';
+import { disposeGameRenderer } from '../world/dispose-renderer';
 import { createGraphicsController } from '../world/graphics';
 import { screenFaceActor } from '@/lib/game/screen/camera';
 import { levelCheck, levelCheckStage } from '@/lib/game/screen/level-check';
@@ -772,7 +773,7 @@ export default function Scene({
       resize.disconnect();
       graphics.dispose();
       kit.dispose();
-      renderer.dispose();
+      disposeGameRenderer(renderer);
       renderer.domElement.remove();
     };
   }, []);

@@ -6,6 +6,7 @@ import {
 } from './hill-landmarks.ts';
 import {
   splitOversizedCityGeometry,
+  compactCityGeometry,
   pruneEmptyCityGroups,
 } from './spatial-batches.ts';
 import { createBridgeDetails } from './bridge-details.ts';
@@ -605,9 +606,9 @@ export function* buildCityEnvironment(
       '#535b5e',
       sample,
       0.065,
-      layer === 'raised' ? 1 : 3,
+      layer === 'raised' ? 4 : 6,
       [],
-      layer === 'raised' ? Infinity : 0.06,
+      0.025,
     );
     asphalt.name = `city-asphalt:${layer}`;
     const otherRoads = cityRoads.filter(
@@ -635,9 +636,9 @@ export function* buildCityEnvironment(
       '#b9b9af',
       sample,
       0.14,
-      layer === 'raised' ? 1 : 6,
+      layer === 'raised' ? 4 : 6,
       [],
-      layer === 'raised' ? Infinity : 0.06,
+      0.025,
     );
     curbs.name = `city-curbs:${layer}`;
     const edgeStitcher =
@@ -1010,6 +1011,7 @@ export function* buildCityEnvironment(
     yield { label: 'Подготовка поездки', progress: 0.82 + 0.13 * part };
   yield { label: 'Подготовка кварталов', progress: 0.96 };
   splitOversizedCityGeometry(kit, root);
+  compactCityGeometry(kit, root);
   pruneEmptyCityGroups(root);
   const labels: THREE.Sprite[] = [];
   const label = (text: string, x: number, z: number, width: number, y = 3) => {
@@ -1025,6 +1027,7 @@ export function* buildCityEnvironment(
   BRIDGES.forEach((b) => label(b.title, b.x, b.z, 150, 3));
   const overviewNames = cityStops.map((s) => s.title.split(' · ')[0]);
   const stops = cityStops.map((stop, index) => {
+    const baseY = surfaceHeight(stop.x, stop.z);
     const ring = kit.mesh(
       new THREE.RingGeometry(2.5, 2.75, 48),
       new THREE.MeshBasicMaterial({
@@ -1036,10 +1039,10 @@ export function* buildCityEnvironment(
       }),
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(stop.x, surfaceHeight(stop.x, stop.z) + 0.1, stop.z);
+    ring.position.set(stop.x, baseY + 0.1, stop.z);
     ring.castShadow = false;
     const sign = makeLabel(kit, stop.title, stop.color, 5.6);
-    sign.position.set(stop.x, surfaceHeight(stop.x, stop.z) + 3, stop.z);
+    sign.position.set(stop.x, baseY + 3, stop.z);
     kit.scene.add(sign);
     const overviewSign = makeLabel(kit, overviewNames[index], stop.color, 24);
     const canvas = overviewSign.material.map!.image as HTMLCanvasElement;
@@ -1058,7 +1061,7 @@ export function* buildCityEnvironment(
     overviewSign.position.copy(sign.position);
     overviewSign.visible = false;
     kit.scene.add(overviewSign);
-    return { ring, label: sign, overviewLabel: overviewSign };
+    return { ring, label: sign, overviewLabel: overviewSign, baseY };
   });
   const rippleGeometry = new THREE.PlaneGeometry(2.2, 0.08);
   const rippleMaterial = new THREE.MeshBasicMaterial({
@@ -1102,7 +1105,7 @@ export function* buildCityEnvironment(
       labels.forEach((sprite) => {
         sprite.visible = overview;
       });
-      stops.forEach(({ ring, label: sign, overviewLabel }, index) => {
+      stops.forEach(({ ring, label: sign, overviewLabel, baseY }, index) => {
         const selected = index === targetStop || index === nearStop;
         ring.scale.setScalar(
           overview
@@ -1132,8 +1135,7 @@ export function* buildCityEnvironment(
         sign.scale.set(width, (width * 96) / 512, 1);
         const mapWidth = THREE.MathUtils.clamp(overviewLabelWidth, 180, 1800);
         overviewLabel.scale.set(mapWidth, (mapWidth * 96) / 512, 1);
-        overviewLabel.position.y =
-          surfaceHeight(stop.x, stop.z) + (overview ? mapWidth * 0.14 : 3);
+        overviewLabel.position.y = baseY + (overview ? mapWidth * 0.14 : 3);
       });
       for (let i = 0; i < 64; i++) {
         const x = minX + (((i / 64) * width + time * 0.65) % width);

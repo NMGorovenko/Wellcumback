@@ -1,4 +1,5 @@
 'use client';
+import { disposeGameRenderer } from '../world/dispose-renderer';
 import { createGraphicsController } from '../world/graphics';
 import { isRomaWitness, cleanNpcVisible } from '@/lib/game/clean/cast';
 import { cleanSpeech } from '@/lib/game/clean/dialogue';
@@ -666,7 +667,7 @@ export default function CleanScene({
       observer.disconnect();
       graphics.dispose();
       kit.dispose();
-      renderer.dispose();
+      disposeGameRenderer(renderer);
       renderer.domElement.remove();
     };
   }, [game, players]);
